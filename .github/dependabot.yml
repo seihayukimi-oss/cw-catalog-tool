@@ -1,0 +1,21 @@
+# 部品の更新を提案してもらう。出てすぐの版は乗っ取りの可能性があるので、14日待ってから提案させる。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 14 }
+    groups:
+      tauri:
+        patterns: ["@tauri-apps/*"]
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule: { interval: weekly }
+    cooldown: { default-days: 14 }
+    groups:
+      tauri:
+        patterns: ["tauri", "tauri-*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 14 }

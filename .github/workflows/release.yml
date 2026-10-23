@@ -1,0 +1,63 @@
+name: リリース
+
+# v0.1.0 のようなタグを push すると、アプリ版（Windowsインストーラー）とHTML版を作って
+# 「下書き」のリリースに置く。中身を確認してから GitHub の画面で公開する。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write # リリースの作成だけに使う
+    steps:
+      # Actions はコミットIDで固定（タグの付け替えによる乗っ取り対策）。更新は Dependabot が提案する
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Rust を用意
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: 更新用の公開鍵が設定されているか確認
+        shell: bash
+        run: |
+          if grep -q "ここに更新用の公開鍵を入れる" src-tauri/tauri.conf.json; then
+            echo "::error::src-tauri/tauri.conf.json の plugins.updater.pubkey を設定してください（README の「初めてのリリースの前に」参照）"
+            exit 1
+          fi
+
+      # インストール時のスクリプトは .npmrc で無効。ロックファイルどおりに入れる
+      - run: npm ci
+      - run: npm test
+
+      - name: アプリ版をビルド
+        run: npx tauri build --ci
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: 自動更新用の latest.json を作る
+        run: node scripts/make-latest-json.mjs
+
+      - name: 下書きのリリースを作る
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          EXE=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe)
+          cp dist/web/cw-catalog.html "cw-catalog-${TAG}.html"
+          gh release create "$TAG" --draft --title "CWカタログ $TAG" \
+            --notes "アプリ版：*-setup.exe をダウンロードして実行してください。HTML版：cw-catalog-${TAG}.html をブラウザ（Chrome・Edge）で開くだけで使えます。" \
+            "$EXE" "$EXE.sig" latest.json "cw-catalog-${TAG}.html"
