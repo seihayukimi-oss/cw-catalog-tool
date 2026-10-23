@@ -1,0 +1,33 @@
+[package]
+name = "cw-catalog"
+version = "0.1.3"
+description = "CardWirth シナリオの一括DL・インストール・更新チェックツール"
+license = "MIT"
+edition = "2021"
+rust-version = "1.77.2"
+
+# 版は「出てから2週間以上たったもの」に固定（サプライチェーン対策）。
+# JavaScript側（package.json）の @tauri-apps/* と、マイナー版をそろえること。
+[build-dependencies]
+tauri-build = { version = "=2.7.1", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.1", features = [] }
+tauri-plugin-fs = "=2.6.0"
+tauri-plugin-dialog = "=2.8.1"
+# unsafe-headers：同意ページの送信で Cookie・Referer を付けるため
+tauri-plugin-http = { version = "=2.8.1", features = ["unsafe-headers"] }
+tauri-plugin-opener = "=2.7.0"
+tauri-plugin-updater = "=2.13.2"
+tauri-plugin-process = "=2.4.0"
+tauri-plugin-persisted-scope = "=2.4.0"
+# tauri::generate_context! とアプリ内ブラウザの通知が使う
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

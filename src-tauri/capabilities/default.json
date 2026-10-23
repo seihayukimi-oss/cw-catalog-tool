@@ -1,0 +1,60 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "CWカタログの画面に許可すること。ファイル操作の範囲は、ユーザーがダイアログで選んだフォルダだけ（範囲はダイアログ側で自動追加され、persisted-scopeで記憶される）。 アプリ内ブラウザ（dl窓）は外部のページを表示するので、権限は一切与えない。",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-open-download-window",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "fs:allow-read-dir",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-stat",
+    "fs:allow-exists",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://*"
+        }
+      ]
+    },
+    "opener:allow-open-url",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        {
+          "path": "**/CardWirth.exe"
+        },
+        {
+          "path": "**/CardWirthNext.exe"
+        },
+        {
+          "path": "**/CardWirthPy.exe"
+        }
+      ]
+    },
+    "updater:default",
+    "process:allow-restart",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "$APPCACHE/downloads"
+        },
+        {
+          "path": "$APPCACHE/downloads/**"
+        }
+      ]
+    }
+  ]
+}
