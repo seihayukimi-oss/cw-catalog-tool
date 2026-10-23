@@ -82,13 +82,13 @@ export const platform = {
   canInAppBrowse: true,
 
   async pickFolder() {
-    const path = await openDialog({ directory: true, multiple: false, title: 'CardWirthのフォルダを選んでください' });
+    const path = await openDialog({ directory: true, recursive: true, multiple: false, title: 'CardWirthのフォルダを選んでください' });
     if (!path) throw Object.assign(new Error('キャンセルされました'), { name: 'AbortError' });
     return { dir: new TauriDir(path), ref: path, label: path };
   },
 
   async pickSourceFolder() {
-    const path = await openDialog({ directory: true, multiple: false, title: '入れたいシナリオのフォルダを選んでください' });
+    const path = await openDialog({ directory: true, recursive: true, multiple: false, title: '入れたいシナリオのフォルダを選んでください' });
     if (!path) throw Object.assign(new Error('キャンセルされました'), { name: 'AbortError' });
     return new TauriDir(path);
   },

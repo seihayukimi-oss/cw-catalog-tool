@@ -78,7 +78,16 @@ async function busy(label, fn) {
   try {
     return await fn();
   } catch (e) {
-    if (e?.name !== 'AbortError') { console.error(e); toast(e.message || String(e), { bad: true, ms: 8000 }); }
+    if (e?.name !== 'AbortError') {
+      console.error(e);
+      const msg = e?.message || String(e);
+      // アプリ版：選んだフォルダの外、または許可が足りない場所に触れようとしたとき
+      if (/forbidden path/i.test(msg)) {
+        toast('このフォルダを使う許可が足りません。「設定」で、このエンジンの「選び直す」を押して、同じフォルダをもう一度選んでください', { bad: true, ms: 12000 });
+      } else {
+        toast(msg, { bad: true, ms: 8000 });
+      }
+    }
     return undefined;
   } finally {
     S.busy = '';
@@ -1031,7 +1040,7 @@ function viewSettings() {
       h('div', { class: 'row' },
         h('span', { class: `badge ${S.dirs.has(e.id) ? 'ok' : 'plain'}` }, S.dirs.has(e.id) ? '接続中' : '未接続'),
         !S.dirs.has(e.id) ? h('button', { class: 'btn sm', onclick: () => (e.ref ? connectEngine(e.id) : reconnect(e)) }, '接続') : null,
-        e.needsReconnect || !e.ref ? h('button', { class: 'btn sm', onclick: () => reconnect(e) }, '選び直す') : null,
+        e.needsReconnect || !e.ref || S.platform.kind === 'app' ? h('button', { class: 'btn sm', onclick: () => reconnect(e) }, '選び直す') : null,
         h('button', {
           class: 'btn sm danger', onclick: async () => {
             if (!(await confirmBox(`「${e.name}」の登録と、その記録を消します。フォルダの中身は消えません。よろしいですか？`))) return;
