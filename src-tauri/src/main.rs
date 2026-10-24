@@ -52,27 +52,39 @@ fn allow_open_files<R: tauri::Runtime>(app: &tauri::AppHandle<R>, args: &[String
     }
 }
 
-/// 配布ページを別の窓で開く。本人がサイトのダウンロードボタンを押すと、
-/// ファイルは CWCatalog-data\downloads に保存され、main 窓に「cw-download」で知らせる。
-/// この窓は外部のページなので、アプリの機能（ファイル操作など）には一切触れない
-/// （capabilities は main 窓にしか与えていない）。ログインの状態は CWCatalog-data に残る。
-#[tauri::command]
-async fn open_download_window(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let target: tauri::Url = url.parse().map_err(|_| "URLが正しくありません".to_string())?;
-    if target.scheme() != "https" && target.scheme() != "http" {
-        return Err("http・https のページだけ開けます".into());
-    }
-    if let Some(old) = app.get_webview_window("dl") {
-        let _ = old.destroy();
-    }
-    let dir = portable().downloads_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+static POPUP_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
+/// アプリ内ブラウザの窓を作る。ログインなどで開かれる小窓（window.open）も、同じ作りの窓で開く
+/// （小窓でダウンロードが始まっても受け取れるように、ログインの状態も共有されるように）。
+fn build_browser_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    url: WebviewUrl,
+    features: Option<tauri::webview::NewWindowFeatures>,
+) -> tauri::Result<tauri::WebviewWindow> {
+    let dir = portable().downloads_dir();
+    let _ = std::fs::create_dir_all(&dir);
     let app_dl = app.clone();
-    let window = WebviewWindowBuilder::new(&app, "dl", WebviewUrl::External(target))
+    let app_new = app.clone();
+    let mut b = WebviewWindowBuilder::new(app, label, url)
         .title("配布ページ ― サイトのダウンロードボタンを押すと、CWカタログが受け取ります")
         .inner_size(1000.0, 760.0)
         .data_directory(portable().webview_dir())
+        .on_new_window(move |url, features| {
+            if url.scheme() != "https" && url.scheme() != "http" && url.as_str() != "about:blank" {
+                return tauri::webview::NewWindowResponse::Deny;
+            }
+            let n = POPUP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            match build_browser_window(&app_new, &format!("dl-pop-{n}"), WebviewUrl::External("about:blank".parse().unwrap()), Some(features)) {
+                Ok(window) => tauri::webview::NewWindowResponse::Create { window },
+                Err(_) => tauri::webview::NewWindowResponse::Deny,
+            }
+        })
+        .on_document_title_changed(|w, title| {
+            if !title.is_empty() {
+                let _ = w.set_title(&format!("{title} ― CWカタログのアプリ内ブラウザ"));
+            }
+        })
         .on_download(move |webview, event| {
             match event {
                 DownloadEvent::Requested { destination, .. } => {
@@ -94,15 +106,39 @@ async fn open_download_window(app: tauri::AppHandle, url: String) -> Result<(), 
                             success,
                         },
                     );
-                    let _ = webview.window().close();
+                    // 受け取ったら、アプリ内ブラウザの窓（小窓も）を閉じる
+                    for (l, w) in webview.app_handle().webview_windows() {
+                        if l == "dl" || l.starts_with("dl-pop-") {
+                            let _ = w.close();
+                        }
+                    }
                 }
                 _ => {}
             }
             true
-        })
-        .build()
-        .map_err(|e| e.to_string())?;
+        });
+    if let Some(f) = features {
+        b = b.window_features(f);
+    }
+    b.build()
+}
 
+/// 配布ページを別の窓で開く。本人がサイトのダウンロードボタンを押すと、
+/// ファイルは CWCatalog-data\downloads に保存され、main 窓に「cw-download」で知らせる。
+/// この窓は外部のページなので、アプリの機能（ファイル操作など）には一切触れない
+/// （capabilities は main 窓にしか与えていない）。ログインの状態は CWCatalog-data に残る。
+#[tauri::command]
+async fn open_download_window(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let target: tauri::Url = url.parse().map_err(|_| "URLが正しくありません".to_string())?;
+    if target.scheme() != "https" && target.scheme() != "http" {
+        return Err("http・https のページだけ開けます".into());
+    }
+    for (l, w) in app.webview_windows() {
+        if l == "dl" || l.starts_with("dl-pop-") {
+            let _ = w.destroy();
+        }
+    }
+    let window = build_browser_window(&app, "dl", WebviewUrl::External(target), None).map_err(|e| e.to_string())?;
     let app_close = app.clone();
     window.on_window_event(move |e| {
         if let tauri::WindowEvent::Destroyed = e {

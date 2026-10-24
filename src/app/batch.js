@@ -235,7 +235,7 @@ function itemCard(it) {
   const eng = engOf(it);
   const editable = !S.batch.installing && it.status === 'ready';
   const fileIn = h('input', {
-    type: 'file', accept: '.zip,.wsn,.cab,.lzh,.lha,.7z', style: 'display:none',
+    type: 'file', accept: '.zip,.wsn,.cab,.lzh,.lha,.7z', hidden: true,
     onchange: async (ev) => { const f = ev.target.files[0]; if (f) { await analyze(it, new Uint8Array(await f.arrayBuffer()), f.name); render(); } },
   });
   const card = h('div', { class: `card batch-item ${it.status}`, 'data-batch-drop': it.status === 'action' ? '1' : null },

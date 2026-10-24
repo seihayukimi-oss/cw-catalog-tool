@@ -17,6 +17,8 @@ const emptyCatalog = () => ({ format: 1, authors: {}, entries: [] });
 export async function loadCatalogs() {
   S.catPrefs = { addTo: 'all', askDefault: true, ...((await store.get('catalogPrefs')) || {}) };
   S.workPrefs = (await store.get('workPrefs')) || {};
+  await loadFolders();
+  S.catView = { group: '', compact: null, ...((await store.get('catView')) || {}) };
   let sources = await store.get('catalogSources');
   if (!sources) sources = await migrateOld();
   S.sources = sources;
@@ -168,6 +170,69 @@ export async function setHidden(work, hide, sourceIds = null) {
   rebuild();
 }
 
+/** まとめて候補から外す／戻す */
+export async function setHiddenMany(works, hide, sourceIds = null) {
+  for (const work of works) {
+    const ids = sourceIds || work.refs.map((r) => r.sourceId);
+    for (const src of S.sources.filter((s) => ids.includes(s.id))) {
+      const set = new Set(src.hidden || []);
+      if (hide) set.add(work.key); else set.delete(work.key);
+      src.hidden = [...set];
+    }
+  }
+  await saveSources();
+  rebuild();
+}
+
+// ------------------------------------------------------------ フォルダ（作者さんごと・企画ごとなど、自由に名前を付けて分ける）
+// 作品は、いくつのフォルダに入れてもよい。共用カタログの作品も入れられる（カタログそのものは変えない）。
+export async function loadFolders() {
+  const f = (await store.get('folders')) || {};
+  S.folders = { list: Array.isArray(f.list) ? f.list : [], map: f.map && typeof f.map === 'object' ? f.map : {} };
+}
+async function saveFolders() { await store.set('folders', S.folders); }
+export const foldersOf = (key) => (S.folders.map[key] || []).map((id) => S.folders.list.find((f) => f.id === id)).filter(Boolean);
+export async function createFolder(name) {
+  const f = { id: `f-${Math.random().toString(36).slice(2, 10)}`, name: name.slice(0, 60) };
+  S.folders.list.push(f);
+  await saveFolders();
+  return f;
+}
+export async function renameFolder(id, name) {
+  const f = S.folders.list.find((x) => x.id === id);
+  if (f) { f.name = name.slice(0, 60); await saveFolders(); }
+}
+export async function deleteFolder(id) {
+  S.folders.list = S.folders.list.filter((f) => f.id !== id);
+  for (const k of Object.keys(S.folders.map)) {
+    S.folders.map[k] = S.folders.map[k].filter((x) => x !== id);
+    if (!S.folders.map[k].length) delete S.folders.map[k];
+  }
+  await saveFolders();
+}
+export async function moveFolder(id, d) {
+  const i = S.folders.list.findIndex((f) => f.id === id);
+  const j = i + d;
+  if (i < 0 || j < 0 || j >= S.folders.list.length) return;
+  [S.folders.list[i], S.folders.list[j]] = [S.folders.list[j], S.folders.list[i]];
+  await saveFolders();
+}
+export async function putInFolder(keys, id) {
+  for (const k of keys) {
+    const cur = new Set(S.folders.map[k] || []);
+    cur.add(id);
+    S.folders.map[k] = [...cur];
+  }
+  await saveFolders();
+}
+export async function takeOutOfFolder(keys, id) {
+  for (const k of keys) {
+    S.folders.map[k] = (S.folders.map[k] || []).filter((x) => x !== id);
+    if (!S.folders.map[k].length) delete S.folders.map[k];
+  }
+  await saveFolders();
+}
+
 /** 個人用カタログ（own）の作品を、指定したカタログに入れる／直す／抜く */
 export async function saveOwnEntry(entry, { origKey = '', targetIds = [] }) {
   const key = workKey(entry);
@@ -187,6 +252,12 @@ export async function saveOwnEntry(entry, { origKey = '', targetIds = [] }) {
     S.workPrefs[key] = S.workPrefs[origKey];
     delete S.workPrefs[origKey];
     await store.set('workPrefs', S.workPrefs);
+  }
+  // 名前・作者を直したら、フォルダの分け方も引き継ぐ
+  if (origKey && origKey !== key && S.folders?.map[origKey]) {
+    S.folders.map[key] = [...new Set([...(S.folders.map[key] || []), ...S.folders.map[origKey]])];
+    delete S.folders.map[origKey];
+    await saveFolders();
   }
   await saveSources();
   rebuild();

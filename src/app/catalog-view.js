@@ -4,12 +4,14 @@ import { ENGINE_KINDS } from '../core/catalog.js';
 import { chooseDownloads, statusOf, ageRoleOf, introKind, INTRO_LABEL, workKey, KIND_LABEL } from '../core/catalogs.js';
 import { decodeHtml, parseOgp } from '../core/weblink.js';
 import { urlAdvice, inAppSite } from '../core/urls.js';
-import { S, render, busy, rerenderList, confirmBox } from './state.js';
+import { S, render, busy, rerenderList, confirmBox, goTab } from './state.js';
 import { h, toast, modal, fmtDate, formatBadge } from './ui.js';
 import {
-  addShared, importList, createOwn, removeSource, setEnabled, setHidden, refreshSource, saveSources, exportSource,
+  addShared, importList, createOwn, removeSource, setEnabled, setHidden, setHiddenMany, refreshSource, saveSources, exportSource,
   saveOwnEntry, ownSources, sourceById, setDefaultUrl, defaultUrlOf, setCatPrefs, refreshStates,
+  foldersOf, createFolder, renameFolder, deleteFolder, moveFolder, putInFolder, takeOutOfFolder,
 } from './catalog-data.js';
+import { store } from './store.js';
 import { downloadWork, downloadFrom, dlLabel } from './download.js';
 import { startBatch } from './batch.js';
 
@@ -18,17 +20,29 @@ const AGE = { new: '新', old: '旧（移転済み）', closed: '終了' };
 const ROLE = { normal: '通常', mirror: '予備' };
 
 // ------------------------------------------------------------ 一覧
+const GROUPS = [['', 'そのまま'], ['author', '作者ごと'], ['folder', 'フォルダごと'], ['name', '名前順'], ['updated', '新しい順']];
+
 function filteredWorks() {
   if (!S.combined) return [];
   const q = S.filter.cat.normalize('NFKC').toLowerCase();
-  return S.combined.works.filter((w) => {
+  const fid = S.filter.catFolder;
+  const list = S.combined.works.filter((w) => {
     if (S.filter.catSource && !w.refs.some((r) => r.sourceId === S.filter.catSource)) return false;
     if (!S.filter.showHidden && (S.filter.catSource ? w.hiddenIn.has(S.filter.catSource) : w.hidden)) return false;
     if (S.filter.catEngine && !['verified', 'expected'].includes(w.compat?.[S.filter.catEngine])) return false;
-    return !q || `${w.name} ${w.author} ${w.tags.join(' ')} ${w.description || ''}`.normalize('NFKC').toLowerCase().includes(q);
+    if (fid === '__none' && (S.folders.map[w.key] || []).length) return false;
+    if (fid && fid !== '__none' && !(S.folders.map[w.key] || []).includes(fid)) return false;
+    return !q || `${w.name} ${w.author} ${w.tags.join(' ')} ${w.description || ''} ${foldersOf(w.key).map((f) => f.name).join(' ')}`.normalize('NFKC').toLowerCase().includes(q);
   });
+  const g = S.catView.group;
+  const byName = (a, b) => a.name.localeCompare(b.name, 'ja');
+  if (g === 'name' || g === 'author' || g === 'folder') list.sort(byName);
+  if (g === 'updated') list.sort((a, b) => (b.updated || '').localeCompare(a.updated || '') || byName(a, b));
+  return list;
 }
-const filtering = () => !!(S.filter.cat.trim() || S.filter.catEngine || S.filter.catSource);
+const filtering = () => !!(S.filter.cat.trim() || S.filter.catEngine || S.filter.catSource || S.filter.catFolder);
+const compactView = () => (S.catView.compact == null ? (S.combined?.works.length || 0) > 30 : S.catView.compact);
+async function saveView(patch) { Object.assign(S.catView, patch); await store.set('catView', S.catView); render(); }
 
 export function viewCatalog() {
   const hasAny = !!S.combined;
@@ -46,7 +60,7 @@ export function viewCatalog() {
   const works = filteredWorks();
   const filters = h('div', { class: 'card stack' },
     h('div', { class: 'row' },
-      h('input', { type: 'search', class: 'grow', id: 'cat-q', placeholder: '作品名・作者・タグ・紹介文で検索', value: S.filter.cat, oninput: (ev) => { S.filter.cat = ev.target.value; rerenderList('cat-body', viewCatalog); } }),
+      h('input', { type: 'search', class: 'grow', id: 'cat-q', placeholder: '作品名・作者・タグ・紹介文・フォルダ名で検索', value: S.filter.cat, oninput: (ev) => { S.filter.cat = ev.target.value; rerenderList('cat-body', viewCatalog); } }),
       h('button', { class: 'btn', onclick: () => editEntry({}) }, '＋作品を登録（個人用）')),
     h('div', { class: 'row' },
       h('select', { 'aria-label': 'カタログ', onchange: (ev) => { S.filter.catSource = ev.target.value; render(); } },
@@ -54,25 +68,126 @@ export function viewCatalog() {
         S.sources.filter((s) => s.enabled).map((s) => h('option', { value: s.id, selected: S.filter.catSource === s.id ? 'selected' : null }, `${KIND_LABEL[s.kind]}：${s.name}`))),
       h('select', { 'aria-label': 'エンジン', onchange: (ev) => { S.filter.catEngine = ev.target.value; render(); } },
         [['', 'すべてのエンジン'], ['cw150', '1.50で遊べる'], ['next', 'Nextで遊べる'], ['py', 'Pyで遊べる']].map(([v, l]) => h('option', { value: v, selected: S.filter.catEngine === v ? 'selected' : null }, l))),
-      h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: S.filter.showHidden, onchange: (ev) => { S.filter.showHidden = ev.target.checked; render(); } }), '候補から外したものも表示')));
+      h('select', { 'aria-label': '並べ方', onchange: (ev) => saveView({ group: ev.target.value }) },
+        GROUPS.map(([v, l]) => h('option', { value: v, selected: S.catView.group === v ? 'selected' : null }, `並べ方：${l}`))),
+      h('select', { 'aria-label': '表示', onchange: (ev) => saveView({ compact: ev.target.value === 'compact' }) },
+        h('option', { value: 'full', selected: !compactView() ? 'selected' : null }, '表示：くわしく'),
+        h('option', { value: 'compact', selected: compactView() ? 'selected' : null }, '表示：コンパクト')),
+      h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: S.filter.showHidden, onchange: (ev) => { S.filter.showHidden = ev.target.checked; render(); } }), '候補から外したものも表示')),
+    folderChips());
 
   return h('div', {}, manage, filters, h('div', { id: 'cat-body' }, batchBar(works), viewList(works)));
+}
+
+/** フォルダの切り替え（すべて・未分類・自分で作ったフォルダ） */
+function folderChips() {
+  const all = S.combined.works.filter((w) => S.filter.showHidden || !w.hidden);
+  const count = (fid) => all.filter((w) => (fid === '__none' ? !(S.folders.map[w.key] || []).length : (S.folders.map[w.key] || []).includes(fid))).length;
+  const chip = (fid, label, n) => h('button', {
+    class: `chip${S.filter.catFolder === fid ? ' on' : ''}`, 'aria-pressed': S.filter.catFolder === fid ? 'true' : 'false',
+    onclick: () => { S.filter.catFolder = fid; render(); },
+  }, label, h('span', { class: 'n' }, n));
+  return h('div', { class: 'row folder-chips' },
+    h('span', { class: 'small muted' }, 'フォルダ'),
+    chip('', 'すべて', all.length),
+    S.folders.list.map((f) => chip(f.id, f.name, count(f.id))),
+    S.folders.list.length ? chip('__none', '未分類', count('__none')) : null,
+    h('button', { class: 'btn ghost sm', onclick: async () => { const name = await askName('新しいフォルダ', '', 'フォルダの名前（例：作者さんの名前、企画の名前）'); if (name) { const f = await createFolder(name); S.filter.catFolder = f.id; toast(`フォルダ「${name}」を作りました。作品を選んで「フォルダに入れる」で入れられます`, { ms: 7000 }); render(); } } }, '＋新しいフォルダ'),
+    S.folders.list.length ? h('button', { class: 'btn ghost sm', onclick: manageFolders }, 'フォルダの整理') : null);
 }
 
 function batchBar(works) {
   const sel = S.combined.works.filter((w) => S.selected.has(w.key));
   const visibleSel = works.filter((w) => S.selected.has(w.key)).length;
-  return h('div', { class: 'card batch-bar row', id: 'batch-bar' },
-    h('span', { class: 'small' }, `${works.length}件${filtering() ? '（検索結果）' : ''}`),
-    filtering() && works.length ? h('button', { class: 'btn primary sm', onclick: () => startBatch(works.map((work) => ({ work })), '検索結果をまとめてDL') }, `検索結果${works.length}件をまとめてDL`) : null,
-    h('button', { class: 'btn sm', disabled: !works.length || visibleSel === works.length, onclick: () => { works.forEach((w) => S.selected.add(w.key)); render(); } }, '表示中をすべて選ぶ'),
-    sel.length ? h('button', { class: 'btn primary sm', onclick: () => { startBatch(sel.map((work) => ({ work })), '選んだ作品をまとめてDL'); S.selected.clear(); } }, `選んだ${sel.length}件をまとめてDL`) : null,
-    sel.length ? h('button', { class: 'btn ghost sm', onclick: () => { S.selected.clear(); render(); } }, '選択を解除') : null);
+  const inFolder = S.filter.catFolder && S.filter.catFolder !== '__none' ? S.folders.list.find((f) => f.id === S.filter.catFolder) : null;
+  const anyHidden = sel.some((w) => (S.filter.catSource ? w.hiddenIn.has(S.filter.catSource) : w.hidden));
+  const anyShown = sel.some((w) => !(S.filter.catSource ? w.hiddenIn.has(S.filter.catSource) : w.hidden));
+  return h('div', { class: 'card batch-bar', id: 'batch-bar' },
+    h('div', { class: 'row' },
+      h('span', { class: 'small' }, `${works.length}件${filtering() ? '（絞り込み中）' : ''}`),
+      filtering() && works.length ? h('button', { class: 'btn primary sm', onclick: () => startBatch(works.map((work) => ({ work })), '検索結果をまとめてDL') }, `検索結果${works.length}件をまとめてDL`) : null,
+      h('button', { class: 'btn sm', disabled: !works.length || visibleSel === works.length, onclick: () => { works.forEach((w) => S.selected.add(w.key)); render(); } }, '表示中をすべて選ぶ'),
+      sel.length ? h('button', { class: 'btn ghost sm', onclick: () => { S.selected.clear(); render(); } }, '選択を解除') : null),
+    sel.length ? h('div', { class: 'row sel-actions' },
+      h('b', { class: 'small' }, `選んだ${sel.length}件を：`),
+      h('button', { class: 'btn primary sm', onclick: () => { startBatch(sel.map((work) => ({ work })), '選んだ作品をまとめてDL'); S.selected.clear(); } }, 'まとめてDL'),
+      h('button', { class: 'btn sm', onclick: () => putSelectedInFolder(sel) }, 'フォルダに入れる'),
+      inFolder ? h('button', { class: 'btn sm', onclick: async () => { await takeOutOfFolder(sel.map((w) => w.key), inFolder.id); toast(`${sel.length}件を「${inFolder.name}」から外しました`); S.selected.clear(); render(); } }, `「${inFolder.name}」から外す`) : null,
+      anyShown ? h('button', { class: 'btn sm', onclick: () => hideSelected(sel, true) }, '候補から外す') : null,
+      anyHidden ? h('button', { class: 'btn sm', onclick: () => hideSelected(sel, false) }, '候補に戻す') : null) : null);
+}
+
+async function putSelectedInFolder(sel) {
+  const choice = await modal((close) => {
+    const newIn = h('input', { type: 'text', placeholder: '新しいフォルダの名前', class: 'grow' });
+    return h('div', { class: 'stack' },
+      h('h2', {}, `${sel.length}件をフォルダに入れる`),
+      h('p', { class: 'small muted', style: 'margin:0' }, '1つの作品を、いくつのフォルダに入れてもかまいません。共用カタログの作品も入れられます（カタログそのものは変わりません）。'),
+      S.folders.list.length ? h('div', { class: 'stack' }, S.folders.list.map((f) => h('button', { class: 'btn', style: 'justify-content:flex-start', onclick: () => close({ id: f.id }) }, f.name))) : null,
+      h('div', { class: 'row' }, newIn, h('button', { class: 'btn primary', onclick: () => { const n = newIn.value.trim(); if (n) close({ name: n }); } }, '新しく作って入れる')),
+      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn', onclick: () => close(null) }, 'やめる')));
+  });
+  if (!choice) return;
+  const f = choice.id ? S.folders.list.find((x) => x.id === choice.id) : await createFolder(choice.name);
+  await putInFolder(sel.map((w) => w.key), f.id);
+  S.selected.clear();
+  toast(`${sel.length}件を「${f.name}」に入れました`);
+  render();
+}
+
+async function hideSelected(sel, hide) {
+  const ids = S.filter.catSource ? [S.filter.catSource] : null;
+  await setHiddenMany(sel, hide, ids);
+  await refreshStates();
+  S.selected.clear();
+  toast(hide ? `${sel.length}件を候補から外しました（「候補から外したものも表示」で戻せます）` : `${sel.length}件を候補に戻しました`);
+  render();
+}
+
+/** フォルダの名前を変える・順番・消す */
+async function manageFolders() {
+  await modal((close) => {
+    const body = h('div', { class: 'stack' });
+    const draw = () => body.replaceChildren(...S.folders.list.map((f, i) => h('div', { class: 'row src-row' },
+      h('b', { class: 'grow' }, f.name),
+      h('span', { class: 'small muted' }, `${Object.values(S.folders.map).filter((ids) => ids.includes(f.id)).length}件`),
+      h('button', { class: 'btn ghost sm', disabled: i === 0, 'aria-label': '上へ', onclick: async () => { await moveFolder(f.id, -1); draw(); } }, '↑'),
+      h('button', { class: 'btn ghost sm', disabled: i === S.folders.list.length - 1, 'aria-label': '下へ', onclick: async () => { await moveFolder(f.id, 1); draw(); } }, '↓'),
+      h('button', { class: 'btn ghost sm', onclick: async () => { const n = await askName('フォルダの名前を変える', f.name, 'フォルダの名前'); if (n) { await renameFolder(f.id, n); draw(); } } }, '名前'),
+      h('button', { class: 'btn ghost sm danger', onclick: async () => { if (await confirmBox(`フォルダ「${f.name}」を消します。中の作品は消えません（フォルダから外れるだけです）。よろしいですか？`)) { await deleteFolder(f.id); if (S.filter.catFolder === f.id) S.filter.catFolder = ''; draw(); } } }, '消す'))));
+    draw();
+    return h('div', { class: 'stack' }, h('h2', {}, 'フォルダの整理'), body,
+      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn primary', onclick: () => close(true) }, '閉じる')));
+  });
+  render();
 }
 
 function viewList(works) {
   const owned = new Map(S.records.filter((r) => r.workKey).map((r) => [r.workKey, r]));
-  return h('div', { class: 'list', id: 'cat-list' }, works.length ? works.map((w) => workCard(w, owned.get(w.key))) : h('p', { class: 'empty' }, '見つかりませんでした'));
+  if (!works.length) return h('div', { class: 'list', id: 'cat-list' }, h('p', { class: 'empty' }, '見つかりませんでした'));
+  const g = S.catView.group;
+  if (g !== 'author' && g !== 'folder') return h('div', { class: 'list', id: 'cat-list' }, works.map((w) => workCard(w, owned.get(w.key))));
+  // 作者ごと・フォルダごとにまとめる
+  const groups = new Map();
+  const add = (k, w) => { if (!groups.has(k)) groups.set(k, []); groups.get(k).push(w); };
+  for (const w of works) {
+    if (g === 'author') add(w.author || '（作者不明）', w);
+    else {
+      const fs = foldersOf(w.key);
+      if (fs.length) fs.forEach((f) => add(f.name, w)); else add('（未分類）', w);
+    }
+  }
+  const keys = [...groups.keys()];
+  if (g === 'author') keys.sort((a, b) => a.localeCompare(b, 'ja'));
+  else keys.sort((a, b) => (a === '（未分類）') - (b === '（未分類）') || S.folders.list.findIndex((f) => f.name === a) - S.folders.list.findIndex((f) => f.name === b));
+  return h('div', { class: 'list', id: 'cat-list' }, keys.map((k) => {
+    const ws = groups.get(k);
+    const det = h('details', { class: 'group', open: true },
+      h('summary', {}, h('span', { class: 'group-name' }, k), h('span', { class: 'badge plain' }, `${ws.length}件`),
+        h('button', { class: 'btn ghost sm', onclick: (ev) => { ev.preventDefault(); ws.forEach((w) => S.selected.add(w.key)); render(); } }, 'まとめて選ぶ')),
+      ws.map((w) => workCard(w, owned.get(w.key))));
+    return det;
+  }));
 }
 
 /** 長い紹介文は折りたたんで、「すべて表示」で開けるようにする */
@@ -90,21 +205,26 @@ function workCard(w, mine) {
   const def = order[0] || null;
   const inOwn = w.refs.some((r) => r.kind === 'own');
   const hiddenHere = S.filter.catSource ? w.hiddenIn.has(S.filter.catSource) : w.hidden;
+  const open = !compactView() || S.expanded.has(w.key);
   const sel = h('input', {
     type: 'checkbox', checked: S.selected.has(w.key), 'aria-label': `${w.name}を選ぶ`,
     onchange: (ev) => { if (ev.target.checked) S.selected.add(w.key); else S.selected.delete(w.key); document.getElementById('batch-bar')?.replaceWith(batchBar(filteredWorks())); },
   });
+  const head = h('div', { class: 'row between' },
+    h('div', { class: 'row' }, sel, h('span', { class: 'item-title' }, w.name), formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
+      mine ? h('span', { class: `badge ${mine.state === 'update' ? 'update' : 'ok'}` }, mine.state === 'update' ? `入っている版 ${mine.version}→${w.version}` : 'フォルダにあり') : null,
+      hiddenHere ? h('span', { class: 'badge plain' }, '候補から外しています') : null,
+      foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name))),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn primary sm', disabled: !def, onclick: () => downloadWork(w) }, 'ダウンロード'),
+      open ? h('button', { class: 'btn sm', onclick: () => editEntry({ work: w }) }, inOwn ? '編集' : '個人用カタログへ') : null,
+      open ? h('button', { class: 'btn ghost sm', onclick: () => toggleHidden(w, !hiddenHere) }, hiddenHere ? '候補に戻す' : '候補から外す') : null,
+      compactView() ? h('button', { class: 'btn ghost sm', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) S.expanded.delete(w.key); else S.expanded.add(w.key); render(); } }, open ? 'たたむ' : 'くわしく') : null));
+  const meta = h('div', { class: 'meta' }, [w.author, `ver ${w.version}`, w.updated].filter(Boolean).join('・'),
+    h('span', { class: 'row', style: 'display:inline-flex;margin-left:8px;gap:4px' }, w.refs.map((r) => h('span', { class: `badge src ${r.kind}` }, r.sourceName))));
+  if (!open) return h('div', { class: `card work compact${hiddenHere ? ' hidden-work' : ''}` }, head, meta);
   return h('div', { class: `card work${hiddenHere ? ' hidden-work' : ''}` },
-    h('div', { class: 'row between' },
-      h('div', { class: 'row' }, sel, h('span', { class: 'item-title' }, w.name), formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
-        mine ? h('span', { class: `badge ${mine.state === 'update' ? 'update' : 'ok'}` }, mine.state === 'update' ? `入っている版 ${mine.version}→${w.version}` : 'フォルダにあり') : null,
-        hiddenHere ? h('span', { class: 'badge plain' }, '候補から外しています') : null),
-      h('div', { class: 'row' },
-        h('button', { class: 'btn primary sm', disabled: !def, onclick: () => downloadWork(w) }, 'ダウンロード'),
-        h('button', { class: 'btn sm', onclick: () => editEntry({ work: w }) }, inOwn ? '編集' : '個人用カタログへ'),
-        h('button', { class: 'btn ghost sm', onclick: () => toggleHidden(w, !hiddenHere) }, hiddenHere ? '候補に戻す' : '候補から外す'))),
-    h('div', { class: 'meta' }, [w.author, `ver ${w.version}`, w.updated].filter(Boolean).join('・'),
-      h('span', { class: 'row', style: 'display:inline-flex;margin-left:8px;gap:4px' }, w.refs.map((r) => h('span', { class: `badge src ${r.kind}` }, r.sourceName)))),
+    head, meta,
     h('div', { class: 'row', style: 'margin:6px 0' },
       ['cw150', 'next', 'py'].map((k) => h('span', { class: `badge ${LV[w.compat?.[k] || 'unknown'][1]}` }, `${ENGINE_KINDS[k].short}：${LV[w.compat?.[k] || 'unknown'][0]}`)),
       w.convert === 'forbidden' ? h('span', { class: 'badge bad' }, '変換NG') : null,
@@ -199,6 +319,8 @@ async function fetchOgp(url) {
 }
 
 // ------------------------------------------------------------ カタログの管理
+const after = async (fn, msg) => busy('カタログ', async () => { const r = await fn(); await refreshStates(); if (msg) toast(typeof msg === 'function' ? msg(r) : msg); });
+
 export function viewManage(open) {
   if (!open) {
     const n = S.sources.length;
@@ -208,58 +330,70 @@ export function viewManage(open) {
   }
   const shared = S.sources.filter((s) => s.kind === 'shared');
   const personal = S.sources.filter((s) => s.kind !== 'shared');
-  const sharedUrl = h('input', { type: 'url', class: 'grow', placeholder: 'https://…/index.json', id: 'shared-url' });
-  const listUrl = h('input', { type: 'url', class: 'grow', placeholder: 'DL一覧のURL（.json）', id: 'list-url' });
-  const fileIn = h('input', {
-    type: 'file', accept: '.json,application/json', style: 'display:none', id: 'list-file',
-    onchange: async (ev) => {
-      const f = ev.target.files[0];
-      if (!f) return;
-      await busy('DL一覧を読み込み', async () => {
-        const src = await importList({ json: JSON.parse(await f.text()), fileName: f.name });
-        await refreshStates();
-        toast(`「${src.name}」を個人用カタログとして読み込みました（${src.count}件）`);
-      });
-    },
-  });
-  const after = async (fn, msg) => busy('カタログ', async () => { const r = await fn(); await refreshStates(); if (msg) toast(typeof msg === 'function' ? msg(r) : msg); });
+  const section = (title, desc, list) => h('section', { class: 'manage-sec' },
+    h('h3', {}, title),
+    h('p', { class: 'small muted' }, desc),
+    list.length ? h('div', { class: 'src-list' }, list.map(sourceRow)) : h('p', { class: 'small muted empty-src' }, 'まだありません。右上の「＋ カタログを追加」から追加できます。'));
 
   return h('div', { class: 'card stack manage', id: 'manage' },
     h('div', { class: 'row between' }, h('h2', { style: 'margin:0' }, 'カタログの管理'),
-      S.combined ? h('button', { class: 'btn ghost sm', onclick: () => { S.manageOpen = false; render(); } }, 'たたむ') : null),
-    h('p', { class: 'small muted', style: 'margin:0' }, '「候補に含める」を外したカタログの作品は、一覧・更新チェック・まとめてDLに出なくなります。'),
-
-    h('h3', {}, '共用カタログ', h('span', { class: 'small muted', style: 'font-weight:normal;margin-left:8px' }, '作者さんが登録フォームから登録した作品のカタログ')),
-    shared.length ? h('div', { class: 'src-list' }, shared.map((s) => sourceRow(s, after))) : h('p', { class: 'small muted', style: 'margin:0' }, 'まだありません。'),
-    h('div', { class: 'row' }, sharedUrl,
-      h('button', {
-        class: 'btn primary', onclick: () => {
-          const u = sharedUrl.value.trim();
-          if (!/^https:\/\//.test(u)) { toast('https:// から始まるURLを入れてください', { bad: true }); return; }
-          after(() => addShared(u), (src) => `「${src.name}」を追加しました（${src.count}件）`);
-        },
-      }, '共用カタログを追加'),
-      !S.sources.some((s) => s.url === 'sample') ? h('button', { class: 'btn ghost', onclick: () => after(() => addShared('sample', 'サンプル'), 'サンプルのカタログを追加しました') }, 'サンプル') : null),
-
-    h('h3', {}, '個人用カタログ', h('span', { class: 'small muted', style: 'font-weight:normal;margin-left:8px' }, '自分で作るカタログと、有志の方のDL一覧。いくつでも持てます')),
-    personal.length ? h('div', { class: 'src-list' }, personal.map((s) => sourceRow(s, after))) : null,
-    h('div', { class: 'row' },
-      h('button', { class: 'btn', onclick: async () => { const name = await askName('新しい個人用カタログ', ''); if (name) after(() => createOwn(name), `「${name}」を作りました`); } }, '新しく作る'),
-      h('button', { class: 'btn', onclick: () => fileIn.click() }, 'DL一覧を読み込む（ファイル）'), fileIn),
-    h('div', { class: 'row' }, listUrl,
-      h('button', {
-        class: 'btn', onclick: () => {
-          const u = listUrl.value.trim();
-          if (!/^https?:\/\//.test(u)) { toast('https:// から始まるURLを入れてください', { bad: true }); return; }
-          after(() => importList({ url: u }), (src) => `「${src.name}」を読み込みました（${src.count}件）`);
-        },
-      }, 'URLから読み込む')),
-
-    h('h3', {}, '登録とDLの設定'),
-    prefsBlock());
+      h('div', { class: 'row' },
+        h('button', { class: 'btn primary', onclick: addCatalogDialog }, '＋ カタログを追加'),
+        S.combined ? h('button', { class: 'btn ghost sm', onclick: () => { S.manageOpen = false; render(); } }, 'たたむ') : null)),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'チェックを外したカタログの作品は、一覧・更新チェック・まとめてDLに出なくなります。'),
+    section('共用カタログ', '作者さんが登録フォームから登録した作品のカタログです。', shared),
+    section('個人用カタログ', '自分で作るカタログと、有志の方のDL一覧です。いくつでも持てます。', personal),
+    h('p', { class: 'small muted', style: 'margin:0' }, '作品を登録するときの入れ先や、デフォルトのDL先の確認は ',
+      h('button', { class: 'btn ghost sm', onclick: () => goTab('settings') }, '「設定」タブ'), ' で変えられます。'));
 }
 
-/** 「作品を個人用カタログに登録するとき」「デフォルトのDL先が使えないとき」の設定（設定タブにも出す） */
+/** 「＋ カタログを追加」：何を足すかを選ぶ */
+async function addCatalogDialog() {
+  const done = await modal((close) => {
+    const sharedUrl = h('input', { type: 'url', class: 'grow', placeholder: 'https://…/index.json', id: 'shared-url' });
+    const listUrl = h('input', { type: 'url', class: 'grow', placeholder: 'https://…（DL一覧の .json）', id: 'list-url' });
+    const ownName = h('input', { type: 'text', class: 'grow', placeholder: '例：お気に入り、短編まとめ', id: 'own-name' });
+    const fileIn = h('input', {
+      type: 'file', accept: '.json,application/json', hidden: true, id: 'list-file',
+      onchange: async (ev) => {
+        const f = ev.target.files[0];
+        if (!f) return;
+        close(true);
+        await after(async () => importList({ json: JSON.parse(await f.text()), fileName: f.name }), (src) => `「${src.name}」を個人用カタログとして読み込みました（${src.count}件）`);
+      },
+    });
+    const choice = (title, desc, ...body) => h('div', { class: 'add-choice' }, h('b', {}, title), h('div', { class: 'small muted' }, desc), h('div', { class: 'row' }, ...body));
+    const go = (fn, msg) => { close(true); after(fn, msg); };
+    return h('div', { class: 'stack' },
+      h('h2', {}, 'カタログを追加'),
+      choice('共用カタログをURLで追加', '作者さんが登録したカタログの index.json のURLを入れます。',
+        sharedUrl, h('button', { class: 'btn primary', onclick: () => {
+          const u = sharedUrl.value.trim();
+          if (!/^https:\/\//.test(u)) { toast('https:// から始まるURLを入れてください', { bad: true }); return; }
+          go(() => addShared(u), (src) => `「${src.name}」を追加しました（${src.count}件）`);
+        } }, '追加')),
+      choice('有志の方のDL一覧を読み込む', '人からもらったDL一覧（.json）を、個人用カタログの1つとして読み込みます。',
+        h('button', { class: 'btn', onclick: () => fileIn.click() }, 'ファイルを選ぶ'), fileIn,
+        h('span', { class: 'small muted' }, 'または'), listUrl,
+        h('button', { class: 'btn', onclick: () => {
+          const u = listUrl.value.trim();
+          if (!/^https?:\/\//.test(u)) { toast('https:// から始まるURLを入れてください', { bad: true }); return; }
+          go(() => importList({ url: u }), (src) => `「${src.name}」を読み込みました（${src.count}件）`);
+        } }, 'URLから読み込む')),
+      choice('個人用カタログを新しく作る', '自分で作品を登録していくカタログです。',
+        ownName, h('button', { class: 'btn', onclick: () => {
+          const name = ownName.value.trim().slice(0, 60);
+          if (!name) { toast('カタログの名前を入れてください', { bad: true }); return; }
+          go(() => createOwn(name), `「${name}」を作りました`);
+        } }, '作る')),
+      !S.sources.some((s) => s.url === 'sample') ? choice('お試し用のサンプル', '書式見本の作品が2件入ったカタログです（実在の作品ではありません）。',
+        h('button', { class: 'btn', onclick: () => go(() => addShared('sample', 'サンプル'), 'サンプルのカタログを追加しました') }, 'サンプルを入れる')) : null,
+      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn', onclick: () => close(false) }, '閉じる')));
+  });
+  return done;
+}
+
+/** 「作品を個人用カタログに登録するとき」「デフォルトのDL先が使えないとき」の設定（設定タブに出す） */
 export function prefsBlock() {
   const radio = (v, label) => h('label', { class: 'check' },
     h('input', { type: 'radio', name: 'addTo', value: v, checked: S.catPrefs.addTo === v, onchange: () => setCatPrefs({ addTo: v }).then(render) }), label);
@@ -270,27 +404,36 @@ export function prefsBlock() {
       'デフォルトのDL先から取れず、別の配布元から取ったとき「こちらをデフォルトのDL先に変更しますか？」と聞く'));
 }
 
-function sourceRow(s, after) {
+function sourceRow(s) {
   const hidden = (s.hidden || []).length;
   const kindLabel = s.kind === 'own' ? '自分で作成' : s.kind === 'sub' ? `読み込み${s.url ? '（URL）' : '（ファイル）'}` : s.url === 'sample' ? 'サンプル' : 'URL';
   return h('div', { class: `src-row${s.enabled ? '' : ' off'}` },
-    h('label', { class: 'check', title: '外すと、このカタログの作品は候補に出なくなります' },
-      h('input', { type: 'checkbox', checked: s.enabled, 'aria-label': `${s.name}を候補に含める`, onchange: (ev) => after(() => setEnabled(s, ev.target.checked)) }), '候補に含める'),
+    h('input', { type: 'checkbox', class: 'src-toggle', checked: s.enabled, 'aria-label': `${s.name}を候補に含める`, title: 'チェックを外すと、このカタログの作品は候補に出なくなります', onchange: (ev) => after(() => setEnabled(s, ev.target.checked)) }),
     h('div', { class: 'grow' },
-      h('div', { class: 'row' },
-        h('b', {}, s.name), h('span', { class: 'badge plain' }, kindLabel)),
-      h('div', { class: 'meta' }, [`${s.count || 0}件`, hidden ? `外した作品 ${hidden}件` : '', s.loadedAt ? `読み込み ${fmtDate(s.loadedAt)}` : '', s.url && s.url !== 'sample' ? s.url : s.fileName || ''].filter(Boolean).join('・'))),
-    h('div', { class: 'row' },
-      s.url ? h('button', { class: 'btn sm', onclick: () => after(() => refreshSource(s), (changed) => (changed ? `「${s.name}」を取り直しました（${s.count}件）` : '変わっていませんでした')) }, '取り直す') : null,
-      s.kind !== 'shared' ? h('button', { class: 'btn sm', onclick: () => exportList(s) }, 'DL一覧として書き出す') : null,
-      s.kind === 'sub' ? h('button', { class: 'btn sm', onclick: async () => { const name = await askName('自分用にコピー', `${s.name}（コピー）`); if (name) after(() => createOwn(name, s), `「${name}」を作りました。こちらは自由に直せます`); } }, 'コピーして自分用に') : null,
-      h('button', { class: 'btn ghost sm', onclick: async () => { const name = await askName('名前を変える', s.name); if (name) { s.name = name; s.renamed = true; await saveSources(); after(async () => {}); } } }, '名前'),
-      h('button', {
-        class: 'btn ghost sm danger', onclick: async () => {
-          const warn = s.kind === 'own' ? `「${s.name}」と、そこに登録した作品（${s.count || 0}件）を消します。先に「DL一覧として書き出す」で残しておくこともできます。よろしいですか？` : `「${s.name}」を外します。よろしいですか？`;
-          if (await confirmBox(warn)) after(() => removeSource(s), `「${s.name}」を外しました`);
-        },
-      }, '削除')));
+      h('div', { class: 'row' }, h('b', {}, s.name), h('span', { class: 'badge plain' }, kindLabel), !s.enabled ? h('span', { class: 'badge plain' }, '候補に含めない') : null),
+      h('div', { class: 'meta' }, [`${s.count || 0}件`, hidden ? `外した作品 ${hidden}件` : '', s.loadedAt ? `読み込み ${fmtDate(s.loadedAt)}` : ''].filter(Boolean).join('・'))),
+    s.url ? h('button', { class: 'btn sm', onclick: () => after(() => refreshSource(s), (changed) => (changed ? `「${s.name}」を取り直しました（${s.count}件）` : '変わっていませんでした')) }, '取り直す') : null,
+    h('button', { class: 'btn ghost sm', 'aria-label': `${s.name}のメニュー`, onclick: () => sourceMenu(s) }, '⋯'));
+}
+
+/** カタログごとのメニュー（書き出す・名前・コピー・削除） */
+async function sourceMenu(s) {
+  const act = await modal((close) => h('div', { class: 'stack' },
+    h('h2', {}, s.name),
+    s.url && s.url !== 'sample' ? h('p', { class: 'small muted', style: 'margin:0;word-break:break-all' }, s.url) : s.fileName ? h('p', { class: 'small muted', style: 'margin:0' }, `ファイル：${s.fileName}`) : null,
+    h('div', { class: 'stack menu-list' },
+      s.kind !== 'shared' ? h('button', { class: 'btn', onclick: () => close('export') }, 'DL一覧として書き出す（人に渡せるファイル）') : null,
+      s.kind === 'sub' ? h('button', { class: 'btn', onclick: () => close('copy') }, 'コピーして自分用にする（自由に直せるようになります）') : null,
+      h('button', { class: 'btn', onclick: () => close('rename') }, '名前を変える'),
+      h('button', { class: 'btn danger', onclick: () => close('delete') }, s.kind === 'own' ? '削除する' : '外す')),
+    h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn', onclick: () => close(null) }, '閉じる'))));
+  if (act === 'export') return exportList(s);
+  if (act === 'copy') { const name = await askName('自分用にコピー', `${s.name}（コピー）`); if (name) after(() => createOwn(name, s), `「${name}」を作りました。こちらは自由に直せます`); return; }
+  if (act === 'rename') { const name = await askName('名前を変える', s.name); if (name) { s.name = name; s.renamed = true; await saveSources(); after(async () => {}); } return; }
+  if (act === 'delete') {
+    const warn = s.kind === 'own' ? `「${s.name}」と、そこに登録した作品（${s.count || 0}件）を消します。先に「DL一覧として書き出す」で残しておくこともできます。よろしいですか？` : `「${s.name}」を外します。よろしいですか？`;
+    if (await confirmBox(warn)) after(() => removeSource(s), `「${s.name}」を外しました`);
+  }
 }
 
 async function exportList(s) {
@@ -315,12 +458,12 @@ async function exportList(s) {
   toast(`${json.entries.length}件を「${safe}.json」に書き出しました。受け取った人は「DL一覧を読み込む」で使えます`, { ms: 9000 });
 }
 
-function askName(title, value) {
+function askName(title, value, label = 'カタログの名前') {
   return modal((close) => {
     const inp = h('input', { type: 'text', value, style: 'width:100%' });
     setTimeout(() => inp.focus(), 0);
     return h('form', { class: 'stack', onsubmit: (ev) => { ev.preventDefault(); close(inp.value.trim().slice(0, 60) || null); } },
-      h('h2', {}, title), h('label', { class: 'field' }, 'カタログの名前', inp),
+      h('h2', {}, title), h('label', { class: 'field' }, label, inp),
       h('div', { class: 'row', style: 'justify-content:flex-end' },
         h('button', { type: 'button', class: 'btn', onclick: () => close(null) }, 'やめる'),
         h('button', { type: 'submit', class: 'btn primary' }, '決定')));

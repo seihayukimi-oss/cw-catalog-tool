@@ -18,6 +18,9 @@ export const S = {
   combined: null, // 候補に含めるカタログを、作品ごとにまとめたもの
   catPrefs: { addTo: 'all', askDefault: true },
   workPrefs: {}, // 作品ごとの設定（デフォルトのDL先など）
+  folders: { list: [], map: {} }, // 自分で作るフォルダ（作者さんごと・企画ごとなど）
+  expanded: new Set(), // くわしく表示している作品
+  catView: { group: '', compact: null },
   manageOpen: false,
   selected: new Set(), // カタログで選んだ作品
   ogp: new Map(), // 紹介ページのカード情報
@@ -35,7 +38,7 @@ export const S = {
   urlState: null,
   progress: null,
   batch: null,
-  filter: { mine: '', mineState: '', cat: '', catEngine: '', catSource: '', showHidden: false },
+  filter: { mine: '', mineState: '', cat: '', catEngine: '', catSource: '', catFolder: '', showHidden: false },
   busy: '',
 };
 

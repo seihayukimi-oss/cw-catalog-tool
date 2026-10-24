@@ -353,7 +353,7 @@ export function viewUrlBox() {
   } else if (st?.status === 'inapp') {
     detail = h('div', { class: 'note warn small' },
       `${st.why}。`,
-      S.platform.canInAppBrowse ? 'アプリ内ブラウザで開くので、サイトのダウンロードボタンを押してください（ログインが要るサイトは、初回だけログインしてください）。' : 'ページを開いたので、そこでダウンロードしたファイルを上にドロップしてください。',
+      S.platform.canInAppBrowse ? 'アプリ内ブラウザで開くので、サイトのダウンロードボタンを押してください（ログインが要るサイトは、初回だけログインしてください）。ログインで先に進めないときは、普段のブラウザでDLして、上の「「ダウンロード」から選ぶ」で入れてください。' : 'ページを開いたので、そこでダウンロードしたファイルを上にドロップしてください。',
       h('div', { class: 'row', style: 'margin-top:6px' },
         S.platform.canInAppBrowse ? h('button', { class: 'btn sm', onclick: () => inAppDownload(st.url, hd) }, 'アプリ内でもう一度開く') : null,
         h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(st.url) }, 'ブラウザで開く')));
@@ -419,26 +419,59 @@ export async function askInstallLink({ url, entryId, name }) {
   return fetchFromUrl(target);
 }
 
-/** 作者さん向け：サイトに貼る「CWカタログで入れる」リンクを作る */
+/** 作者さん向け：作品ページに置く「CWカタログで入れる」リンク（ボタン）を作る */
 export function viewLinkMaker() {
   const base = /^https:/.test(location.protocol) && /github\.io$/.test(location.hostname) ? location.origin + location.pathname : PAGES_URL;
-  const urlIn = h('input', { type: 'url', class: 'grow', placeholder: '作品のzipのURL（または配布ページのURL）' });
-  const nameIn = h('input', { type: 'text', placeholder: '作品名（確認画面に出ます）' });
-  const out = h('textarea', { rows: 4, readonly: true, style: 'width:100%;font-family:monospace;font-size:.82rem' });
+  const urlIn = h('input', { type: 'url', class: 'grow', placeholder: '作品のzipのURL（または配布ページのURL）', 'aria-label': '作品のURL' });
+  const nameIn = h('input', { type: 'text', placeholder: '作品名（確認画面に出ます）', 'aria-label': '作品名' });
+  const linkOut = h('input', { type: 'text', readonly: true, class: 'grow mono', 'aria-label': 'Xなどに貼るURL', placeholder: '（上にURLを入れると、ここにできます）' });
+  const htmlOut = h('textarea', { rows: 2, readonly: true, class: 'mono', 'aria-label': 'ホームページに貼るHTML', placeholder: '（上にURLを入れると、ここにできます）' });
+  const tryBtn = h('button', { class: 'btn sm', disabled: true }, '試しに押してみる');
   const make = () => {
     const u = urlIn.value.trim();
-    if (!/^https?:\/\//.test(u)) { out.value = ''; return; }
+    const ok = /^https?:\/\/\S+$/.test(u);
+    tryBtn.disabled = !ok;
+    if (!ok) { linkOut.value = ''; htmlOut.value = ''; return; }
     const link = `${base}#install=${encodeURIComponent(u)}${nameIn.value.trim() ? `&name=${encodeURIComponent(nameIn.value.trim())}` : ''}`;
     const esc = (x) => x.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    out.value = `${link}\n\n<a href="${esc(link)}" target="_blank" rel="noopener">CWカタログで入れる</a>`;
+    linkOut.value = link;
+    htmlOut.value = `<a href="${esc(link)}" target="_blank" rel="noopener">CWカタログで入れる</a>`;
   };
   urlIn.addEventListener('input', make);
   nameIn.addEventListener('input', make);
-  return h('div', { class: 'card stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, '作者さんのサイトやWikiに貼ると、押した人のブラウザでCWカタログ（HTML版）が開いて「このシナリオを取ってきますか？」と確認したうえで取り込みます。アプリ版を持っている人は、そこから「アプリで開く」も選べます。'),
+  tryBtn.addEventListener('click', () => askInstallLink({ url: urlIn.value.trim(), entryId: '', name: nameIn.value.trim().slice(0, 100) }));
+  const copy = (el, what) => h('button', {
+    class: 'btn sm', onclick: async () => {
+      if (!el.value) return;
+      try { await navigator.clipboard.writeText(el.value); } catch { el.select(); document.execCommand?.('copy'); }
+      toast(`${what}をコピーしました`);
+    },
+  }, 'コピー');
+  // 個人用カタログ・共用カタログの作品から選ぶ
+  const works = (S.combined?.works || []).filter((w) => w.downloads.some((d) => d.status !== 'closed'));
+  const pick = works.length ? h('select', {
+    'aria-label': 'カタログの作品から選ぶ',
+    onchange: (ev) => {
+      const w = works[Number(ev.target.value)];
+      if (!w) return;
+      const d = chooseDownloads(w, defaultUrlOf(w))[0];
+      urlIn.value = d?.url || '';
+      nameIn.value = w.name;
+      make();
+    },
+  }, h('option', { value: '' }, 'カタログの作品から選ぶ（任意）'), works.map((w, i) => h('option', { value: i }, `${w.name}（${w.author}）`))) : null;
+
+  return h('div', { class: 'card stack link-maker' },
+    h('p', { style: 'margin:0' }, '作者さんのサイトやWikiの作品ページに、「CWカタログで入れる」ボタンを置けます。遊ぶ人がそれを押すと、ダウンロード・展開・フォルダ探しをしなくても、CWカタログが作品を取り込みます。'),
+    h('pre', { class: 'readme', style: 'max-height:none' }, '作品ページ\n  宵に降る光 ver1.02\n  [ダウンロード]  [CWカタログで入れる] ← これを作ります\n\n押すと → CWカタログが開く →「このシナリオを取ってきますか？」→ りどみを見て → インストール'),
+    h('div', { class: 'small muted' }, '① 作品のURLと作品名を入れる'),
+    pick,
     h('div', { class: 'row' }, urlIn, nameIn),
-    out,
-    h('p', { class: 'small muted', style: 'margin:0' }, '※ HTML版で直接取ってこられるのは、読み込みを許可しているサイト（GitHub Pages など）に置いたファイルだけです。それ以外のサイトでは、配布ページを開く案内になります。'));
+    h('div', { class: 'small muted' }, '② できたものをコピーして、自分のサイトに貼る'),
+    h('label', { class: 'field' }, 'X・Misskey・掲示板などに貼るURL', h('div', { class: 'row' }, linkOut, copy(linkOut, 'URL'))),
+    h('label', { class: 'field' }, 'ホームページ（HTML）に貼るボタン', h('div', { class: 'row' }, htmlOut, copy(htmlOut, 'HTML'))),
+    h('div', { class: 'row' }, tryBtn, h('span', { class: 'small muted' }, '遊ぶ人から見た確認画面を、ここで見られます（「やめる」を押せば何もしません）')),
+    h('p', { class: 'small muted', style: 'margin:0' }, '※ リンクを押すと、まずHTML版が開きます。アプリ版（ポータブル版）を持っていて「Windowsとのつなぎこみ」を登録している人は、確認画面の「アプリで開く」からアプリで取れます。HTML版だけで直接取ってこられるのは、読み込みを許可しているサイト（GitHub Pages など）に置いたファイルだけです。'));
 }
 
 // ------------------------------------------------------------ 設定：同意を覚えているサイト

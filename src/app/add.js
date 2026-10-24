@@ -85,7 +85,7 @@ function defaultVersion(sc) {
 
 export function viewAdd() {
   const fileInput = h('input', {
-    type: 'file', accept: '.zip,.wsn,.cab,.lzh,.lha,.7z', style: 'display:none', multiple: true,
+    type: 'file', accept: '.zip,.wsn,.cab,.lzh,.lha,.7z', hidden: true, multiple: true,
     onchange: async (ev) => {
       const fs = [...ev.target.files];
       if (fs.length > 1) {

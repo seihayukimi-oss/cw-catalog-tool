@@ -179,6 +179,30 @@ dialog > .stack > .row:last-child, dialog > form > .row:last-child {
   .batch-bar { top: 70px; }
 }
 
+/* フォルダ・まとめ方 */
+.folder-chips { gap: 6px; }
+.chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 2px 10px; cursor: pointer; font-size: .85rem; color: var(--ink); }
+.chip .n { font-size: .75rem; color: var(--sub); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip.on .n { color: var(--accent-ink); opacity: .85; }
+.badge.folder { color: var(--classic); border-style: dotted; }
+details.group { margin-bottom: 10px; }
+details.group > summary { display: flex; gap: 8px; align-items: center; cursor: pointer; padding: 6px 2px; font-family: var(--serif); font-weight: 600; }
+details.group > summary .group-name { font-size: 1.02rem; }
+.card.work.compact { padding: 8px 12px; margin-bottom: 6px; }
+.sel-actions { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
+
+/* カタログの管理 */
+.manage-sec h3 { margin: 6px 0 0; }
+.manage-sec > p { margin: 2px 0 8px; }
+.src-toggle { width: 18px; height: 18px; flex: none; }
+.add-choice { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; }
+.menu-list .btn { justify-content: flex-start; }
+
+/* リンクを作る */
+.mono { font-family: ui-monospace, "BIZ UDGothic", monospace; font-size: .8rem; }
+.link-maker textarea { flex: 1 1 300px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); }
+
 @media (max-width: 560px) {
   body { font-size: 14px; }
   .top-inner { padding-top: 8px; }

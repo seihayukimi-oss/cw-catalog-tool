@@ -408,7 +408,7 @@ function viewSettings() {
         Object.entries(ENGINE_KINDS).filter(([k]) => k !== 'wcw').map(([k, v]) => h('option', { value: k, selected: e.kind === k ? 'selected' : null }, v.name)))))));
 
   const importIn = h('input', {
-    type: 'file', accept: '.json', style: 'display:none', onchange: async (ev) => {
+    type: 'file', accept: '.json', hidden: true, onchange: async (ev) => {
       const f = ev.target.files[0];
       if (!f) return;
       await busy('記録を読み込み', async () => {
@@ -439,9 +439,6 @@ function viewSettings() {
       h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => { S.manageOpen = true; goTab('catalog'); } }, 'カタログの管理を開く'),
         h('span', { class: 'small muted' }, '共用カタログ・個人用カタログの追加、候補に含めるかどうか、DL一覧の読み込み・書き出しはここから'))),
 
-    h('h2', {}, 'サイトに貼るリンクを作る（作者さん向け）'),
-    viewLinkMaker(),
-
     h('h2', {}, '記録'),
     h('div', { class: 'card stack' },
       h('p', { class: 'small muted', style: 'margin:0' }, '自分のフォルダ一覧の記録（バージョン・タグ・メモなど）を、ファイルに書き出したり読み込んだりできます。形式は公開されているので、他のツールからも読めます。'),
@@ -453,6 +450,9 @@ function viewSettings() {
 
     h('h2', {}, '同意を覚えているサイト'),
     viewConsents(),
+
+    h('h2', {}, '作品ページに置く「CWカタログで入れる」ボタンを作る（作者さん向け）'),
+    viewLinkMaker(),
 
     h('h2', {}, 'このツールについて'),
     h('div', { class: 'card small stack' },

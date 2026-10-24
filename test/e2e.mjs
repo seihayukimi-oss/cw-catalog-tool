@@ -252,7 +252,8 @@ async function run(colorScheme, width) {
   // 7. カタログ：共用（サンプル）を追加
   await page.getByRole('tab', { name: 'カタログ' }).click();
   ok('作品が無いときはカタログの管理が開いている', await page.locator('#manage').isVisible());
-  await page.getByRole('button', { name: 'サンプル', exact: true }).click();
+  await page.getByRole('button', { name: '＋ カタログを追加' }).click();
+  await page.getByRole('button', { name: 'サンプルを入れる' }).click();
   await page.getByText('サンプルの森').first().waitFor();
   ok('サンプルカタログ表示（旧・終了の配布元）', await page.getByText('斧アップローダー（移転前）').isVisible());
   ok('DL先に新旧・通常予備・デフォルトの印', (await page.locator('.dl li', { hasText: 'GitHub Releases' }).getByText('★デフォルト').count()) === 1 && (await page.locator('.dl li', { hasText: '作者サイト' }).first().getByText('予備').count()) === 1);
@@ -309,7 +310,7 @@ async function run(colorScheme, width) {
   await page.getByRole('tab', { name: 'カタログ' }).click();
   await page.getByLabel('開けられた鳥籠を選ぶ').check();
   await page.getByLabel('鳥籠の斧版を選ぶ').check();
-  await page.getByRole('button', { name: '選んだ2件をまとめてDL' }).click();
+  await page.locator('.sel-actions').getByRole('button', { name: 'まとめてDL' }).click();
   await page.getByText('デフォルトのDL先を変えますか？').waitFor();
   ok('取れなかったら別の配布元から取り、デフォルトを変えるか聞く', await page.locator('dialog').getByText('旧サイト → 新サイト').isVisible());
   await page.getByRole('button', { name: '選んだものを変更する' }).click();
@@ -337,7 +338,7 @@ async function run(colorScheme, width) {
   await addWork('水の都', [{ url: 'http://localhost:8767/keyup/6', label: 'おまけ斧', kind: 'page', dlkey: 'mizu' }]);
   ok('DLキーありの印', await page.locator('.card.work', { hasText: '水の都' }).getByText('DLキーあり').isVisible());
   await page.getByLabel('水の都を選ぶ').check();
-  await page.getByRole('button', { name: '選んだ1件をまとめてDL' }).click();
+  await page.locator('.sel-actions').getByRole('button', { name: 'まとめてDL' }).click();
   await page.locator('#batch .batch-item', { hasText: '水の都' }).getByText('準備OK').waitFor();
   ok('登録したDLキーと覚えた同意で、止まらずに取得', !(await page.locator('#batch .badge', { hasText: '操作待ち' }).count()));
   await page.locator('#batch').getByRole('button', { name: 'やめる' }).click();
@@ -351,15 +352,40 @@ async function run(colorScheme, width) {
   await page.getByLabel('候補から外したものも表示').check();
   ok('「外したものも表示」で見える', await page.locator('.item-title', { hasText: 'サンプルの塔（Py版）' }).isVisible());
 
+  // 9b. 選んでフォルダに入れる・作者ごとにまとめる・選んで候補から外す
+  await page.getByLabel('候補から外したものも表示').uncheck();
+  await page.getByLabel('開けられた鳥籠を選ぶ').check();
+  await page.getByLabel('鳥籠の斧版を選ぶ').check();
+  await page.locator('.sel-actions').getByRole('button', { name: 'フォルダに入れる' }).click();
+  await page.locator('dialog input[type=text]').fill('鳥籠シリーズ');
+  await page.getByRole('button', { name: '新しく作って入れる' }).click();
+  await page.getByText('2件を「鳥籠シリーズ」に入れました').waitFor();
+  const chip = page.locator('.folder-chips .chip', { hasText: '鳥籠シリーズ' });
+  ok('フォルダを作って入れる', (await chip.locator('.n').textContent()) === '2');
+  await chip.click();
+  ok('フォルダで絞り込む', (await page.locator('.card.work').count()) === 2);
+  await page.locator('.folder-chips .chip', { hasText: 'すべて' }).click();
+  await page.getByLabel('並べ方').selectOption('author');
+  await page.locator('details.group').first().waitFor();
+  ok('作者ごとにまとめる', await page.locator('details.group summary', { hasText: '見本作者' }).isVisible() && await page.locator('details.group summary', { hasText: '清葉雪見' }).isVisible());
+  await page.getByLabel('並べ方').selectOption('');
+  await page.getByLabel('サンプルの森を選ぶ').check();
+  await page.locator('.sel-actions').getByRole('button', { name: '候補から外す' }).click();
+  await page.getByText('1件を候補から外しました', { exact: false }).waitFor();
+  ok('選んで候補から外す', !(await page.locator('.item-title', { hasText: 'サンプルの森' }).count()));
+  if (width > 600) await page.screenshot({ path: join(OUT, `folders-${colorScheme}.png`), fullPage: true });
+
   // 10. 個人用カタログをDL一覧として書き出し → 別のカタログとして読み込む
   await page.getByRole('button', { name: 'カタログの管理' }).click();
   const myRow = page.locator('.src-row', { hasText: 'マイカタログ' });
-  await myRow.getByRole('button', { name: 'DL一覧として書き出す' }).click();
+  await myRow.getByRole('button', { name: 'マイカタログのメニュー' }).click();
+  await page.locator('dialog').getByRole('button', { name: /DL一覧として書き出す/ }).click();
   ok('DLキーがあるときは、書き出すか聞く（最初は書き出さない）', !(await page.getByLabel('DLキーも書き出す').isChecked()));
   const [dl3] = await Promise.all([page.waitForEvent('download'), page.locator('dialog').getByRole('button', { name: '書き出す' }).click()]);
   const listPath = await dl3.path();
   const list = JSON.parse(readFileSync(listPath, 'utf8'));
   ok('DL一覧の書き出し（3件・デフォルトが先頭・DLキーは入れない）', list.entries.length === 3 && !JSON.stringify(list).includes('mizu') && list.entries.find((e) => e.name === '開けられた鳥籠').downloads[0].label === '新サイト', `${list.entries.length}件`);
+  await page.getByRole('button', { name: '＋ カタログを追加' }).click();
   await page.locator('#list-file').setInputFiles({ name: '有志の一覧.json', mimeType: 'application/json', buffer: readFileSync(listPath) });
   await page.getByText(/を個人用カタログとして読み込みました（3件）/).waitFor();
   ok('DL一覧を個人用カタログとして読み込み', await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).isVisible());
