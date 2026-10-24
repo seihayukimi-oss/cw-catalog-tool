@@ -160,3 +160,29 @@ export function pageText(html, max = 4000) {
     .replace(/<[^>]+>/g, ' '))
     .replace(/[ \t　]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, max);
 }
+
+/**
+ * 紹介ページの「カード」情報（OGP）を取り出す。X・Misskey・ブログなどが用意している、
+ * 題名・説明・画像の情報。無ければ <title> と description で代わりにする。
+ * @returns {{title: string, description: string, image: string, site: string}}
+ */
+export function parseOgp(html, baseUrl) {
+  const head = html.slice(0, 200000);
+  const metas = {};
+  for (const m of head.matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = m[0];
+    const key = (tag.match(/\b(?:property|name)\s*=\s*["']?([^"'\s>]+)/i) || [])[1];
+    const val = (tag.match(/\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i) || []).slice(1).find((x) => x != null);
+    if (key && val != null && !(key.toLowerCase() in metas)) metas[key.toLowerCase()] = unescapeHtml(val).trim();
+  }
+  const pick = (...ks) => ks.map((k) => metas[k]).find((v) => v) || '';
+  let image = pick('og:image', 'og:image:url', 'twitter:image', 'twitter:image:src');
+  try { image = image ? new URL(image, baseUrl).href : ''; } catch { image = ''; }
+  if (!/^https?:\/\//.test(image)) image = '';
+  return {
+    title: (pick('og:title', 'twitter:title') || pageTitle(html)).slice(0, 200),
+    description: pick('og:description', 'twitter:description', 'description').slice(0, 1000),
+    image,
+    site: pick('og:site_name').slice(0, 100),
+  };
+}

@@ -18,7 +18,8 @@ const str = (v, max = 2000) => (typeof v === 'string' ? v.slice(0, max) : '');
 /** カタログ1件を、決まった形だけ残して整える。おかしければ null */
 export function sanitizeEntry(e) {
   if (!e || typeof e !== 'object') return null;
-  if (typeof e.id !== 'string' || !/^e\d{5,}$/.test(e.id)) return null;
+  // e… は共用カタログ（登録フォーム）、p… は個人用カタログ（このツールで作ったもの）
+  if (typeof e.id !== 'string' || !/^[ep]\d{5,}$/.test(e.id)) return null;
   const downloads = (Array.isArray(e.downloads) ? e.downloads : [])
     .filter((d) => d && isHttp(d.url))
     .map((d) => ({
@@ -52,9 +53,15 @@ export function sanitizeEntry(e) {
     level: e.level && Number.isInteger(e.level.min) ? { min: e.level.min, max: e.level.max } : null,
     tags: (Array.isArray(e.tags) ? e.tags : []).filter((t) => typeof t === 'string').slice(0, 30),
     description: str(e.description, 5000),
-    requires: (Array.isArray(e.requires) ? e.requires : []).filter((x) => /^e\d{5,}$/.test(x)),
-    related: (Array.isArray(e.related) ? e.related : []).filter((x) => /^e\d{5,}$/.test(x)),
+    requires: (Array.isArray(e.requires) ? e.requires : []).filter((x) => /^[ep]\d{5,}$/.test(x)),
+    related: (Array.isArray(e.related) ? e.related : []).filter((x) => /^[ep]\d{5,}$/.test(x)),
     links: (Array.isArray(e.links) ? e.links : []).filter(isHttp),
+    // 紹介ページ（作者さんのサイト・X・Misskeyなど）。DLの前に、どんな作品かを見てもらうため
+    intro: (Array.isArray(e.intro) ? e.intro : [])
+      .map((i) => (typeof i === 'string' ? { url: i, label: '' } : i))
+      .filter((i) => i && isHttp(i.url))
+      .slice(0, 10)
+      .map((i) => ({ url: i.url, label: str(i.label, 100) })),
   };
 }
 

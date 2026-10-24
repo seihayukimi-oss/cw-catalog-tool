@@ -15,8 +15,8 @@ export const platform = {
   canInAppBrowse: false,
 
   /** エンジンのフォルダを選んでもらう。ref はIndexedDBに保存できる形 */
-  async pickFolder() {
-    const handle = await window.showDirectoryPicker({ id: 'cw-engine', mode: 'readwrite' });
+  async pickFolder({ id = 'cw-engine' } = {}) {
+    const handle = await window.showDirectoryPicker({ id, mode: 'readwrite' });
     return { dir: new FsaDir(handle), ref: handle, label: handle.name };
   },
 

@@ -314,3 +314,89 @@ test('DLキーの入力欄があるフォーム', () => {
   assert.deepEqual(f.inputs, [{ name: 'key', type: 'password', label: 'DLキー' }]);
   assert.equal(f.action, 'https://example.com/dl');
 });
+
+// ------------------------------------------------------------ 複数のカタログ
+import { combine, matchWork, chooseDownloads, statusOf, ageRoleOf, exportPersonal, nextPersonalId, workKey, introKind } from '../src/core/catalogs.js';
+import { parseOgp } from '../src/core/weblink.js';
+import { checkEngineFolder } from '../src/core/scan.js';
+
+const ent = (id, name, extra = {}) => ({ id, name, author: '見本作者', version: '1.0', format: 'classic', downloads: [], ...extra });
+
+test('カタログ：個人用のID（p…）と紹介ページを受け付ける', () => {
+  const c = parseCatalog({ format: 1, entries: [
+    ent('p00001', '森', { intro: ['https://misskey.io/notes/abc', { url: 'https://x.com/a/status/1', label: '告知' }, { url: 'javascript:alert(1)' }] }),
+    ent('x1', 'だめなID'),
+  ] });
+  assert.equal(c.entries.length, 1);
+  assert.deepEqual(c.entries[0].intro, [{ url: 'https://misskey.io/notes/abc', label: '' }, { url: 'https://x.com/a/status/1', label: '告知' }]);
+  assert.equal(introKind('https://misskey.io/notes/abc'), 'misskey');
+  assert.equal(introKind('https://x.com/a'), 'x');
+  assert.equal(introKind('https://example.com/'), 'site');
+});
+
+test('カタログをまとめる：同じ作品は1つに、配布元は合わせる、外したもの', () => {
+  const shared = parseCatalog({ format: 1, entries: [ent('e00001', 'サンプルの森', { version: '1.10', downloads: [{ url: 'https://a.example/f.zip', kind: 'direct', status: 'active' }], file: { sha256: 'a'.repeat(64) } })] });
+  const own = parseCatalog({ format: 1, entries: [
+    ent('p00001', 'サンプルの　森', { version: '1.02', downloads: [{ url: 'https://b.example/dl', status: 'mirror' }, { url: 'https://a.example/f.zip', kind: 'direct' }], intro: ['https://b.example/'] }),
+    ent('p00002', '別の作品'),
+  ] });
+  const c = combine([
+    { id: 'own1', kind: 'own', name: 'マイ', catalog: own, hidden: [workKey({ name: '別の作品', author: '見本作者' })] },
+    { id: 'sh1', kind: 'shared', name: '共用', catalog: shared },
+  ]);
+  assert.equal(c.works.length, 2);
+  const w = c.works.find((x) => x.name === 'サンプルの森');
+  assert.equal(w.version, '1.10', '新しい方の版');
+  assert.equal(w.downloads.length, 2, 'URLが同じ配布元は1つに');
+  assert.equal(w.refs[0].kind, 'shared', '共用カタログが先');
+  assert.equal(w.intro.length, 1);
+  assert.equal(c.works.find((x) => x.name === '別の作品').hidden, true);
+  assert.equal(matchWork(c, { name: 'x', sha256: 'a'.repeat(64) }).by, 'sha256');
+  assert.equal(matchWork(c, { name: 'サンプルの森', author: '見本作者' }).work, w);
+});
+
+test('DLの順番：デフォルト → 現役 → 予備 → 旧（終了は使わない）', () => {
+  const w = { downloads: [
+    { url: 'https://old', status: 'old' }, { url: 'https://mirror', status: 'mirror' },
+    { url: 'https://closed', status: 'closed' }, { url: 'https://active', status: 'active' },
+  ] };
+  assert.deepEqual(chooseDownloads(w).map((d) => d.url), ['https://active', 'https://mirror', 'https://old']);
+  assert.deepEqual(chooseDownloads(w, 'https://mirror').map((d) => d.url), ['https://mirror', 'https://active', 'https://old']);
+  assert.deepEqual(chooseDownloads(w, 'https://closed').map((d) => d.url)[0], 'https://active', '終了したものはデフォルトでも使わない');
+  for (const s of ['active', 'mirror', 'old', 'closed']) { const { age, role } = ageRoleOf(s); assert.equal(statusOf(age, role), s); }
+});
+
+test('個人用カタログの書き出し：外した作品は入れない、ID の採番', () => {
+  const entries = [ent('p00001', 'A'), ent('p00007', 'B')];
+  const out = exportPersonal('一覧', entries, { hidden: [workKey(entries[1])] });
+  assert.equal(out.format, 1);
+  assert.equal(out.kind, 'cw-catalog/personal');
+  assert.deepEqual(out.entries.map((e) => e.id), ['p00001']);
+  assert.equal(parseCatalog(out).entries.length, 1, '書き出したものは、そのまま読み込める');
+  assert.equal(nextPersonalId(entries), 'p00008');
+});
+
+test('紹介ページのカード情報（OGP）', () => {
+  const og = parseOgp(`<html><head><title>代わり</title>
+    <meta content="森の紹介 &amp; 告知" property="og:title">
+    <meta property="og:image" content="/img/c.png"><meta name="description" content="説明文"></head></html>`, 'https://site.example/cw/');
+  assert.equal(og.title, '森の紹介 & 告知');
+  assert.equal(og.image, 'https://site.example/img/c.png');
+  assert.equal(og.description, '説明文');
+  assert.equal(parseOgp('<title>だけ</title>', 'https://a/').title, 'だけ');
+  assert.equal(parseOgp('<meta property="og:image" content="javascript:x">', 'https://a/').image, '');
+});
+
+test('エンジンのフォルダの選び間違いを見分ける', async () => {
+  const eng = new MemDir('CardWirth');
+  await eng.writeFile('CardWirth.exe', Uint8Array.of(1));
+  const scen = await eng.dir('Scenario', { create: true });
+  const one = await scen.dir('森', { create: true });
+  await one.writeFile('Summary.wsm', Uint8Array.of(1));
+  const yado = await eng.dir('Yado', { create: true });
+  assert.deepEqual(await checkEngineFolder(eng), { ok: true, problem: '', kind: 'cw150' });
+  assert.equal((await checkEngineFolder(scen)).problem, 'scenario');
+  assert.equal((await checkEngineFolder(one)).problem, 'inside');
+  assert.equal((await checkEngineFolder(yado)).problem, 'yado');
+  assert.equal((await checkEngineFolder(new MemDir('どこか'))).problem, 'noscenario');
+});

@@ -15,6 +15,25 @@ export async function detectEngineKind(root) {
   return null;
 }
 
+/**
+ * エンジンのフォルダとして選ばれた場所が正しいか調べる。
+ * よくある間違い：Scenario フォルダそのものや、シナリオのフォルダ、宿（Yado）を選んでしまう。
+ * @returns {{ok: boolean, problem: ''|'scenario'|'inside'|'yado'|'noscenario', kind: string|null}}
+ */
+export async function checkEngineFolder(dir) {
+  const entries = await dir.entries();
+  const files = new Set(entries.filter((e) => e.kind === 'file').map((e) => e.name.toLowerCase()));
+  const dirs = new Set(entries.filter((e) => e.kind === 'dir').map((e) => e.name.toLowerCase()));
+  const kind = await detectEngineKind(dir);
+  const name = (dir.name || '').toLowerCase();
+  if (kind && dirs.has('scenario')) return { ok: true, problem: '', kind };
+  if (files.has('summary.wsm') || files.has('summary.xml')) return { ok: false, problem: 'inside', kind };
+  if (name === 'scenario') return { ok: false, problem: 'scenario', kind };
+  if (name === 'yado' || name === 'data') return { ok: false, problem: 'yado', kind };
+  if (!dirs.has('scenario')) return { ok: false, problem: 'noscenario', kind };
+  return { ok: true, problem: '', kind };
+}
+
 const MAX_ARCHIVE_SCAN = 300 * 1024 * 1024;
 
 /**

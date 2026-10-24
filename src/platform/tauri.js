@@ -81,8 +81,8 @@ export const platform = {
   canUpdateSelf: true,
   canInAppBrowse: true,
 
-  async pickFolder() {
-    const path = await openDialog({ directory: true, recursive: true, multiple: false, title: 'CardWirthのフォルダを選んでください' });
+  async pickFolder({ title = 'CardWirthのフォルダ（CardWirth.exe がある場所）を選んでください' } = {}) {
+    const path = await openDialog({ directory: true, recursive: true, multiple: false, title });
     if (!path) throw Object.assign(new Error('キャンセルされました'), { name: 'AbortError' });
     return { dir: new TauriDir(path), ref: path, label: path };
   },

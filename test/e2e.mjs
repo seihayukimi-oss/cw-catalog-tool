@@ -41,6 +41,12 @@ const server = createServer((req, res) => {
       res.end(ok ? `<html><head><meta http-equiv="refresh" content="6;URL=/axe/g/tok-42/12/%E9%B3%A5%E7%B1%A0.zip"></head><body><a href="/axe/g/tok-42/12/%E9%B3%A5%E7%B1%A0.zip">Download Now</a></body></html>` : '<p>エラー</p>');
     });
   }
+  if (req.url === '/missing.zip') { res.statusCode = 404; return res.end('not found'); }
+  if (req.url === '/intro.html') {
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    return res.end('<html><head><title>x</title><meta property="og:title" content="鳥籠の紹介ページ"><meta property="og:description" content="鳥籠を開ける短編です"><meta property="og:image" content="/intro.png"></head><body></body></html>');
+  }
+  if (req.url === '/intro.png') { res.setHeader('content-type', 'image/png'); return res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')); }
   if (req.url.startsWith('/axe/g/tok-42/')) { res.setHeader('content-type', 'application/octet-stream'); return res.end(readFileSync(join(FX, 'classic_cp932.zip'))); }
   res.setHeader('content-type', 'text/html; charset=utf-8');
   res.end(html);
@@ -58,7 +64,7 @@ async function run(colorScheme, width) {
   const page = await ctx.newPage();
   const errors = [];
   // 別サイトを読みに行って断られるのは想定どおりなので除く（試験環境は外部に出られないので、その失敗も除く）
-  page.on('console', (m) => { if (m.type() === 'error' && !/CORS|ERR_FAILED|ERR_TUNNEL_CONNECTION_FAILED|localhost:8768/.test(m.text())) errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/CORS|ERR_FAILED|ERR_TUNNEL_CONNECTION_FAILED|localhost:8768/.test(m.text()) && !/missing\.zip/.test(m.location()?.url || '')) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('http://localhost:8767/#dev-opfs');
 
@@ -72,6 +78,7 @@ async function run(colorScheme, width) {
   await page.evaluate(async (seed) => {
     const root = await navigator.storage.getDirectory();
     await root.removeEntry('test-engine', { recursive: true }).catch(() => {});
+    await root.removeEntry('test-archive', { recursive: true }).catch(() => {});
     const eng = await root.getDirectoryHandle('test-engine', { create: true });
     for (const [path, bytes] of Object.entries(seed)) {
       const parts = path.split('/');
@@ -87,12 +94,12 @@ async function run(colorScheme, width) {
   await page.getByRole('tab', { name: '設定' }).click();
   await page.locator('#dev-opfs').click();
   await page.getByText(/件を読み取りました/).waitFor();
-  await page.getByRole('tab', { name: /手持ち/ }).click();
+  await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
   ok('既存シナリオの読み取り', await page.getByText('開けられた鳥籠').isVisible());
   ok('名前から版を推測（既存フォルダには版表記なし）', !(await page.getByText(/推測「/).count()));
 
   // 2. 入れる：Next（二重フォルダ）を _店 に
-  await page.getByRole('tab', { name: '入れる' }).click();
+  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
   await page.locator('input[type=file][accept=".zip,.wsn"]').setInputFiles(join(FX, 'next_nested.zip'));
   await page.getByText('うつろい森のあなた', { exact: true }).first().waitFor();
   ok('Next仕様と判定', await page.locator('.badge.next').first().isVisible());
@@ -104,7 +111,7 @@ async function run(colorScheme, width) {
   ok('Nextをインストール', true);
 
   // 3. 入れる：クラシック（CP932のりどみ）→ りどみ確認が必要
-  await page.getByRole('tab', { name: '入れる' }).click();
+  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
   await page.locator('input[type=file][accept=".zip,.wsn"]').setInputFiles(join(FX, 'classic_cp932.zip'));
   await page.locator('#readme-view').waitFor();
   await page.waitForFunction(() => document.getElementById('readme-view')?.textContent.includes('髙﨑'));
@@ -116,7 +123,7 @@ async function run(colorScheme, width) {
   await page.getByText(/開けられた鳥籠ver1_01 に入れました/).waitFor();
 
   // 4. 同じものをもう一度 → バックアップ
-  await page.getByRole('tab', { name: '入れる' }).click();
+  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
   await page.locator('input[type=file][accept=".zip,.wsn"]').setInputFiles(join(FX, 'classic_cp932.zip'));
   await page.getByLabel('りどみを読みました').check();
   await page.getByRole('button', { name: 'インストール' }).click();
@@ -124,7 +131,7 @@ async function run(colorScheme, width) {
   ok('再インストールでバックアップ', true);
 
   // 5. Py仕様（.wsn）をNextへ → 遊べない警告
-  await page.getByRole('tab', { name: '入れる' }).click();
+  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
   await page.locator('input[type=file][accept=".zip,.wsn"]').setInputFiles(join(FX, 'alice.wsn'));
   await page.getByText('アリスの洞窟', { exact: true }).first().waitFor();
   ok('Py仕様をNextに入れようとすると警告', await page.getByText(/CardWirthPyでしか遊べません/).isVisible());
@@ -185,36 +192,147 @@ async function run(colorScheme, width) {
   ok('確認後に取ってきて分析', true);
   await p2.close();
 
-  // 7. カタログ（サンプル）→ 手持ちでバージョン・タグ
+  // 7. カタログ：共用（サンプル）を追加
   await page.getByRole('tab', { name: 'カタログ' }).click();
-  await page.getByRole('button', { name: 'サンプル' }).click();
-  await page.getByText('サンプルの森').waitFor();
-  ok('サンプルカタログ表示', await page.getByText('斧アップローダー（移転前）').isVisible());
+  ok('作品が無いときはカタログの管理が開いている', await page.locator('#manage').isVisible());
+  await page.getByRole('button', { name: 'サンプル', exact: true }).click();
+  await page.getByText('サンプルの森').first().waitFor();
+  ok('サンプルカタログ表示（旧・終了の配布元）', await page.getByText('斧アップローダー（移転前）').isVisible());
+  ok('DL先に新旧・通常予備・デフォルトの印', (await page.locator('.dl li', { hasText: 'GitHub Releases' }).getByText('★デフォルト').count()) === 1 && (await page.locator('.dl li', { hasText: '作者サイト' }).first().getByText('予備').count()) === 1);
+
+  // 7b. 個人用カタログに作品を登録（デフォルトのDL先は取れないURL・紹介ページつき）
+  const addWork = async (name, dls, intro) => {
+    await page.getByRole('button', { name: '＋作品を登録（個人用）' }).click();
+    const dlg = page.locator('dialog');
+    await dlg.getByLabel('作品名').fill(name);
+    await dlg.getByLabel('作者').fill('清葉雪見');
+    await dlg.getByLabel('バージョン').fill('1.01');
+    if (intro) { await dlg.getByRole('button', { name: '＋紹介ページ' }).click(); await dlg.getByLabel('紹介ページのURL').fill(intro); }
+    for (const [i, d] of dls.entries()) {
+      await dlg.getByRole('button', { name: '＋DL先' }).click();
+      const row = dlg.locator('.edit-dl').nth(i);
+      await row.getByLabel('DL先のURL').fill(d.url);
+      await row.getByPlaceholder('名前（例：作者サイト、斧）').fill(d.label);
+      await row.getByLabel('種類').selectOption(d.kind);
+      if (d.def) await row.getByLabel('デフォルト').check();
+    }
+    ok(`登録先の個人用カタログは最初から選ばれている（${name}）`, await dlg.getByLabel('マイカタログ').isChecked());
+    if (width > 600 && intro) await dlg.screenshot({ path: join(OUT, `edit-${colorScheme}.png`) });
+    await dlg.getByRole('button', { name: '保存' }).click();
+    await page.getByText(new RegExp(`「${name}」をマイカタログに保存しました`)).waitFor();
+  };
+  await addWork('開けられた鳥籠', [
+    { url: 'http://localhost:8767/missing.zip', label: '旧サイト', kind: 'direct', def: true },
+    { url: 'http://localhost:8767/files/dl.zip', label: '新サイト', kind: 'direct' },
+  ], 'http://localhost:8767/intro.html');
+  await addWork('鳥籠の斧版', [{ url: 'http://localhost:8767/axe/download/12', label: '斧', kind: 'page' }]);
+  const birdCard = page.locator('.card.work', { has: page.locator('.item-title', { hasText: /^開けられた鳥籠$/ }) });
+  ok('個人用の作品に★デフォルト（選んだDL先）', (await birdCard.locator('.dl li', { hasText: '旧サイト' }).getByText('★デフォルト').count()) === 1);
+
+  // 7c. 紹介ページのカード（DLの前に、どんな作品か見られる）
+  await birdCard.getByRole('button', { name: '紹介を見る' }).click();
+  await birdCard.getByText('鳥籠の紹介ページ').waitFor();
+  ok('紹介ページの題名・説明・画像', await birdCard.getByText('鳥籠を開ける短編です').isVisible() && (await birdCard.locator('.ogp img').count()) === 1);
+
+  // 7d. 検索したら「検索結果をまとめてDL」
+  await page.locator('#cat-q').fill('鳥籠');
+  await page.getByRole('button', { name: '検索結果2件をまとめてDL' }).waitFor();
+  ok('検索結果をまとめてDLのボタン', true);
   if (width > 600) await page.screenshot({ path: join(OUT, `catalog-${colorScheme}.png`), fullPage: true });
-  await page.getByRole('tab', { name: /手持ち/ }).click();
+  await page.locator('#cat-q').fill('');
+
+  // 7e. zipの保存場所（テスト用）を設定
+  await page.getByRole('tab', { name: '設定' }).click();
+  await page.locator('#dev-opfs-archive').click();
+  await page.getByText(/に保存するようにしました/).waitFor();
+  ok('zipの保存場所を設定するとオンになる', await page.getByLabel('インストールしたときにzipも保存する').isChecked());
+
+  // 8. 選んでまとめてDL：1つ目はデフォルトが取れず別の配布元から、2つ目は同意ページで操作待ち
+  await page.getByRole('tab', { name: 'カタログ' }).click();
+  await page.getByLabel('開けられた鳥籠を選ぶ').check();
+  await page.getByLabel('鳥籠の斧版を選ぶ').check();
+  await page.getByRole('button', { name: '選んだ2件をまとめてDL' }).click();
+  await page.getByText('デフォルトのDL先を変えますか？').waitFor();
+  ok('取れなかったら別の配布元から取り、デフォルトを変えるか聞く', await page.locator('dialog').getByText('旧サイト → 新サイト').isVisible());
+  await page.getByRole('button', { name: '選んだものを変更する' }).click();
+  const bItems = page.locator('#batch .batch-item');
+  const bird = bItems.filter({ hasText: /^開けられた鳥籠/ }), axe = bItems.filter({ hasText: '鳥籠の斧版' });
+  ok('直接DLは自動で準備OK', await bird.getByText('準備OK').isVisible());
+  ok('同意ページは操作待ち', await axe.getByText('操作待ち', { exact: true }).isVisible());
+  if (width > 600) await page.screenshot({ path: join(OUT, `batch-${colorScheme}.png`), fullPage: true });
+  await axe.getByLabel('ページの内容・規約を読んで、同意します').check();
+  await axe.getByRole('button', { name: '同意してダウンロード' }).click();
+  await axe.getByText('準備OK').waitFor();
+  ok('操作待ちで同意→準備OK', true);
+  await axe.locator('input[type=text]').fill('鳥籠2');
+  ok('りどみを読むまで入らない', await page.getByRole('button', { name: 'まとめてインストール（0件）' }).isDisabled());
+  await page.getByRole('button', { name: /りどみを順に確認（あと2件）/ }).click();
+  await page.getByRole('button', { name: '読みました・次へ' }).click();
+  await page.getByRole('button', { name: '読みました・次へ' }).click();
+  await page.getByRole('button', { name: 'まとめてインストール（2件）' }).click();
+  await page.getByText('2件を入れました').waitFor();
+  ok('まとめてインストール', await axe.getByText('Scenario/鳥籠2 に入れました').isVisible());
+  if (width > 600) await page.screenshot({ path: join(OUT, `batch-done-${colorScheme}.png`), fullPage: true });
+
+  // 9. デフォルトが変わった／候補から外す
+  await page.getByRole('tab', { name: 'カタログ' }).click();
+  ok('デフォルトのDL先が新サイトに変わった', (await birdCard.locator('.dl li', { hasText: '新サイト' }).getByText('★デフォルト').count()) === 1);
+  await page.locator('.card.work', { hasText: 'サンプルの塔（Py版）' }).getByRole('button', { name: '候補から外す' }).click();
+  await page.getByText(/を候補から外しました/).waitFor();
+  ok('候補から外すと一覧から消える', !(await page.locator('.item-title', { hasText: 'サンプルの塔（Py版）' }).count()));
+  await page.getByLabel('候補から外したものも表示').check();
+  ok('「外したものも表示」で見える', await page.locator('.item-title', { hasText: 'サンプルの塔（Py版）' }).isVisible());
+
+  // 10. 個人用カタログをDL一覧として書き出し → 別のカタログとして読み込む
+  await page.getByRole('button', { name: 'カタログの管理' }).click();
+  const myRow = page.locator('.src-row', { hasText: 'マイカタログ' });
+  const [dl3] = await Promise.all([page.waitForEvent('download'), myRow.getByRole('button', { name: 'DL一覧として書き出す' }).click()]);
+  const listPath = await dl3.path();
+  const list = JSON.parse(readFileSync(listPath, 'utf8'));
+  ok('DL一覧の書き出し（2件・デフォルトが先頭）', list.entries.length === 2 && list.entries.find((e) => e.name === '開けられた鳥籠').downloads[0].label === '新サイト', `${list.entries.length}件`);
+  await page.locator('#list-file').setInputFiles({ name: '有志の一覧.json', mimeType: 'application/json', buffer: readFileSync(listPath) });
+  await page.getByText(/を個人用カタログとして読み込みました（2件）/).waitFor();
+  ok('DL一覧を個人用カタログとして読み込み', await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).isVisible());
+  await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).getByLabel(/を候補に含める/).uncheck();
+  await page.waitForTimeout(300);
+  ok('候補に含めるを外せる', !(await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).getByLabel(/を候補に含める/).isChecked()));
+  if (width > 600) await page.locator('#manage').screenshot({ path: join(OUT, `manage-${colorScheme}.png`) });
+
+  // 11. 自分のフォルダ一覧：バージョン・タグ・更新ありをまとめてDL
+  await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
   await page.getByRole('button', { name: '読み取る' }).click();
   await page.getByText(/件を読み取りました/).waitFor();
   const cards = page.locator('#mine-list > .card');
-  ok('手持ち3件（既存・Next・クラシック）', (await cards.count()) === 3, String(await cards.count()));
+  ok('自分のフォルダ一覧5件（既存・Next・クラシック2か所・鳥籠2）', (await cards.count()) === 5, String(await cards.count()));
   const first = cards.filter({ hasText: 'うつろい森のあなた' });
   ok('インストール時の版を記録', (await first.locator('input.ver').inputValue()) === '1.00');
   await first.locator('input[aria-label="タグを追加"]').fill('お気に入り');
   await first.locator('input[aria-label="タグを追加"]').press('Enter');
   await page.locator('.tag', { hasText: 'お気に入り' }).waitFor();
   ok('タグ付け', true);
-  const kizon = cards.filter({ hasText: '既存' });
+  const kizon = cards.filter({ hasText: 'Scenario/既存' });
   await kizon.locator('input.ver').fill('0.9');
   await kizon.locator('input.ver').press('Tab');
   await page.waitForTimeout(300);
-  ok('バージョンの手入力', (await cards.filter({ hasText: '既存' }).getByText('（手入力）').count()) === 1);
+  ok('バージョンの手入力', (await cards.filter({ hasText: 'Scenario/既存' }).getByText('（手入力）').count()) === 1);
+  ok('カタログより古い版は「更新あり」', await cards.filter({ hasText: 'Scenario/既存' }).getByText('新しい版 1.01 があります').isVisible());
   await page.screenshot({ path: join(OUT, `mine-${colorScheme}-${width}.png`), fullPage: true });
+  await page.getByRole('button', { name: '更新ありをまとめてDL（1件）' }).click();
+  const up = page.locator('#batch .batch-item');
+  await up.getByText('準備OK').waitFor();
+  ok('更新は今の場所に置き換える', await up.getByText('置き換える場所：Scenario/既存').isVisible());
+  await up.getByRole('button', { name: 'りどみを読む' }).click();
+  await page.locator('dialog').getByRole('button', { name: '読みました' }).click();
+  await page.getByRole('button', { name: 'まとめてインストール（1件）' }).click();
+  await page.getByText('1件を入れました').waitFor();
+  ok('更新を同じ場所に入れ直す（バックアップあり）', await up.getByText(/Scenario\/既存 に入れました（前のものは CWCatalog_backup/).isVisible());
 
-  // 8. 記録の書き出し
+  // 12. 記録の書き出し
   await page.getByRole('tab', { name: '設定' }).click();
   const [dl2] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: '書き出す', exact: true }).click()]);
   const recPath = await dl2.path();
   const rec = JSON.parse(readFileSync(recPath, 'utf8'));
-  ok('記録の書き出し（公開形式）', rec.kind === 'cw-catalog-tool/records' && rec.records.length === 3, `${rec.records.length}件`);
+  ok('記録の書き出し（公開形式）', rec.kind === 'cw-catalog-tool/records' && rec.records.length === 5, `${rec.records.length}件`);
 
   // OPFSの中身を確認
   const tree = await page.evaluate(async () => {
@@ -223,6 +341,13 @@ async function run(colorScheme, width) {
     await walk(await (await navigator.storage.getDirectory()).getDirectoryHandle('test-engine'), '');
     return out.sort();
   });
+  const archived = await page.evaluate(async () => {
+    const out = [];
+    for await (const [n] of (await (await navigator.storage.getDirectory()).getDirectoryHandle('test-archive')).entries()) out.push(n);
+    return out.sort();
+  });
+  ok('元のzipを保存場所に保存（同じものは重ねない）', archived.length === 2 && archived.includes('鳥籠.zip'), archived.join(', '));
+  ok('鳥籠2 に入った', tree.includes('Scenario/鳥籠2/Summary.wsm'));
   ok('書き込み先は Scenario と CWCatalog_backup だけ', tree.every((p) => p === 'CardWirthNext.exe' || p.startsWith('Scenario/') || p.startsWith('CWCatalog_backup/')));
   ok('Next版が _店 に入った', tree.includes('Scenario/_店/うつろい森のあなた/Summary.wsm'));
   ok('外側のりどみはシナリオに入れない', !tree.some((p) => p.endsWith('りどみ.txt')));

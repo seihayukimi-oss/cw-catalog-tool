@@ -124,8 +124,43 @@ dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--p
 dialog::backdrop { background: rgba(20, 14, 8, .45); }
 progress { width: 100%; accent-color: var(--accent); }
 
+/* カタログの管理 */
+.src-list { display: grid; gap: 6px; }
+.src-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
+.src-row.off { opacity: .6; }
+.manage h3 { margin-top: 14px; }
+.badge.src { color: var(--sub); border-style: dashed; }
+.badge.src.own, .badge.src.sub { color: var(--wsn); }
+.hidden-work { opacity: .65; }
+
+/* まとめてDL */
+.batch-bar { position: sticky; top: 92px; z-index: 3; padding: 8px 12px; }
+.batch { border-color: var(--accent); }
+.batch-item { margin-bottom: 8px; }
+.batch-item.action { border-left: 3px solid var(--warn); }
+.batch-item.ready { border-left: 3px solid var(--ok); }
+.batch-item.done { border-left: 3px solid var(--ok); opacity: .8; }
+.batch-item.error, .batch-item.failed { border-left: 3px solid var(--bad); }
+.batch-item.over { background: var(--panel-2); border-color: var(--accent); }
+
+/* 紹介ページ */
+.intro { margin-top: 8px; }
+.intro-cards { display: grid; gap: 8px; margin-top: 6px; }
+.ogp { display: flex; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--panel-2); align-items: flex-start; }
+.ogp img { width: 120px; max-height: 90px; object-fit: cover; border-radius: 6px; flex: none; }
+.ogp-text { min-width: 0; display: grid; gap: 2px; }
+.ogp-text .small { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+
+/* 個人用カタログの編集 */
+dialog:has(.entry-edit) { width: min(820px, calc(100% - 24px)); }
+.edit-dl { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; }
+.entry-edit textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); }
+input[type="date"] { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+
 @media (max-width: 560px) {
   body { font-size: 14px; }
   .top-inner { padding-top: 8px; }
   input.ver { width: 6em; }
+  .batch-bar { top: 84px; }
+  .ogp img { width: 80px; }
 }
