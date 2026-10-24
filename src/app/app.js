@@ -546,7 +546,7 @@ async function registerOutside(list) {
     }
     for (const r of list) {
       const e = entryFromRecord(r);
-      await saveOwnEntry({ id: 'p00000', owner: '', type: 'scenario', compat: undefined, convert: 'self', requires: [], related: [], links: [], readme: '', level: null, updated: '', ...e, compat: e.format === 'wsn' ? { cw150: 'no', next: 'no', py: 'expected' } : e.format === 'next' ? { cw150: 'no', next: 'expected', py: 'unknown' } : { cw150: 'expected', next: 'expected', py: 'expected' } }, { targetIds: ids });
+      await saveOwnEntry({ id: 'p00000', owner: '', type: 'scenario', convert: 'self', requires: [], related: [], links: [], readme: '', level: null, updated: '', ...e, compat: e.format === 'wsn' ? { cw150: 'no', next: 'no', py: 'expected' } : e.format === 'next' ? { cw150: 'no', next: 'expected', py: 'unknown' } : { cw150: 'expected', next: 'expected', py: 'expected' } }, { targetIds: ids });
     }
     await refreshStates();
     toast(`${list.length}件を個人用カタログに登録しました。DL先は「カタログ」タブの「編集」で足せます`, { ms: 9000 });
