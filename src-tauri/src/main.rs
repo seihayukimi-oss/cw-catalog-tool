@@ -52,6 +52,10 @@ fn allow_open_files<R: tauri::Runtime>(app: &tauri::AppHandle<R>, args: &[String
     }
 }
 
+/// アプリ内ブラウザの窓の題名。ログイン情報を入れるのが不安にならないよう、何をしないかを書いておく
+const BROWSER_NOTE: &str = "CWカタログのアプリ内ブラウザ：ログイン状態はこのPCに残すだけで、入力した内容やログイン情報をアプリが読み取ることはありません";
+const BROWSER_TITLE: &str = "配布ページ ― サイトのダウンロードボタンを押すと受け取ります　｜　ログイン状態はこのPCに残すだけで、入力した内容やログイン情報をCWカタログが読み取ることはありません";
+
 static POPUP_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// アプリ内ブラウザの窓を作る。ログインなどで開かれる小窓（window.open）も、同じ作りの窓で開く
@@ -67,7 +71,7 @@ fn build_browser_window(
     let app_dl = app.clone();
     let app_new = app.clone();
     let mut b = WebviewWindowBuilder::new(app, label, url)
-        .title("配布ページ ― サイトのダウンロードボタンを押すと、CWカタログが受け取ります")
+        .title(BROWSER_TITLE)
         .inner_size(1000.0, 760.0)
         .data_directory(portable().webview_dir())
         .on_new_window(move |url, features| {
@@ -82,7 +86,7 @@ fn build_browser_window(
         })
         .on_document_title_changed(|w, title| {
             if !title.is_empty() {
-                let _ = w.set_title(&format!("{title} ― CWカタログのアプリ内ブラウザ"));
+                let _ = w.set_title(&format!("{title}　｜　{BROWSER_NOTE}"));
             }
         })
         .on_download(move |webview, event| {

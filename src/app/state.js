@@ -38,7 +38,11 @@ export const S = {
   urlState: null,
   progress: null,
   batch: null,
-  filter: { mine: '', mineState: '', cat: '', catEngine: '', catSource: '', catFolder: '', showHidden: false },
+  filter: { mine: '', mineState: '', mineTag: '', cat: '', catEngine: '', catSource: '', catFolder: '', showHidden: false },
+  mineSel: new Set(), // 自分のフォルダ一覧で選んだ記録
+  tagList: [],
+  favs: { works: [], folders: [] },
+  tidy: null, // 整理・二重チェックの結果
   busy: '',
 };
 

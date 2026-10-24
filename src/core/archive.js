@@ -52,7 +52,7 @@ function normalizeEntries(list, warnings, limits = LIMITS) {
  * @param {Uint8Array} bytes
  * @param {string} fileName
  */
-export async function openArchive(bytes, fileName) {
+export async function openArchive(bytes, fileName, depth = 0) {
   const lower = fileName.toLowerCase();
   const kind = archiveKind(bytes);
   if (kind === 'rar' || /\.rar$/.test(lower)) throw new Error('.rar 形式はこのツールでは展開できません。展開してからフォルダを入れるか、zipに変換してください');
@@ -73,13 +73,61 @@ export async function openArchive(bytes, fileName) {
     if (kind !== '7z') renamed = r.entries.filter((e) => /[^\x00-\x7f]/.test(e.name)).length;
   }
   const analysis = await analyzeFiles(files, { sourceName: fileName });
-  return {
-    source: { kind: 'archive', format: kind, name: fileName, size: bytes.length, sha256: await sha256Hex(bytes), isWsn: kind === 'zip' && /\.wsn$/.test(lower) },
+  const sha256 = await sha256Hex(bytes);
+  const opened = {
+    source: { kind: 'archive', format: kind, name: fileName, size: bytes.length, sha256, isWsn: kind === 'zip' && /\.wsn$/.test(lower) },
     bytes,
     files,
     nonUtf8Names: renamed,
     ...analysis,
     warnings: [...warnings, ...analysis.warnings],
+  };
+  if (opened.scenarios.length || depth > 0) return opened;
+  return (await openInner(opened)) || opened;
+}
+
+const INNER = /\.(wsn|zip|cab|lzh|lha|7z)$/i;
+
+/**
+ * 入れ物の中に、さらに wsn・zip などが入っているとき（BOOTHの「zipの中にwsn」など）は、中のものを開く。
+ * 1つだけなら、そのまま中身として扱う（.wsn ならPyでは展開せずに置ける）。
+ * いくつもあるときは、それぞれをフォルダに見立てて、まとめて1つの中身にする。
+ * 保存場所に残すのは、DLした外側のファイルのまま。
+ */
+async function openInner(outer) {
+  const inners = outer.files.filter((f) => INNER.test(f.path));
+  if (!inners.length || inners.length > 30) return null;
+  const opened = [];
+  for (const f of inners) {
+    try {
+      const o = await openArchive(await f.read(), f.path.split('/').pop(), 1);
+      if (o.scenarios.length) opened.push({ f, o });
+    } catch (e) {
+      outer.warnings.push(`${f.path} を開けませんでした：${e.message}`);
+    }
+  }
+  if (!opened.length) return null;
+  const note = `${outer.source.name} の中の ${opened.map((x) => x.f.path.split('/').pop()).join('・')} を開きました`;
+  const keep = { archiveBytes: outer.bytes, archiveName: outer.source.name };
+  if (opened.length === 1) {
+    const { o } = opened[0];
+    return {
+      ...o, ...keep,
+      // カタログとの照合は、配布されている外側のファイルで
+      source: { ...o.source, sha256: outer.source.sha256, innerSha256: o.source.sha256, outer: { name: outer.source.name, size: outer.source.size } },
+      nonUtf8Names: outer.nonUtf8Names + o.nonUtf8Names,
+      warnings: [note, ...outer.warnings, ...o.warnings],
+    };
+  }
+  const files = [];
+  for (const { f, o } of opened) {
+    const dir = f.path.replace(/\.[^./]+$/, '');
+    for (const x of o.files) files.push({ ...x, path: `${dir}/${x.path}` });
+  }
+  const analysis = await analyzeFiles(files, { sourceName: outer.source.name });
+  return {
+    ...outer, ...keep, files, ...analysis,
+    warnings: [note, ...outer.warnings, ...analysis.warnings],
   };
 }
 

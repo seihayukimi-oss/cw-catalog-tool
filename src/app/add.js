@@ -126,7 +126,7 @@ export function viewAdd() {
   parts.push(h('div', { class: 'card' },
     h('div', { class: 'row between' },
       h('div', {}, h('div', { class: 'item-title' }, o.source.name),
-        h('div', { class: 'meta' }, `${fmtSize(o.source.size)}・${o.files.length}ファイル${o.source.sha256 ? `・SHA-256 ${o.source.sha256.slice(0, 12)}…` : ''}`)),
+        h('div', { class: 'meta' }, `${o.source.outer ? `${o.source.outer.name} の中・` : ''}${fmtSize(o.source.size)}・${o.files.length}ファイル${o.source.sha256 ? `・SHA-256 ${o.source.sha256.slice(0, 12)}…` : ''}`)),
       h('div', { class: 'row' },
         sc ? h('button', { class: 'btn sm', onclick: () => editEntry({ prefill: prefillFromOpened() }) }, work ? '個人用カタログに追加・編集' : '個人用カタログに登録') : null,
         h('button', { class: 'btn ghost', onclick: () => { S.opened = null; render(); } }, '閉じる'))),
@@ -320,21 +320,22 @@ export async function archiveDirOf(ask = true) {
  * @returns {Promise<string|null>} 保存したファイル名
  */
 export async function saveArchive(opened, { force = false } = {}) {
-  if (opened.source.kind !== 'archive' || !opened.bytes) return null;
+  const bytes = opened.archiveBytes || opened.bytes;
+  if (opened.source.kind !== 'archive' || !bytes) return null;
   if (!force && !S.archive.on) return null;
   const d = await archiveDirOf(true);
   if (!d) throw new Error('zipの保存場所を使う許可がありませんでした。設定の「zip・wsnの保存場所」で選び直してください');
-  const base = opened.source.name.replace(/[\\/:*?"<>|]/g, '_');
+  const base = (opened.archiveName || opened.source.name).replace(/[\\/:*?"<>|]/g, '_');
   const dot = base.lastIndexOf('.');
   const stem = dot > 0 ? base.slice(0, dot) : base, ext = dot > 0 ? base.slice(dot) : '';
   for (let i = 1; i < 100; i++) {
     const name = i === 1 ? base : `${stem}_${i}${ext}`;
     if (await d.has(name)) {
       const size = await d.fileSize(name).catch(() => -1);
-      if (size === opened.bytes.length) return name; // 同じものがもうある
+      if (size === bytes.length) return name; // 同じものがもうある
       continue;
     }
-    await d.writeFile(name, opened.bytes);
+    await d.writeFile(name, bytes);
     return name;
   }
   throw new Error('保存場所に同じ名前のファイルが多すぎます');

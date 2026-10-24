@@ -12,6 +12,7 @@ import {
   foldersOf, createFolder, renameFolder, deleteFolder, moveFolder, putInFolder, takeOutOfFolder,
 } from './catalog-data.js';
 import { store } from './store.js';
+import { isFavWork, isFavFolder, inFavorites, setFavWorks, toggleFavFolder } from './tags.js';
 import { downloadWork, downloadFrom, dlLabel } from './download.js';
 import { startBatch } from './batch.js';
 
@@ -31,7 +32,8 @@ function filteredWorks() {
     if (!S.filter.showHidden && (S.filter.catSource ? w.hiddenIn.has(S.filter.catSource) : w.hidden)) return false;
     if (S.filter.catEngine && !['verified', 'expected'].includes(w.compat?.[S.filter.catEngine])) return false;
     if (fid === '__none' && (S.folders.map[w.key] || []).length) return false;
-    if (fid && fid !== '__none' && !(S.folders.map[w.key] || []).includes(fid)) return false;
+    if (fid === '__fav' && !inFavorites(w)) return false;
+    if (fid && fid !== '__none' && fid !== '__fav' && !(S.folders.map[w.key] || []).includes(fid)) return false;
     return !q || `${w.name} ${w.author} ${w.tags.join(' ')} ${w.description || ''} ${foldersOf(w.key).map((f) => f.name).join(' ')}`.normalize('NFKC').toLowerCase().includes(q);
   });
   const g = S.catView.group;
@@ -82,7 +84,8 @@ export function viewCatalog() {
 /** フォルダの切り替え（すべて・未分類・自分で作ったフォルダ） */
 function folderChips() {
   const all = S.combined.works.filter((w) => S.filter.showHidden || !w.hidden);
-  const count = (fid) => all.filter((w) => (fid === '__none' ? !(S.folders.map[w.key] || []).length : (S.folders.map[w.key] || []).includes(fid))).length;
+  const count = (fid) => all.filter((w) => (fid === '__none' ? !(S.folders.map[w.key] || []).length : fid === '__fav' ? inFavorites(w) : (S.folders.map[w.key] || []).includes(fid))).length;
+  const folders = [...S.folders.list].sort((a, b) => isFavFolder(b.id) - isFavFolder(a.id));
   const chip = (fid, label, n) => h('button', {
     class: `chip${S.filter.catFolder === fid ? ' on' : ''}`, 'aria-pressed': S.filter.catFolder === fid ? 'true' : 'false',
     onclick: () => { S.filter.catFolder = fid; render(); },
@@ -90,7 +93,8 @@ function folderChips() {
   return h('div', { class: 'row folder-chips' },
     h('span', { class: 'small muted' }, 'フォルダ'),
     chip('', 'すべて', all.length),
-    S.folders.list.map((f) => chip(f.id, f.name, count(f.id))),
+    chip('__fav', '★お気に入り', count('__fav')),
+    folders.map((f) => chip(f.id, `${isFavFolder(f.id) ? '★' : ''}${f.name}`, count(f.id))),
     S.folders.list.length ? chip('__none', '未分類', count('__none')) : null,
     h('button', { class: 'btn ghost sm', onclick: async () => { const name = await askName('新しいフォルダ', '', 'フォルダの名前（例：作者さんの名前、企画の名前）'); if (name) { const f = await createFolder(name); S.filter.catFolder = f.id; toast(`フォルダ「${name}」を作りました。作品を選んで「フォルダに入れる」で入れられます`, { ms: 7000 }); render(); } } }, '＋新しいフォルダ'),
     S.folders.list.length ? h('button', { class: 'btn ghost sm', onclick: manageFolders }, 'フォルダの整理') : null);
@@ -112,6 +116,8 @@ function batchBar(works) {
       h('b', { class: 'small' }, `選んだ${sel.length}件を：`),
       h('button', { class: 'btn primary sm', onclick: () => { startBatch(sel.map((work) => ({ work })), '選んだ作品をまとめてDL'); S.selected.clear(); } }, 'まとめてDL'),
       h('button', { class: 'btn sm', onclick: () => putSelectedInFolder(sel) }, 'フォルダに入れる'),
+      sel.some((w) => !isFavWork(w.key)) ? h('button', { class: 'btn sm', onclick: async () => { await setFavWorks(sel.map((w) => w.key), true); toast(`${sel.length}件をお気に入りにしました`); S.selected.clear(); render(); } }, '★お気に入りにする') : null,
+      sel.some((w) => isFavWork(w.key)) ? h('button', { class: 'btn sm', onclick: async () => { await setFavWorks(sel.map((w) => w.key), false); toast(`${sel.length}件をお気に入りから外しました`); S.selected.clear(); render(); } }, 'お気に入りから外す') : null,
       inFolder ? h('button', { class: 'btn sm', onclick: async () => { await takeOutOfFolder(sel.map((w) => w.key), inFolder.id); toast(`${sel.length}件を「${inFolder.name}」から外しました`); S.selected.clear(); render(); } }, `「${inFolder.name}」から外す`) : null,
       anyShown ? h('button', { class: 'btn sm', onclick: () => hideSelected(sel, true) }, '候補から外す') : null,
       anyHidden ? h('button', { class: 'btn sm', onclick: () => hideSelected(sel, false) }, '候補に戻す') : null) : null);
@@ -149,6 +155,7 @@ async function manageFolders() {
   await modal((close) => {
     const body = h('div', { class: 'stack' });
     const draw = () => body.replaceChildren(...S.folders.list.map((f, i) => h('div', { class: 'row src-row' },
+      h('button', { class: `btn ghost sm star${isFavFolder(f.id) ? ' on' : ''}`, 'aria-label': `${f.name}をお気に入りにする`, 'aria-pressed': isFavFolder(f.id) ? 'true' : 'false', title: 'お気に入りのフォルダは、先頭に並び、「★お気に入り」にも出ます', onclick: async () => { await toggleFavFolder(f.id); draw(); } }, isFavFolder(f.id) ? '★' : '☆'),
       h('b', { class: 'grow' }, f.name),
       h('span', { class: 'small muted' }, `${Object.values(S.folders.map).filter((ids) => ids.includes(f.id)).length}件`),
       h('button', { class: 'btn ghost sm', disabled: i === 0, 'aria-label': '上へ', onclick: async () => { await moveFolder(f.id, -1); draw(); } }, '↑'),
@@ -211,7 +218,9 @@ function workCard(w, mine) {
     onchange: (ev) => { if (ev.target.checked) S.selected.add(w.key); else S.selected.delete(w.key); document.getElementById('batch-bar')?.replaceWith(batchBar(filteredWorks())); },
   });
   const head = h('div', { class: 'row between' },
-    h('div', { class: 'row' }, sel, h('span', { class: 'item-title' }, w.name), formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
+    h('div', { class: 'row' }, sel,
+      h('button', { class: `btn ghost sm star${isFavWork(w.key) ? ' on' : ''}`, 'aria-label': `${w.name}をお気に入りにする`, 'aria-pressed': isFavWork(w.key) ? 'true' : 'false', title: isFavWork(w.key) ? 'お気に入りから外す' : 'お気に入りにする', onclick: async () => { await setFavWorks([w.key], !isFavWork(w.key)); render(); } }, isFavWork(w.key) ? '★' : '☆'),
+      h('span', { class: 'item-title' }, w.name), formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
       mine ? h('span', { class: `badge ${mine.state === 'update' ? 'update' : 'ok'}` }, mine.state === 'update' ? `入っている版 ${mine.version}→${w.version}` : 'フォルダにあり') : null,
       hiddenHere ? h('span', { class: 'badge plain' }, '候補から外しています') : null,
       foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name))),

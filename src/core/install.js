@@ -1,6 +1,6 @@
 // インストールとバックアップ、WebCardWirth用の書き出し。
 
-import { dirAt, existsAt, writeAt, removeAt } from './fs.js';
+import { dirAt, existsAt, writeAt, removeAt, readAt } from './fs.js';
 import { safeRelativePath, writeZip } from './zip.js';
 import { nonCp932Chars } from './text.js';
 import { playability } from './catalog.js';
@@ -156,4 +156,24 @@ export async function exportForWeb(opened, index) {
     files.push({ path: `${sc.folderName}/${f.path.slice(prefix.length)}`, data: await f.read() });
   }
   return { fileName: `${sc.folderName}.zip`, data: writeZip(files) };
+}
+
+/**
+ * 二重に入っているものなどを、消さずに CWCatalog_backup に移す（エンジンのフォルダの中だけ）
+ * @returns {Promise<string>} 移した先
+ */
+export async function moveToBackup(engineRoot, relPath) {
+  const kind = await existsAt(engineRoot, relPath);
+  if (!kind) throw new Error(`見つかりません：${relPath}`);
+  if (!relPath.startsWith('Scenario/')) throw new Error('Scenario の中のものだけ移せます');
+  const name = relPath.split('/').pop();
+  const dest = `${BACKUP_DIR}/${stamp()}_${name}`;
+  if (kind === 'dir') {
+    const src = await dirAt(engineRoot, relPath);
+    for (const f of await listTree(src)) await writeAt(engineRoot, `${dest}/${f.rel}`, await f.dir.readFile(f.name));
+  } else {
+    await writeAt(engineRoot, dest, await readAt(engineRoot, relPath));
+  }
+  await removeAt(engineRoot, relPath);
+  return dest;
 }

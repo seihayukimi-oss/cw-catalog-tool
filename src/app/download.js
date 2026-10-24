@@ -272,7 +272,7 @@ export async function agreeAndDownload(st, form, values, hd) {
 /** B：アプリ内ブラウザで配布ページを開き、本人がサイトのボタンを押して落ちてきたファイルを受け取る */
 export async function inAppDownload(url, hd, why = '') {
   if (!S.platform.canInAppBrowse) { await S.platform.openUrl(url); return; }
-  toast(`${why ? `${why}。` : ''}配布ページを別の窓で開きました。サイトのダウンロードボタンを押すと、ここに取り込みます`, { ms: 10000 });
+  toast(`${why ? `${why}。` : ''}配布ページを別の窓（アプリ内ブラウザ）で開きました。サイトのダウンロードボタンを押すと、ここに取り込みます。ログイン状態はこのPCに残すだけで、入力した内容やログイン情報をCWカタログが読み取ることはありません`, { ms: 12000 });
   const got = await busy('アプリ内ブラウザで待っています', () => S.platform.openInAppBrowser(url));
   if (!got) return;
   if (!archiveKind(got.bytes)) { toast(`${got.fileName} はzip・wsn などのファイルではないようです`, { bad: true }); return; }

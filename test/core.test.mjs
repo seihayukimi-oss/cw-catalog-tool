@@ -477,3 +477,17 @@ test('Googleドライブのフォルダの一覧と、DLキーのフォーム', 
   assert.equal(forms[0].kind, 'key');
   assert.equal(forms[0].inputs[0].type, 'password');
 });
+
+test('実物：zipの中にwsnが入っている（BOOTHの配り方）', { skip: !hasFx }, async () => {
+  const outer = writeZip([{ path: '海底のアルフェラッツ_260823.wsn', data: fx('alice.wsn') }]);
+  const o = await openArchive(outer, '海底のアルフェラッツ_260823.zip');
+  assert.equal(o.scenarios.length, 1);
+  assert.equal(o.source.name, '海底のアルフェラッツ_260823.wsn');
+  assert.equal(o.source.isWsn, true, 'Pyでは展開せずに置ける');
+  assert.equal(o.archiveName, '海底のアルフェラッツ_260823.zip', '保存場所には外側のzipを残す');
+  assert.match(o.warnings[0], /の中の 海底のアルフェラッツ_260823\.wsn を開きました/);
+  // 中に2つ
+  const two = writeZip([{ path: 'a/森.zip', data: fx('classic_cp932.zip') }, { path: 'b.wsn', data: fx('alice.wsn') }]);
+  const o2 = await openArchive(two, 'セット.zip');
+  assert.equal(o2.scenarios.length, 2);
+});

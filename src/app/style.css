@@ -203,6 +203,15 @@ details.group > summary .group-name { font-size: 1.02rem; }
 .mono { font-family: ui-monospace, "BIZ UDGothic", monospace; font-size: .8rem; }
 .link-maker textarea { flex: 1 1 300px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); }
 
+.btn.star { color: var(--sub); font-size: 1rem; padding: 0 4px; }
+.btn.star.on { color: #d19a1d; }
+.tag-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-pick .chip input { margin: 0; }
+.tag-editor { gap: 4px; }
+.tidy h3 { margin: 10px 0 4px; }
+.tidy .dl li { border-bottom: 1px dashed var(--line); padding: 4px 0; }
+.tidy .dl li.stack { display: block; }
+
 @media (max-width: 560px) {
   body { font-size: 14px; }
   .top-inner { padding-top: 8px; }

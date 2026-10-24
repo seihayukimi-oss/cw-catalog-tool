@@ -430,6 +430,30 @@ async function run(colorScheme, width) {
   const rec = JSON.parse(readFileSync(recPath, 'utf8'));
   ok('記録の書き出し（公開形式）', rec.kind === 'cw-catalog-tool/records' && rec.records.length === (existsSync(join(FX, 'maigo.cab')) ? 6 : 5), `${rec.records.length}件`);
 
+  // 13. 選んでタグをまとめて付ける・整理と二重チェック
+  await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
+  const mcards = page.locator('#mine-list > .card');
+  await mcards.filter({ hasText: 'Scenario/既存' }).locator('input[type=checkbox]').first().check();
+  await mcards.filter({ hasText: 'Scenario/鳥籠2' }).locator('input[type=checkbox]').first().check();
+  await page.locator('#mine-bar .sel-actions').getByRole('button', { name: 'タグを付ける' }).click();
+  await page.locator('dialog .chip', { hasText: '積み' }).click();
+  await page.locator('dialog').getByRole('button', { name: '付ける' }).click();
+  await page.getByText('2件に「積み」を付けました').waitFor();
+  ok('選んでタグをまとめて付ける', (await page.locator('.folder-chips .chip', { hasText: '積み' }).locator('.n').textContent()) === '2');
+  await page.locator('.folder-chips .chip', { hasText: '積み' }).click();
+  ok('タグで絞り込む', (await mcards.count()) === 2);
+  await page.locator('.folder-chips .chip', { hasText: 'すべて' }).click();
+  await page.getByRole('button', { name: '整理・二重チェック' }).click();
+  await page.locator('#tidy summary', { hasText: '同じ作品が2つ以上入っている' }).waitFor();
+  const dupSec = page.locator('#tidy details', { hasText: '同じ作品が2つ以上入っている' });
+  ok('Scenarioの二重を見つける', await dupSec.getByText('開けられた鳥籠').first().isVisible() && (await dupSec.locator('li li').count()) >= 3);
+  ok('保存場所の重なりを見つける', await page.locator('#tidy details', { hasText: '同じファイルが重なっている' }).getByRole('button', { name: 'こちらを消す' }).isVisible());
+  if (width > 600) await page.locator('#tidy').screenshot({ path: join(OUT, `tidy-${colorScheme}.png`) });
+  await dupSec.locator('li li', { hasText: 'Scenario/_店/開けられた鳥籠ver1_01' }).getByRole('button', { name: 'CWCatalog_backup に移す' }).click();
+  await page.locator('dialog').getByRole('button', { name: 'はい' }).click();
+  await page.getByText(/Scenario\/_店\/開けられた鳥籠ver1_01 を CWCatalog_backup/).waitFor();
+  ok('二重のものを消さずにバックアップへ移す', true);
+
   // OPFSの中身を確認
   const tree = await page.evaluate(async () => {
     const out = [];
@@ -446,6 +470,7 @@ async function run(colorScheme, width) {
   ok('鳥籠2 に入った', tree.includes('Scenario/鳥籠2/Summary.wsm'));
   ok('書き込み先は Scenario と CWCatalog_backup だけ', tree.every((p) => p === 'CardWirthNext.exe' || p.startsWith('Scenario/') || p.startsWith('CWCatalog_backup/')));
   ok('Next版が _店 に入った', tree.includes('Scenario/_店/うつろい森のあなた/Summary.wsm'));
+  ok('移したものはバックアップにある', !tree.includes('Scenario/_店/開けられた鳥籠ver1_01/Summary.wsm') && tree.some((p) => /^CWCatalog_backup\/[^/]+_開けられた鳥籠ver1_01\/Summary\.wsm$/.test(p)));
   ok('外側のりどみはシナリオに入れない', !tree.some((p) => p.endsWith('りどみ.txt')));
   ok('コンソールにエラーなし（CSP違反を含む）', errors.length === 0, errors.join(' | '));
   await ctx.close();

@@ -32,13 +32,34 @@ jobs:
       # Rust 側の試験の前に画面を作っておく（アプリに埋め込むため）
       - run: npm run build
 
+      # 更新用の鍵が登録されていれば、試験用のファイルに署名して、アプリの公開鍵で確かめられるかを次の試験で調べる
+      - name: 更新用の鍵で署名してみる
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::warning title=更新用の鍵::TAURI_SIGNING_PRIVATE_KEY が登録されていません"
+            exit 0
+          fi
+          printf 'key check %s\n' "$GITHUB_RUN_ID" > "$RUNNER_TEMP/key-check.txt"
+          if npx tauri signer sign "$RUNNER_TEMP/key-check.txt" > /dev/null 2>&1; then
+            echo "CW_CI_SIGNED=$RUNNER_TEMP/key-check.txt" >> "$GITHUB_ENV"
+          else
+            echo "::error title=更新用の鍵::署名できませんでした（秘密鍵かパスワードが違うかもしれません）"
+            exit 1
+          fi
+
       - name: Rust 側の試験
         working-directory: src-tauri
         shell: bash
         # 失敗したときは、エラーの行を画面（Annotations）に出す
         run: |
           set -o pipefail
-          cargo test --release --color never 2>&1 | tee ../cargo-test.log || {
+          cargo test --release --color never 2>&1 | tee ../cargo-test.log && {
+            if [ -n "$CW_CI_SIGNED" ]; then echo "::notice title=更新用の鍵::登録された鍵で署名でき、アプリの公開鍵で確かめられました（OK）"; fi
+          } || {
             msg=$(grep -E "^error|^\s+-->|panicked|FAILED|assertion|left:|right:" ../cargo-test.log | head -40 | sed ':a;N;$!ba;s/\n/%0A/g')
             echo "::error title=Rust::$msg"
             exit 1

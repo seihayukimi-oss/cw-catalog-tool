@@ -19,6 +19,8 @@ import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
 import { startBatch } from './batch.js';
 import { setupShell, startShell, viewAppSettings } from './appshell.js';
 import { ownSources, saveOwnEntry } from './catalog-data.js';
+import { loadTags, tagEditor, tagChips, pickTags, applyTags } from './tags.js';
+import { openTidy, viewTidy } from './tidy.js';
 
 const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
 
@@ -35,6 +37,7 @@ export async function startApp(platform) {
   await setupShell();
   S.records = await store.records();
   if (S.records.some((r) => r.entryId && !('workKey' in r))) await refreshStates(); // 0.1.4 までの記録を新しい形に
+  await loadTags();
   for (const e of S.engines) {
     const d = await platform.openFolder(e.ref).catch(() => null); // 許可が残っていればそのまま使える
     if (d) S.dirs.set(e.id, d);
@@ -88,10 +91,23 @@ function viewMine() {
   const q = S.filter.mine.normalize('NFKC').toLowerCase();
   let recs = recordsOf().filter((r) => !q || `${r.name} ${r.author} ${r.path} ${(r.tags || []).join(' ')}`.normalize('NFKC').toLowerCase().includes(q));
   if (S.filter.mineState) recs = recs.filter((r) => (S.filter.mineState === 'missing' ? r.missing : (r.state || 'none') === S.filter.mineState));
+  const allRecs = recs;
+  const tg = S.filter.mineTag || '';
+  if (tg) recs = recs.filter((r) => (tg === '__none' ? !(r.tags || []).length : (r.tags || []).includes(tg)));
   recs.sort((a, b) => (b.state === 'update') - (a.state === 'update') || (a.path || '').localeCompare(b.path || '', 'ja'));
   const updates = S.records.filter((r) => r.state === 'update' && workOf(r) && r.type !== 'bookmark');
   const outside = recordsOf().filter((r) => !r.missing && r.type !== 'bookmark' && !workOf(r) && r.name);
 
+  const sel = recs.filter((r) => S.mineSel.has(r.id));
+  const selBar = recs.length ? h('div', { class: 'card batch-bar', id: 'mine-bar' },
+    h('div', { class: 'row' },
+      h('span', { class: 'small' }, `${recs.length}件${q || tg || S.filter.mineState ? '（絞り込み中）' : ''}`),
+      h('button', { class: 'btn sm', disabled: sel.length === recs.length, onclick: () => { recs.forEach((r) => S.mineSel.add(r.id)); render(); } }, '表示中をすべて選ぶ'),
+      sel.length ? h('button', { class: 'btn ghost sm', onclick: () => { S.mineSel.clear(); render(); } }, '選択を解除') : null),
+    sel.length ? h('div', { class: 'row sel-actions' },
+      h('b', { class: 'small' }, `選んだ${sel.length}件に：`),
+      h('button', { class: 'btn primary sm', onclick: async () => { const t = await pickTags(`${sel.length}件にタグを付ける`); if (t?.length) { await applyTags(sel, t, []); toast(`${sel.length}件に「${t.join('・')}」を付けました`); render(); } } }, 'タグを付ける'),
+      h('button', { class: 'btn sm', onclick: async () => { const present = [...new Set(sel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${sel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(sel, [], t); toast(`${sel.length}件から「${t.join('・')}」を外しました`); render(); } } }, 'タグを外す')) : null) : null;
   const list = h('div', { class: 'list', id: 'mine-list' }, recs.length ? recs.map(recordCard) : h('p', { class: 'empty' }, recordsOf().length ? '見つかりませんでした' : 'まだ記録がありません。「読み取る」を押してください'));
 
   return h('div', {},
@@ -104,20 +120,23 @@ function viewMine() {
           : h('button', { class: 'btn primary', onclick: () => connectEngine(e.id) }, 'フォルダに接続'),
         h('button', { class: 'btn', onclick: checkUpdates }, '更新チェック'),
         updates.length ? h('button', { class: 'btn primary', onclick: () => startBatch(updates.map((r) => ({ work: workOf(r), record: r })), '更新ありをまとめてDL') }, `更新ありをまとめてDL（${updates.length}件）`) : null,
+        h('button', { class: 'btn', onclick: openTidy, title: 'Scenarioフォルダとzipの保存場所の、二重に入っているもの・まだ入れていないもの（積みシナ）を調べます' }, '整理・二重チェック'),
         h('button', { class: 'btn', onclick: addBookmark }, 'カタログ外を登録'),
         outside.length ? h('button', { class: 'btn', onclick: () => registerOutside(outside) }, `カタログ外を個人用カタログにまとめて登録（${outside.length}件）`) : null,
-        S.platform.kind === 'app' && e.kind !== 'wcw' ? h('button', { class: 'btn', onclick: () => busy('起動', () => S.platform.launch(e.ref, e.kind)) }, '起動') : null,
+        S.platform.kind === 'app' && e.kind !== 'wcw' ? h('button', { class: 'btn', title: `${e.name} を起動します`, onclick: () => busy('エンジンを起動', () => S.platform.launch(e.ref, e.kind)) }, 'エンジンを起動') : null,
       ),
       h('div', { class: 'row', style: 'margin-top:10px' },
-        h('input', { type: 'search', class: 'grow', placeholder: '名前・作者・タグで絞り込み', value: S.filter.mine, oninput: (ev) => { S.filter.mine = ev.target.value; rerenderList('mine-list', viewMine); } }),
+        h('input', { type: 'search', class: 'grow', placeholder: '名前・作者・タグで絞り込み', value: S.filter.mine, oninput: (ev) => { S.filter.mine = ev.target.value; rerenderList('mine-body', viewMine); } }),
         h('select', { 'aria-label': '状態', onchange: (ev) => { S.filter.mineState = ev.target.value; render(); } },
           [['', 'すべて'], ['update', '更新あり'], ['unknown', '版不明'], ['latest', '最新'], ['none', 'カタログ外'], ['missing', '見つからない']]
             .map(([v, l]) => h('option', { value: v, selected: S.filter.mineState === v ? 'selected' : null }, l))),
       ),
       e.lastScan ? h('p', { class: 'small muted', style: 'margin:8px 0 0' }, `最後に読み取った日時：${fmtDate(e.lastScan)}／${recordsOf().length}件`) : null,
       !connected && S.platform.kind === 'web' ? h('p', { class: 'small muted', style: 'margin:6px 0 0' }, 'ブラウザは開くたびにフォルダの許可を聞き直します。「フォルダに接続」を押して許可してください。') : null,
+      tagChips(allRecs),
     ),
-    list,
+    S.tidy ? viewTidy() : null,
+    h('div', { id: 'mine-body' }, selBar, list),
   );
 }
 
@@ -130,18 +149,14 @@ function recordCard(r) {
     await store.putRecord(r);
     render();
   };
-  const tagInput = h('input', {
-    type: 'text', class: 'sm', placeholder: '＋タグ', style: 'width:7em', 'aria-label': 'タグを追加',
-    onkeydown: (ev) => {
-      if (ev.key === 'Enter' && ev.target.value.trim()) {
-        const t = ev.target.value.trim();
-        save({ tags: [...new Set([...(r.tags || []), t])] });
-      }
-    },
+  const pick = h('input', {
+    type: 'checkbox', checked: S.mineSel.has(r.id), 'aria-label': `${r.name || '(名前なし)'}を選ぶ`,
+    onchange: (ev) => { if (ev.target.checked) S.mineSel.add(r.id); else S.mineSel.delete(r.id); rerenderList('mine-body', viewMine); },
   });
   return h('div', { class: 'card' },
     h('div', { class: 'row between' },
       h('div', { class: 'row' },
+        pick,
         h('span', { class: 'item-title' }, r.name || '(名前なし)'),
         r.type === 'bookmark' ? h('span', { class: 'badge plain' }, 'ブックマーク') : formatBadge(r),
         r.encrypted ? h('span', { class: 'badge enc', title: 'NextのWirthBuilderで暗号化（WDP）されたデータです' }, '暗号化') : null,
@@ -165,8 +180,7 @@ function recordCard(r) {
         })),
       !r.version && r.versionGuess ? h('button', { class: 'btn sm', onclick: () => save({ version: r.versionGuess, versionSource: 'guess' }) }, `推測「${r.versionGuess}」を使う`) : null,
       r.versionSource ? h('span', { class: 'small muted' }, VERSION_SOURCE[r.versionSource]) : null,
-      h('span', { class: 'row' }, (r.tags || []).map((t) => h('span', { class: 'tag' }, t,
-        h('button', { 'aria-label': `${t}を外す`, onclick: () => save({ tags: r.tags.filter((x) => x !== t) }) }, '×'))), tagInput),
+      tagEditor(r, save),
     ),
     st === 'update' && work ? h('div', { class: 'note warn row', style: 'margin-top:8px' },
       h('span', {}, `新しい版 ${work.version} があります（手元：${r.version}）`),

@@ -118,3 +118,15 @@ mod tests {
         assert!(super::verify(&bad, sig).is_err());
     }
 }
+
+/// GitHub Actions で、登録した秘密鍵で署名したファイルを、埋め込んだ公開鍵で確かめられるか（鍵の組み合わせの確認）
+#[cfg(test)]
+mod ci_key {
+    #[test]
+    fn registered_key_matches() {
+        let Ok(path) = std::env::var("CW_CI_SIGNED") else { return };
+        let data = std::fs::read(&path).expect("署名した試験用ファイル");
+        let sig = std::fs::read_to_string(format!("{path}.sig")).expect("署名");
+        super::verify(&data, &sig).expect("登録した秘密鍵と、アプリの公開鍵が組になっていません");
+    }
+}
