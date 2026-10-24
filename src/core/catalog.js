@@ -29,6 +29,8 @@ export function sanitizeEntry(e) {
       status: STATUS.has(d.status) ? d.status : 'active',
       until: /^\d{4}-\d{2}-\d{2}$/.test(d.until || '') ? d.until : '',
       note: str(d.note, 300),
+      // DLキー（個人用カタログだけで使う。共用カタログの登録フォームには無い）
+      ...(typeof d.dlkey === 'string' && d.dlkey ? { dlkey: d.dlkey.slice(0, 100) } : {}),
     }));
   const compat = {};
   for (const k of ['cw150', 'next', 'py']) compat[k] = COMPAT.has(e.compat?.[k]) ? e.compat[k] : 'unknown';

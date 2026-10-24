@@ -41,6 +41,24 @@ const server = createServer((req, res) => {
       res.end(ok ? `<html><head><meta http-equiv="refresh" content="6;URL=/axe/g/tok-42/12/%E9%B3%A5%E7%B1%A0.zip"></head><body><a href="/axe/g/tok-42/12/%E9%B3%A5%E7%B1%A0.zip">Download Now</a></body></html>` : '<p>エラー</p>');
     });
   }
+  // DLキー → 同意 → ファイル の2段階（斧のDLキー付きと同じ流れの見本）
+  if (req.url === '/keyup/6' && req.method === 'GET') {
+    res.setHeader('set-cookie', 'ku=s1; Path=/');
+    res.setHeader('content-type', 'text/html; charset=UTF-8');
+    return res.end('<html><body><p>ダウンロードパスワードを入力して「認証」ボタンを押下してください。</p><form method="POST"><input type="password" name="password"><input type="submit" value="認証"></form></body></html>');
+  }
+  if (req.url === '/keyup/6' && req.method === 'POST') {
+    let b = ''; req.on('data', (c) => { b += c; });
+    return req.on('end', () => {
+      const q = new URLSearchParams(b);
+      res.setHeader('content-type', 'text/html; charset=UTF-8');
+      if (!/ku=s1/.test(req.headers.cookie || '')) return res.end('<p>エラー</p>');
+      if (q.get('token') === 't2') return res.end('<html><head><meta http-equiv="refresh" content="3;URL=/keyup/g/t2/water.zip"></head><body>まもなく始まります</body></html>');
+      if (q.get('password') === 'mizu') return res.end('<html><body><p>このファイルの利用規約（水の都）に同意してからダウンロードしてください。</p><form method="POST"><input type="hidden" name="token" value="t2"><input type="submit" name="yes" value="ダウンロード"></form></body></html>');
+      return res.end('<html><body><p>パスワードが違います</p><form method="POST"><input type="password" name="password"><input type="submit" value="認証"></form></body></html>');
+    });
+  }
+  if (req.url.startsWith('/keyup/g/t2/')) { res.setHeader('content-type', 'application/zip'); return res.end(readFileSync(join(FX, 'next_nested.zip'))); }
   if (req.url === '/missing.zip') { res.statusCode = 404; return res.end('not found'); }
   if (req.url === '/intro.html') {
     res.setHeader('content-type', 'text/html; charset=utf-8');
@@ -100,7 +118,7 @@ async function run(colorScheme, width) {
 
   // 2. 入れる：Next（二重フォルダ）を _店 に
   await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
-  await page.locator('input[type=file][accept=".zip,.wsn"]').setInputFiles(join(FX, 'next_nested.zip'));
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'next_nested.zip'));
   await page.getByText('うつろい森のあなた', { exact: true }).first().waitFor();
   ok('Next仕様と判定', await page.locator('.badge.next').first().isVisible());
   ok('UTF-8の目印なしの名前を読み直し', await page.getByText(/文字コードを判定して読み直しました/).isVisible());
@@ -112,7 +130,7 @@ async function run(colorScheme, width) {
 
   // 3. 入れる：クラシック（CP932のりどみ）→ りどみ確認が必要
   await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
-  await page.locator('input[type=file][accept=".zip,.wsn"]').setInputFiles(join(FX, 'classic_cp932.zip'));
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'classic_cp932.zip'));
   await page.locator('#readme-view').waitFor();
   await page.waitForFunction(() => document.getElementById('readme-view')?.textContent.includes('髙﨑'));
   ok('CP932のりどみ（①・髙﨑）', true, await page.locator('#readme-enc').textContent());
@@ -124,7 +142,7 @@ async function run(colorScheme, width) {
 
   // 4. 同じものをもう一度 → バックアップ
   await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
-  await page.locator('input[type=file][accept=".zip,.wsn"]').setInputFiles(join(FX, 'classic_cp932.zip'));
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'classic_cp932.zip'));
   await page.getByLabel('りどみを読みました').check();
   await page.getByRole('button', { name: 'インストール' }).click();
   await page.getByText(/にバックアップ/).waitFor();
@@ -132,7 +150,7 @@ async function run(colorScheme, width) {
 
   // 5. Py仕様（.wsn）をNextへ → 遊べない警告
   await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
-  await page.locator('input[type=file][accept=".zip,.wsn"]').setInputFiles(join(FX, 'alice.wsn'));
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'alice.wsn'));
   await page.getByText('アリスの洞窟', { exact: true }).first().waitFor();
   ok('Py仕様をNextに入れようとすると警告', await page.getByText(/CardWirthPyでしか遊べません/).isVisible());
   ok('警告時はインストール不可', await page.getByRole('button', { name: 'インストール' }).isDisabled());
@@ -142,7 +160,7 @@ async function run(colorScheme, width) {
   ok('WebCardWirth用の書き出し', dl.suggestedFilename() === 'alice.wsn', dl.suggestedFilename());
 
   // 6. 危険なzip
-  await page.locator('input[type=file][accept=".zip,.wsn"]').setInputFiles(join(FX, 'zipslip.zip'));
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'zipslip.zip'));
   await page.getByText(/注意 3件/).waitFor();
   ok('危険なパスの警告', true);
 
@@ -177,6 +195,45 @@ async function run(colorScheme, width) {
   await page.locator('.item-title', { hasText: '鳥籠.zip' }).waitFor();
   ok('同意→合言葉とCookieを送信→本物のリンクをたどってzipを取得', await page.getByText('開けられた鳥籠', { exact: true }).first().isVisible());
   if (width > 600) await page.screenshot({ path: join(OUT, `agree-${colorScheme}.png`), fullPage: true });
+
+  // 6b3. DLキー → 同意 → ファイル の2段階。サイトの同意を覚える
+  await page.locator('#url-in').fill('http://localhost:8767/keyup/6');
+  await page.locator('#url-in').press('Enter');
+  await page.getByText('このページは、DLキー（パスワード）を入れてからダウンロードする形式です').waitFor();
+  await page.getByLabel('DLキー').fill('mizu');
+  await page.getByLabel('ページの内容・規約を読んで、同意します').check();
+  await page.getByLabel(/このサイト（localhost）の同意を覚える/).check();
+  await page.getByRole('button', { name: '同意して認証' }).click();
+  await page.getByText('DLキーが通りました。続けて、次の画面の内容に同意してください。').waitFor();
+  ok('DLキーのあとの同意画面を続けて出す', await page.getByText(/利用規約（水の都）/).isVisible());
+  await page.getByLabel('ページの内容・規約を読んで、同意します').check();
+  await page.getByRole('button', { name: '同意してダウンロード' }).click();
+  await page.getByText('うつろい森のあなた', { exact: true }).first().waitFor();
+  ok('DLキー→同意→ファイルの2段階で取得', true);
+
+  // 6b4. LZH・CAB を開く（CABは CardWirth のエディタで作った実物）
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(process.cwd(), 'test/fixtures/sample.lzh'));
+  await page.locator('.item-title', { hasText: 'sample.lzh' }).waitFor();
+  ok('LZHを開ける（日本語の名前）', await page.getByText(/シナリオが見つかりませんでした/).isVisible());
+  if (existsSync(join(FX, 'maigo.cab'))) {
+    await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: 'アナタ迷子ノコナノネ！？.CAB', mimeType: 'application/octet-stream', buffer: readFileSync(join(FX, 'maigo.cab')) });
+    await page.getByText('アナタ迷子ノコナノネ！？', { exact: true }).first().waitFor();
+    ok('CAB（LZX）のシナリオを開ける', await page.locator('.badge.classic').first().isVisible());
+    const ack = page.getByLabel('りどみを読みました');
+    if (await ack.count()) await ack.check();
+    await page.locator('#dest-cat').selectOption('');
+    await page.getByRole('button', { name: 'インストール' }).click();
+    await page.getByText(/アナタ迷子ノコナノネ！？ に入れました/).waitFor();
+    ok('CABのシナリオをインストール', true);
+    await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+  }
+
+  // 6b5. 複数のファイルを選ぶと、まとめて入れる
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles([join(FX, 'classic_cp932.zip'), join(FX, 'alice.wsn')]);
+  await page.getByText('選んだファイルをまとめて入れる（2件）').waitFor();
+  await page.locator('#batch .batch-item').nth(1).getByText('準備OK').waitFor();
+  ok('複数のファイルをまとめて入れる準備', (await page.locator('#batch .batch-item', { hasText: '準備OK' }).count()) === 2);
+  await page.locator('#batch').getByRole('button', { name: 'やめる' }).click();
 
   // 6c. サイトの「CWカタログで入れる」リンクから開かれた場合：確認してから取ってくる
   const link = `http://localhost:8767/#dev-opfs&install=${encodeURIComponent('http://localhost:8767/files/dl.zip')}&name=${encodeURIComponent('開けられた鳥籠')}`;
@@ -215,6 +272,7 @@ async function run(colorScheme, width) {
       await row.getByPlaceholder('名前（例：作者サイト、斧）').fill(d.label);
       await row.getByLabel('種類').selectOption(d.kind);
       if (d.def) await row.getByLabel('デフォルト').check();
+      if (d.dlkey) await row.getByLabel('DLキー').fill(d.dlkey);
     }
     ok(`登録先の個人用カタログは最初から選ばれている（${name}）`, await dlg.getByLabel('マイカタログ').isChecked());
     if (width > 600 && intro) await dlg.screenshot({ path: join(OUT, `edit-${colorScheme}.png`) });
@@ -274,6 +332,16 @@ async function run(colorScheme, width) {
   ok('まとめてインストール', await axe.getByText('Scenario/鳥籠2 に入れました').isVisible());
   if (width > 600) await page.screenshot({ path: join(OUT, `batch-done-${colorScheme}.png`), fullPage: true });
 
+  // 8b. DLキーを登録した作品は、同意を覚えているサイトなら止まらずに取れる
+  await page.getByRole('tab', { name: 'カタログ' }).click();
+  await addWork('水の都', [{ url: 'http://localhost:8767/keyup/6', label: 'おまけ斧', kind: 'page', dlkey: 'mizu' }]);
+  ok('DLキーありの印', await page.locator('.card.work', { hasText: '水の都' }).getByText('DLキーあり').isVisible());
+  await page.getByLabel('水の都を選ぶ').check();
+  await page.getByRole('button', { name: '選んだ1件をまとめてDL' }).click();
+  await page.locator('#batch .batch-item', { hasText: '水の都' }).getByText('準備OK').waitFor();
+  ok('登録したDLキーと覚えた同意で、止まらずに取得', !(await page.locator('#batch .badge', { hasText: '操作待ち' }).count()));
+  await page.locator('#batch').getByRole('button', { name: 'やめる' }).click();
+
   // 9. デフォルトが変わった／候補から外す
   await page.getByRole('tab', { name: 'カタログ' }).click();
   ok('デフォルトのDL先が新サイトに変わった', (await birdCard.locator('.dl li', { hasText: '新サイト' }).getByText('★デフォルト').count()) === 1);
@@ -286,12 +354,14 @@ async function run(colorScheme, width) {
   // 10. 個人用カタログをDL一覧として書き出し → 別のカタログとして読み込む
   await page.getByRole('button', { name: 'カタログの管理' }).click();
   const myRow = page.locator('.src-row', { hasText: 'マイカタログ' });
-  const [dl3] = await Promise.all([page.waitForEvent('download'), myRow.getByRole('button', { name: 'DL一覧として書き出す' }).click()]);
+  await myRow.getByRole('button', { name: 'DL一覧として書き出す' }).click();
+  ok('DLキーがあるときは、書き出すか聞く（最初は書き出さない）', !(await page.getByLabel('DLキーも書き出す').isChecked()));
+  const [dl3] = await Promise.all([page.waitForEvent('download'), page.locator('dialog').getByRole('button', { name: '書き出す' }).click()]);
   const listPath = await dl3.path();
   const list = JSON.parse(readFileSync(listPath, 'utf8'));
-  ok('DL一覧の書き出し（2件・デフォルトが先頭）', list.entries.length === 2 && list.entries.find((e) => e.name === '開けられた鳥籠').downloads[0].label === '新サイト', `${list.entries.length}件`);
+  ok('DL一覧の書き出し（3件・デフォルトが先頭・DLキーは入れない）', list.entries.length === 3 && !JSON.stringify(list).includes('mizu') && list.entries.find((e) => e.name === '開けられた鳥籠').downloads[0].label === '新サイト', `${list.entries.length}件`);
   await page.locator('#list-file').setInputFiles({ name: '有志の一覧.json', mimeType: 'application/json', buffer: readFileSync(listPath) });
-  await page.getByText(/を個人用カタログとして読み込みました（2件）/).waitFor();
+  await page.getByText(/を個人用カタログとして読み込みました（3件）/).waitFor();
   ok('DL一覧を個人用カタログとして読み込み', await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).isVisible());
   await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).getByLabel(/を候補に含める/).uncheck();
   await page.waitForTimeout(300);
@@ -303,7 +373,7 @@ async function run(colorScheme, width) {
   await page.getByRole('button', { name: '読み取る' }).click();
   await page.getByText(/件を読み取りました/).waitFor();
   const cards = page.locator('#mine-list > .card');
-  ok('自分のフォルダ一覧5件（既存・Next・クラシック2か所・鳥籠2）', (await cards.count()) === 5, String(await cards.count()));
+  ok('自分のフォルダ一覧6件（既存・Next・クラシック2か所・鳥籠2・CAB）', (await cards.count()) === (existsSync(join(FX, 'maigo.cab')) ? 6 : 5), String(await cards.count()));
   const first = cards.filter({ hasText: 'うつろい森のあなた' });
   ok('インストール時の版を記録', (await first.locator('input.ver').inputValue()) === '1.00');
   await first.locator('input[aria-label="タグを追加"]').fill('お気に入り');
@@ -332,7 +402,7 @@ async function run(colorScheme, width) {
   const [dl2] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: '書き出す', exact: true }).click()]);
   const recPath = await dl2.path();
   const rec = JSON.parse(readFileSync(recPath, 'utf8'));
-  ok('記録の書き出し（公開形式）', rec.kind === 'cw-catalog-tool/records' && rec.records.length === 5, `${rec.records.length}件`);
+  ok('記録の書き出し（公開形式）', rec.kind === 'cw-catalog-tool/records' && rec.records.length === (existsSync(join(FX, 'maigo.cab')) ? 6 : 5), `${rec.records.length}件`);
 
   // OPFSの中身を確認
   const tree = await page.evaluate(async () => {

@@ -1,7 +1,8 @@
 name: リリース
 
-# v0.1.0 のようなタグを push すると、アプリ版（Windowsインストーラー）とHTML版を作って
+# v0.3.0 のようなタグを push すると、ポータブル版（Windows）とHTML版を作って、
 # 「下書き」のリリースに置く。中身を確認してから GitHub の画面で公開する。
+# 公開すると、アプリの「更新を確認」が latest-portable.json を見つけられるようになる。
 on:
   push:
     tags: ["v*"]
@@ -29,26 +30,39 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: 更新用の公開鍵が設定されているか確認
+      - name: 更新用の鍵が設定されているか確認
         shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if grep -q "ここに更新用の公開鍵を入れる" src-tauri/tauri.conf.json; then
-            echo "::error::src-tauri/tauri.conf.json の plugins.updater.pubkey を設定してください（README の「初めてのリリースの前に」参照）"
-            exit 1
+          if grep -q "NOT-CONFIGURED" src-tauri/update-pubkey.txt; then
+            echo "::error::src-tauri/update-pubkey.txt に公開鍵を入れてください（README の「初めてのリリースの前に」参照）"; exit 1
+          fi
+          if [ -z "$KEY" ]; then
+            echo "::error::リポジトリの Secrets に TAURI_SIGNING_PRIVATE_KEY を登録してください"; exit 1
           fi
 
       # インストール時のスクリプトは .npmrc で無効。ロックファイルどおりに入れる
       - run: npm ci
       - run: npm test
 
-      - name: アプリ版をビルド
+      - name: Rust 側の試験
+        working-directory: src-tauri
+        run: cargo test --release
+
+      - name: ポータブル版をビルド
+        shell: bash
         run: npx tauri build --ci
+
+      - name: 配布物の形に並べて、署名する
+        shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      - name: 自動更新用の latest.json を作る
-        run: node scripts/make-latest-json.mjs
+        run: |
+          node scripts/make-portable.mjs
+          npx tauri signer sign out/CWCatalog.exe
+          node scripts/make-portable.mjs --pack --release
 
       - name: 下書きのリリースを作る
         shell: bash
@@ -56,8 +70,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          EXE=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe)
-          cp dist/web/cw-catalog.html "cw-catalog-${TAG}.html"
+          V="${TAG#v}"
           gh release create "$TAG" --draft --title "CWカタログ $TAG" \
-            --notes "アプリ版：*-setup.exe をダウンロードして実行してください。HTML版：cw-catalog-${TAG}.html をブラウザ（Chrome・Edge）で開くだけで使えます。" \
-            "$EXE" "$EXE.sig" latest.json "cw-catalog-${TAG}.html"
+            --notes "ポータブル版：CWCatalog-v${V}-portable.zip をダウンロードして、好きなフォルダに展開し、CWCatalog.exe を起動してください（インストール不要）。すでに使っている人は、アプリの「設定」→「更新を確認」で更新できます。HTML版：cw-catalog-v${V}.html をブラウザ（Chrome・Edge）で開くだけで使えます。" \
+            release/*

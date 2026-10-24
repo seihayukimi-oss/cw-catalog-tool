@@ -8,7 +8,7 @@ import { playability } from '../core/catalog.js';
 import { S, render, busyText, engine, goTab } from './state.js';
 import { store } from './store.js';
 import { h, toast, modal, fmtSize, formatBadge, sleep } from './ui.js';
-import { tryDownloads, dlLabel, pagePanel, inAppDownload, deliver } from './download.js';
+import { tryDownloads, dlLabel, pagePanel, inAppDownload, deliver, tryAutoAgree } from './download.js';
 import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { readmeModal, installOpened, ensureDir, destFields, engineSelect, watchdog } from './add.js';
 
@@ -24,6 +24,30 @@ let seq = 0;
  * @param {{work: object, record?: object}[]} list record があれば「更新」として、その場所に置き換える
  */
 export function startBatch(list, title = 'まとめてDL') {
+  return startItems(list, title);
+}
+
+/**
+ * 手元のファイル（ダウンロードフォルダ・複数選んだファイル）をまとめて入れる
+ * @param {{name: string, bytes: Uint8Array, zone?: object}[]} files
+ */
+export async function startLocalBatch(files, title = '選んだファイルをまとめて入れる') {
+  if (S.batch?.running || S.batch?.installing) { toast('まとめてDLの途中です。終わってから、もう一度押してください', { bad: true }); return; }
+  const items = files.map((f) => ({
+    id: ++seq, work: null, name: f.name, status: 'fetch', message: '読み込み中…', include: true, ack: false, pick: 0, force: false,
+    target: null, engineId: null, folderName: '', zone: f.zone || null,
+  }));
+  S.batch = { title, items, engineId: S.engineId, cat: '', newCat: '', running: true, installing: false, stop: false, done: false };
+  goTab('add');
+  for (const [i, it] of items.entries()) {
+    await analyze(it, files[i].bytes, files[i].name);
+    render();
+  }
+  S.batch.running = false;
+  render();
+}
+
+function startItems(list, title) {
   if (S.batch?.running || S.batch?.installing) { toast('まとめてDLの途中です。終わってから、もう一度押してください', { bad: true }); return; }
   const seen = new Set();
   const items = [];
@@ -81,6 +105,15 @@ async function runFetch() {
 /** 取ってきた結果を、その作品の欄に入れる */
 async function receive(it, res) {
   if (res.kind === 'zip') return analyze(it, res.bytes, res.fileName);
+  if (res.kind === 'page' && await tryAutoAgree(res.st, itemHandler(it))) {
+    if (it.status === 'fetch') { it.status = 'action'; it.page = res.st; it.message = '同意を覚えているサイトでしたが、取れませんでした。下で確かめてください'; }
+    return;
+  }
+  if (res.kind === 'inapp') {
+    it.status = 'action'; it.page = null; it.blocked = ''; it.inapp = res;
+    it.message = `${res.why}。${S.platform.canInAppBrowse ? '「アプリ内で開いてダウンロード」を押して、サイトのボタンを押してください' : 'ページを開いてDLしたファイルを、この欄にドロップしてください'}`;
+    return;
+  }
   if (res.kind === 'page') {
     it.status = 'action'; it.page = res.st; it.blocked = '';
     it.message = res.st.forms?.length ? '同意（またはDLキー）が必要なページです。下で操作してください' : '配布ページです。下のリンクから取ってください';
@@ -104,10 +137,10 @@ async function analyze(it, bytes, fileName) {
     it.pick = 0;
     it.ack = !o.readmes.length;
     it.folderName = it.target?.folderName || o.scenarios[0].folderName;
-    it.exact = !!(o.source.sha256 && it.work.shas.has(o.source.sha256));
+    it.exact = !!(o.source.sha256 && it.work?.shas.has(o.source.sha256));
     it.status = 'ready';
     it.message = '';
-    it.page = null; it.blocked = '';
+    it.page = null; it.blocked = ''; it.inapp = null;
   } catch (e) {
     it.status = 'error';
     it.message = e.message;
@@ -121,6 +154,7 @@ function itemHandler(it) {
     page: (st) => { it.page = st; it.status = 'action'; render(); },
     blocked: async (url) => { it.page = null; it.blocked = url; it.status = 'action'; it.message = 'ブラウザの制限で直接取れません。ページを開いてDLしたファイルを、この欄にドロップしてください'; render(); await S.platform.openUrl(url); },
     error: (url, message) => toast(`読み込めませんでした：${message}`, { bad: true }),
+    inapp: (res) => { it.inapp = res; it.page = null; it.status = 'action'; render(); },
   };
 }
 
@@ -201,7 +235,7 @@ function itemCard(it) {
   const eng = engOf(it);
   const editable = !S.batch.installing && it.status === 'ready';
   const fileIn = h('input', {
-    type: 'file', accept: '.zip,.wsn', style: 'display:none',
+    type: 'file', accept: '.zip,.wsn,.cab,.lzh,.lha,.7z', style: 'display:none',
     onchange: async (ev) => { const f = ev.target.files[0]; if (f) { await analyze(it, new Uint8Array(await f.arrayBuffer()), f.name); render(); } },
   });
   const card = h('div', { class: `card batch-item ${it.status}`, 'data-batch-drop': it.status === 'action' ? '1' : null },
@@ -216,9 +250,9 @@ function itemCard(it) {
         it.status === 'ready' && it.opened.readmes.length ? h('button', {
           class: 'btn sm', onclick: async () => { const r = await readmeModal(it.opened, it.name); if (r) { it.ack = true; render(); } },
         }, it.ack ? 'りどみ ✓' : 'りどみを読む') : null,
-        it.status === 'error' ? h('button', { class: 'btn sm', onclick: () => { it.status = 'wait'; if (!S.batch.running) runFetch(); else render(); } }, 'もう一度') : null,
+        it.status === 'error' && it.work ? h('button', { class: 'btn sm', onclick: () => { it.status = 'wait'; if (!S.batch.running) runFetch(); else render(); } }, 'もう一度') : null,
         ['wait', 'error', 'action', 'ready'].includes(it.status) && !S.batch.installing ? h('button', { class: 'btn ghost sm', onclick: () => { S.batch.items = S.batch.items.filter((x) => x !== it); if (!S.batch.items.length) S.batch = null; render(); } }, '外す') : null)),
-    h('div', { class: 'meta' }, [it.work.author, `ver ${it.work.version}`, it.used ? `取得元：${dlLabel(it.used)}` : '', it.opened ? `${it.opened.source.name}・${fmtSize(it.opened.source.size)}` : ''].filter(Boolean).join('・')),
+    h('div', { class: 'meta' }, [it.work?.author, it.work ? `ver ${it.work.version}` : '', it.zone?.referrerUrl || it.zone?.hostUrl ? `DL元：${(it.zone.referrerUrl || it.zone.hostUrl).replace(/^https?:\/\//, '').slice(0, 60)}` : '', it.used ? `取得元：${dlLabel(it.used)}` : '', it.opened ? `${it.opened.source.name}・${fmtSize(it.opened.source.size)}` : ''].filter(Boolean).join('・')),
     it.message ? h('div', { class: `small ${it.status === 'error' || it.status === 'failed' ? 'note bad' : 'muted'}` }, it.message) : null,
     it.fellBack && it.status !== 'done' ? h('div', { class: 'small muted' }, `デフォルトの「${dlLabel(it.fellBack.from)}」から取れなかったので、「${dlLabel(it.fellBack.to)}」から取りました。`) : null,
   );
@@ -244,6 +278,9 @@ function itemCard(it) {
     const hd = itemHandler(it);
     card.append(h('div', { class: 'stack', style: 'margin-top:8px' },
       it.page ? pagePanel(it.page, hd, it.work) : null,
+      it.inapp ? h('div', { class: 'row' },
+        S.platform.canInAppBrowse ? h('button', { class: 'btn sm primary', onclick: () => inAppDownload(it.inapp.url, hd, it.inapp.why) }, 'アプリ内で開いてダウンロード') : null,
+        h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(it.inapp.url) }, 'ブラウザで開く')) : null,
       it.blocked ? h('div', { class: 'row' },
         h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(it.blocked) }, 'ページを開く'),
         S.platform.canInAppBrowse ? h('button', { class: 'btn sm', onclick: () => inAppDownload(it.blocked, hd) }, 'アプリ内で開いてダウンロード') : null) : null,
@@ -305,7 +342,7 @@ async function installAll() {
       const { plan, res, archived } = await installOpened({
         opened: it.opened, pick: it.pick, eng, dir: dirs.get(it.engineId || b.engineId),
         cat: it.target ? it.target.cat : cat, folderName: it.folderName.trim() || it.opened.scenarios[it.pick].folderName,
-        version: it.work.version, versionSource: it.exact ? 'catalog' : 'dl', work: it.work, onProgress: prog,
+        version: it.work ? it.work.version : it.opened.scenarios[it.pick].versionGuess || '', versionSource: it.work ? (it.exact ? 'catalog' : 'dl') : 'guess', work: it.work, onProgress: prog,
       });
       it.status = 'done';
       it.message = `${plan.dest} に入れました${res.backup ? `（前のものは ${res.backup} にバックアップ）` : ''}${archived ? `・zipも保存しました` : ''}`;

@@ -5,6 +5,8 @@
 
 const ARCHIVE_EXT = /\.(zip|wsn|cab|lzh|lha|7z|rar)$/i;
 const DL_WORD = /(ダウンロード|ＤＬ|\bDL\b|download|配布|入手)/i;
+// DLキー（パスワード）を送るボタン
+const KEY_WORD = /(認証|送信|確認|進む|ＯＫ|\bOK\b|submit|enter|unlock)/i;
 // アップローダーなどのページにある、作品とは関係ないリンク
 const NAV = /\/(ranking|upload|thumbnail|search|rss|inquire|signup|users|admin|login|rule|contact)(\/|$|\?)/i;
 
@@ -127,7 +129,7 @@ export function extractDownloadForms(html, baseUrl) {
       const name = attr(tag, 'name');
       const value = attr(tag, 'value') ?? (isButton ? unescapeHtml(t[2].replace(/<[^>]+>/g, '')).trim() : '');
       if (type === 'submit' || type === 'image') {
-        if (!submit && DL_WORD.test(value || '')) submit = { name, value };
+        if (!submit && (DL_WORD.test(value || '') || KEY_WORD.test(value || ''))) submit = { name, value };
       } else if (type === 'hidden') {
         if (name) fields.push([name, value]);
       } else if (['text', 'password', ''].includes(type) && name && attr(tag, 'readonly') == null) {
@@ -135,8 +137,11 @@ export function extractDownloadForms(html, baseUrl) {
       }
     }
     if (!submit) continue;
+    // 「認証」「送信」などのボタンは、DLキー（パスワード）の欄があるフォームのときだけ対象にする
+    const isKey = inputs.some((i) => i.type === 'password') || (KEY_WORD.test(submit.value || '') && inputs.some((i) => /pass|key|pwd|\bpw\b|キー|パス|暗証/i.test(`${i.name} ${i.label}`)));
+    if (!DL_WORD.test(submit.value || '') && !isKey) continue;
     if (submit.name) fields.push([submit.name, submit.value]);
-    forms.push({ action: action.href, method, fields, label: submit.value, inputs });
+    forms.push({ action: action.href, method, fields, label: submit.value, inputs, kind: isKey ? 'key' : 'agree' });
   }
   return forms;
 }
@@ -185,4 +190,22 @@ export function parseOgp(html, baseUrl) {
     image,
     site: pick('og:site_name').slice(0, 100),
   };
+}
+
+/**
+ * Googleドライブの「フォルダの中身だけの軽いページ」（embeddedfolderview）から、ファイルの一覧を取り出す
+ * @returns {{url: string, text: string, kind: 'file'|'page'}[]}
+ */
+export function extractDriveFolder(html) {
+  const out = new Map();
+  for (const m of html.matchAll(/<a\b[^>]*?\bhref\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const href = unescapeHtml(m[2]);
+    const id = (href.match(/\/file\/d\/([\w-]{10,})/) || [])[1];
+    const folder = (href.match(/\/folders\/([\w-]{10,})/) || [])[1];
+    if (!id && !folder) continue;
+    const text = unescapeHtml(m[3].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 160);
+    const url = id ? `https://drive.google.com/file/d/${id}/view` : `https://drive.google.com/drive/folders/${folder}`;
+    if (!out.has(url)) out.set(url, { url, text: text || url, kind: id && ARCHIVE_EXT.test(text) ? 'file' : 'page' });
+  }
+  return [...out.values()].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'file' ? -1 : 1)).slice(0, 200);
 }

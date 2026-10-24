@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-assoc-register"
+description = "Enables the assoc_register command without any pre-configured scope."
+commands.allow = ["assoc_register"]
+
+[[permission]]
+identifier = "deny-assoc-register"
+description = "Denies the assoc_register command without any pre-configured scope."
+commands.deny = ["assoc_register"]

@@ -157,6 +157,28 @@ dialog:has(.entry-edit) { width: min(820px, calc(100% - 24px)); }
 .entry-edit textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); }
 input[type="date"] { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
 
+/* 確認の窓：中だけスクロールして、下のボタンはいつも見えるように */
+dialog { max-height: calc(100vh - 24px); overflow: auto; overscroll-behavior: contain; }
+dialog > .stack > .row:last-child, dialog > form > .row:last-child {
+  position: sticky; bottom: -18px; background: var(--panel); margin-bottom: -18px; padding: 10px 0 14px; border-top: 1px solid var(--line); z-index: 1;
+}
+
+/* 「ダウンロード」から選ぶ */
+.dl-pick { max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.dl-pick-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.dl-pick-row:last-child { border-bottom: 0; }
+.dl-pick-row:hover { background: var(--panel-2); }
+
+/* 低い画面では、上の帯を薄く */
+@media (max-height: 700px) {
+  .top-inner { padding-top: 4px; }
+  .brand h1 { font-size: 1.1rem; }
+  nav.tabs { margin-top: 2px; }
+  nav.tabs button { padding: 5px 12px; }
+  main { padding-top: 12px; }
+  .batch-bar { top: 70px; }
+}
+
 @media (max-width: 560px) {
   body { font-size: 14px; }
   .top-inner { padding-top: 8px; }

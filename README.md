@@ -2,8 +2,10 @@
 
 CardWirth（1.50／Next 1.60／Py）のシナリオを、**まとめてDLする・正しいフォルダに入れる・自分のフォルダにあるものを一覧にする・更新を確かめる**ためのツールです。
 
-- **アプリ版**（Windows）：インストールして使う。作者さんのサイトからの直接ダウンロード、配布ページの更新チェック、CardWirthの起動ができる。新しい版が出たらアプリの中から更新できる
+- **アプリ版（ポータブル版・Windows）**：インストール不要。好きなフォルダに置いた `CWCatalog.exe` を起動するだけ。設定や記録は横の `CWCatalog-data` に入るので、やめるときはフォルダごと消せばおしまい。作者さんのサイトからの直接ダウンロード（同意ページ・DLキー・Googleドライブなども）、配布ページの更新チェック、CardWirthの起動ができる。「更新を確認」で、署名を確かめてから新しい版に入れ替えられる
 - **HTML版**：`cw-catalog.html` をChrome・Edgeで開くだけ。インストール不要。WebCardWirth用のzipの書き出しもできる
+
+使い方は、配布物に入っている [はじめに.txt](package/はじめに.txt) にも書いてあります。
 
 どちらも中身（画面と処理）は同じです。
 
@@ -11,7 +13,7 @@ CardWirth（1.50／Next 1.60／Py）のシナリオを、**まとめてDLする�
 
 | | アプリ版 | HTML版 |
 |---|---|---|
-| zip・wsn・展開済みフォルダの中身を分析（形式・版・暗号化・りどみ） | ◯ | ◯ |
+| zip・wsn・cab（LZX・MSZIP）・lzh・7z・展開済みフォルダの中身を分析（形式・版・暗号化・りどみ） | ◯ | ◯ |
 | 文字化けしたファイル名を正しく読み直す（UTF-8／Shift_JIS 自動判定） | ◯ | ◯ |
 | りどみを表示してから、エンジンのScenarioフォルダへインストール | ◯ | ◯（Chrome・Edge） |
 | 同じものがあればバックアップしてから置き換え | ◯ | ◯ |
@@ -23,6 +25,13 @@ CardWirth（1.50／Next 1.60／Py）のシナリオを、**まとめてDLする�
 | 紹介ページ（サイト・X・Misskeyなど）の題名・説明・画像を、DLの前に見る | ◯ | △（ブラウザの制限で読めないことが多い） |
 | まとめてDL（選んだ作品・検索結果・更新あり）→ りどみ確認 → まとめてインストール | ◯ | △（直接取れないものは手でDLしてドロップ） |
 | 元のzip・wsnを、別の保存場所にも残す | ◯ | ◯（Chrome・Edge） |
+| DLキー → 同意 → ファイル の2段階のページ、個人用カタログに登録したDLキー | ◯ | △（同上） |
+| サイトごとに「同意を覚える」（規約の文章が変わったら、もう一度聞く） | ◯ | △（同上） |
+| Googleドライブ・OneDriveの共有リンクを直接DLに直す・期限付きURLの注意 | ◯ | △（同上） |
+| BOOTH・note・Notion・Privatter+ はアプリ内ブラウザで開いて押す（ログインは初回だけ） | ◯ | × |
+| 「ダウンロード」フォルダから選ぶ（ブラウザが残したDL元のURLも読む） | ◯ | × |
+| .wsn のダブルクリック・右クリックの「CWカタログで開く」・cwcatalog:// リンク（設定で登録） | ◯ | × |
+| 窓の大きさを覚える・F11で全画面・文字の拡大縮小 | ◯ | （ブラウザの機能） |
 | 作者さんのサイトからの直接ダウンロード | ◯ | △（ブラウザの制限で取れないことが多い） |
 | URLから取ってくる（配布ページの中のダウンロードリンクを探す） | ◯ | △（読み込みを許可しているサイトだけ） |
 | 同意ページ（斧アップローダーなど）で、本人が同意してからダウンロード | ◯ | △（同上） |
@@ -31,9 +40,9 @@ CardWirth（1.50／Next 1.60／Py）のシナリオを、**まとめてDLする�
 | カタログ外の作品（ブックマーク）の配布ページの変化チェック | ◯ | × |
 | CardWirthの起動 | ◯ | × |
 | WebCardWirth用のzipの書き出し | ◯ | ◯ |
-| アプリ自体の自動更新 | ◯ | （Pages版は開くたびに最新） |
+| アプリ自体の更新（「更新を確認」・起動時の確認は設定でオン・オフ） | ◯ | （Pages版は開くたびに最新） |
 
-**まだできないこと**：lzh・cabの展開、Next→Pyの変換（自己責任での変換機能として追加予定）、スキン・素材のインストール。
+**まだできないこと**：rar の展開、パスワード付きの圧縮ファイル、7z の BZip2・PPMd・BCJ2、Next→Pyの変換（自己責任での変換機能として追加予定）、スキン・素材のインストール。
 
 ## 安全のために
 
@@ -45,7 +54,9 @@ CardWirth（1.50／Next 1.60／Py）のシナリオを、**まとめてDLする�
 - 同意ページは、ページの文章を見せて、本人が「同意します」にチェックしてからでないと送信しません
 - アプリ内ブラウザの窓は外部のページなので、アプリの機能（ファイル操作など）には一切触れられない設定です
 - HTML版は、ファイルに埋め込んだスクリプト以外を実行しない設定（CSP）になっています
-- アプリ版は、ユーザーがダイアログで選んだフォルダにしか触れません（Tauriの権限設定）
+- アプリ版は、ユーザーがダイアログで選んだフォルダにしか触れません（Tauriの権限設定）。選んだフォルダは `CWCatalog-data` に覚えます
+- アプリの更新は、GitHubのリリースからだけ取り、アプリに埋め込んだ公開鍵で署名を確かめてから入れ替えます
+- Windowsへの登録（.wsn・右クリック・cwcatalog://）は、設定で押したときだけ、自分のユーザー用の場所（HKEY_CURRENT_USER）に書きます
 - 部品は最小限にし、版を固定しています（出てから2週間以上たった版のみ。インストール時のスクリプトは無効）
 
 ## データ形式
@@ -78,29 +89,35 @@ CW_FIXTURES=/path/to/fixtures node test/e2e.mjs ./shots   # ブラウザでHTML�
 | `src/app/` | 画面 |
 | `src/platform/browser.js` | HTML版の入れ物（ブラウザのフォルダ書き込み機能） |
 | `src/platform/tauri.js` | アプリ版の入れ物（Tauriのプラグイン） |
-| `src-tauri/` | アプリ版の設定（Rustはプラグインの登録だけ） |
+| `src-tauri/` | アプリ版（Rust）：ポータブル版の土台・更新・ダウンロードフォルダ・Windowsへの登録 |
+| `package/はじめに.txt` | 配布物に入れる説明 |
+| `scripts/make-portable.mjs` | 配布物（zip・latest-portable.json）を作る |
 | `docs/データ形式.md` | 公開している仕様 |
 
 ## 初めてのリリースの前に
 
-アプリの自動更新には、**更新用の署名鍵**（無料・自分で作る）が要ります。Windowsのコード署名証明書とは別物です。
+ポータブル版の更新には、**更新用の署名鍵**（無料・自分で作る）が要ります。Windowsのコード署名証明書とは別物です。
 
 1. 鍵を作る：`npx tauri signer generate -w ~/.tauri/cwcatalog.key`
-2. 表示された**公開鍵**を `src-tauri/tauri.conf.json` の `plugins.updater.pubkey` に貼る
-3. 同じファイルの `endpoints` の `OWNER/cw-catalog-tool` を、自分のリポジトリに書き換える
-4. GitHubのリポジトリの Settings → Secrets and variables → Actions に登録：
-   - `TAURI_SIGNING_PRIVATE_KEY`：秘密鍵ファイルの中身
+2. 公開鍵（`cwcatalog.key.pub` の中身）を `src-tauri/update-pubkey.txt` に入れる（このリポジトリでは設定済み）
+3. GitHubのリポジトリの Settings → Secrets and variables → Actions →「New repository secret」で登録：
+   - `TAURI_SIGNING_PRIVATE_KEY`：秘密鍵ファイル（`cwcatalog.key`）の中身
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：鍵を作ったときのパスワード
-5. 秘密鍵はなくさないように保管する（なくすと、それまでのアプリに更新を届けられなくなる）
+4. 秘密鍵はなくさないように保管する（なくすと、それまでのアプリに更新を届けられなくなる）
 
 ## リリースのしかた
 
-1. `package.json` の `version` を上げる（例：`0.2.0`）
-2. `v0.2.0` というタグを付けて push する
-3. GitHub Actions がアプリ版とHTML版を作り、**下書き**のリリースに置く
-4. 中身を確認して、GitHubの画面で「公開」する → アプリ版を使っている人に更新のお知らせが届く
+1. `package.json` の `version` を上げる（例：`0.3.0`）
+2. `v0.3.0` というタグを付けて push する
+3. GitHub Actions がポータブル版とHTML版を作り、署名して、**下書き**のリリースに置く
+   - `CWCatalog-v0.3.0-portable.zip`（CWCatalog.exe・cw-catalog.html・はじめに.txt）
+   - `CWCatalog.exe` と `latest-portable.json`（アプリの「更新を確認」が見るもの）
+   - `cw-catalog-v0.3.0.html`
+4. 中身を確認して、GitHubの画面で「公開」する → アプリの「更新を確認」で新しい版が見つかるようになる
 
-HTML版は、`main` に入るたびに GitHub Pages にも自動で置かれます（`https://<アカウント>.github.io/cw-catalog-tool/cw-catalog.html`）。
+お試し版（署名なし）は、Actions の「お試し版を作る」→「Run workflow」で作れます。
+
+HTML版は、`main` に入るたびに GitHub Pages にも自動で置かれます（`https://seihayukimi-oss.github.io/cw-catalog-tool/cw-catalog.html`）。
 
 ## おすすめの設定（GitHub）
 

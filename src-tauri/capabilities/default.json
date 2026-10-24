@@ -1,13 +1,24 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "CWカタログの画面に許可すること。ファイル操作の範囲は、ユーザーがダイアログで選んだフォルダだけ（範囲はダイアログ側で自動追加され、persisted-scopeで記憶される）。 アプリ内ブラウザ（dl窓）は外部のページを表示するので、権限は一切与えない。",
+  "description": "CWカタログの画面に許可すること。ファイル操作の範囲は、ユーザーがダイアログで選んだフォルダと、アプリ内ブラウザが受け取ったファイルの置き場（CWCatalog-data\\downloads）だけ。範囲はアプリ側（Rust）で管理し、選んだフォルダは CWCatalog-data に覚える。アプリ内ブラウザ（dl窓）は外部のページを表示するので、権限は一切与えない。",
   "windows": [
     "main"
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-set-fullscreen",
     "allow-open-download-window",
+    "allow-portable-info",
+    "allow-take-open-args",
+    "allow-portable-update-install",
+    "allow-update-key-configured",
+    "allow-downloads-list",
+    "allow-downloads-read",
+    "allow-zone-info",
+    "allow-assoc-status",
+    "allow-assoc-register",
+    "allow-assoc-unregister",
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:allow-read-dir",
@@ -40,19 +51,6 @@
         },
         {
           "path": "**/CardWirthPy.exe"
-        }
-      ]
-    },
-    "updater:default",
-    "process:allow-restart",
-    {
-      "identifier": "fs:scope",
-      "allow": [
-        {
-          "path": "$APPCACHE/downloads"
-        },
-        {
-          "path": "$APPCACHE/downloads/**"
         }
       ]
     }

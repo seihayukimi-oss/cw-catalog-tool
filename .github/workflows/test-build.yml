@@ -1,8 +1,8 @@
 name: お試し版を作る
 
-# GitHub の「Actions」タブ →「お試し版を作る」→「Run workflow」で、Windows用のインストーラーを作る。
-# 自動更新用の署名鍵がなくても作れる（その代わり、この版は自動更新できない）。
+# GitHub の「Actions」タブ →「お試し版を作る」→「Run workflow」で、Windows用のポータブル版を作る。
 # できあがったものは、実行結果のページ下の「Artifacts」からダウンロードできる。
+# zip を開くと、すぐに CWCatalog.exe・cw-catalog.html・はじめに.txt が並ぶ。
 on:
   workflow_dispatch:
 
@@ -29,14 +29,22 @@ jobs:
       - run: npm ci
       - run: npm test
 
-      - name: お試し版をビルド（自動更新なし）
+      - name: Rust 側の試験
+        working-directory: src-tauri
+        run: cargo test --release
+
+      - name: ポータブル版をビルド
         shell: bash
-        run: npx tauri build --ci --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        run: npx tauri build --ci
+
+      - name: 配布物の形に並べる
+        run: node scripts/make-portable.mjs
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: CWCatalog-お試し版
           path: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
-            dist/web/cw-catalog.html
+            out/CWCatalog.exe
+            out/cw-catalog.html
+            out/はじめに.txt
           retention-days: 14

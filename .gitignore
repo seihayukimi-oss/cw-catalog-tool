@@ -5,3 +5,5 @@ src-tauri/gen/
 latest.json
 *.key
 .DS_Store
+out/
+release/

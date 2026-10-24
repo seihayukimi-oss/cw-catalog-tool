@@ -296,7 +296,7 @@ test('同意ページのダウンロードフォームを読み取る（斧と�
   assert.equal(forms.length, 1, '翻訳ボタンなど別サイト行きのフォームは除く');
   assert.deepEqual(forms[0], {
     action: 'https://ux.example-uploader.com/x/download/12', method: 'POST',
-    fields: [['token', '6adb7ba6-354c-4509-8ef9-124ea010e467'], ['yes', 'ダウンロード']], label: 'ダウンロード', inputs: [],
+    fields: [['token', '6adb7ba6-354c-4509-8ef9-124ea010e467'], ['yes', 'ダウンロード']], label: 'ダウンロード', inputs: [], kind: 'agree',
   });
   assert.match(pageText(AXE_1), /利用規約に同意したものとみなします/);
   assert.doesNotMatch(pageText(AXE_1), /ランキング/);
@@ -399,4 +399,81 @@ test('エンジンのフォルダの選び間違いを見分ける', async () =>
   assert.equal((await checkEngineFolder(one)).problem, 'inside');
   assert.equal((await checkEngineFolder(yado)).problem, 'yado');
   assert.equal((await checkEngineFolder(new MemDir('どこか'))).problem, 'noscenario');
+});
+
+// ------------------------------------------------------------ LZH・CAB・7z
+import { archiveKind } from '../src/core/archive.js';
+import { readLzh, crc16 } from '../src/core/lzh.js';
+import { expiresAt, driveId, oneDriveKind, fetchUrlFor, inAppSite, urlAdvice, downloadsFromZone } from '../src/core/urls.js';
+import { extractDriveFolder } from '../src/core/weblink.js';
+
+const tfx = (n) => new Uint8Array(readFileSync(new URL(`./fixtures/${n}`, import.meta.url)));
+
+test('LZH・CAB・7z を開ける（名前はShift_JIS・UTF-16、中身はCRCで確認）', async () => {
+  for (const [f, kind] of [['sample.lzh', 'lzh'], ['sample.cab', 'cab'], ['sample.7z', '7z']]) {
+    const bytes = tfx(f);
+    assert.equal(archiveKind(bytes), kind);
+    const o = await openArchive(bytes, f);
+    const names = o.files.map((x) => x.path).sort();
+    assert.deepEqual(names, ['森/data.bin', '森/りどみ.txt'], f);
+    const txt = decodeText(await o.files.find((x) => x.path.endsWith('.txt')).read());
+    assert.match(txt.text, /^テスト用りどみ①/, f);
+    assert.equal((await o.files.find((x) => x.path.endsWith('.bin')).read()).length, 20000, f);
+  }
+});
+
+test('LZH：Shift_JISの2バイト目が「\\」の文字（ソ・表）を区切りと間違えない', () => {
+  const data = new TextEncoder().encode('hello');
+  const name = new Uint8Array([...encodeCp932('ソフト'), 0x5c, ...encodeCp932('表.txt')]);
+  const body = new Uint8Array([...new TextEncoder().encode('-lh0-'), ...[5, 0, 0, 0, 5, 0, 0, 0], 0, 0, 0, 0, 0x20, 0, name.length, ...name, crc16(data) & 0xff, crc16(data) >> 8]);
+  const lzh = new Uint8Array([body.length, 0, ...body, ...data, 0]);
+  const { entries } = readLzh(lzh);
+  assert.equal(entries[0].name, 'ソフト/表.txt');
+  assert.deepEqual([...entries[0].read()], [...data]);
+});
+
+test('実物：CAB（LZX・窓21ビット）', { skip: !hasFx || !existsSync(join(FX, 'maigo.cab')) }, async () => {
+  const o = await openArchive(fx('maigo.cab'), 'アナタ迷子ノコナノネ！？.CAB');
+  assert.equal(o.files.length, 46);
+  assert.equal(o.scenarios.length, 1);
+  assert.equal(o.scenarios[0].folderName, 'アナタ迷子ノコナノネ！？');
+  assert.ok(o.files.some((x) => x.path === 'ネタバレ防止キャスト/女の人２.bmp'));
+  for (const f of o.files) await f.read(); // CRCは無いので、展開できることだけ
+});
+
+test('配布元のURLの見分け方（期限付き・Googleドライブ・OneDrive・ログインが要るサイト）', () => {
+  const notion = 'https://file.notion.so/f/f/a/b/x.wsn?table=block&id=1&spaceId=a&expirationTimestamp=1792836000000&signature=s&downloadName=x.wsn';
+  assert.equal(expiresAt(notion).toISOString(), '2026-10-24T10:00:00.000Z');
+  assert.equal(urlAdvice(notion, new Date('2026-10-25')).level, 'warn');
+  assert.match(urlAdvice(notion, new Date('2026-10-25')).text, /もう使えなく/);
+  assert.equal(expiresAt('https://cdn.discordapp.com/attachments/1/2/a.zip?ex=6720a000&is=1&hm=2').getTime(), 0x6720a000 * 1000);
+  assert.equal(expiresAt('https://ux.getuploader.com/a/download/1'), null);
+  assert.deepEqual(driveId('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing'), { kind: 'file', id: '1AbCdEfGhIjKlMnOp' });
+  assert.deepEqual(driveId('https://drive.google.com/drive/folders/16NP57gwcu2NThYR8ILVB7TAG8vFspA7L?usp=sharing'), { kind: 'folder', id: '16NP57gwcu2NThYR8ILVB7TAG8vFspA7L' });
+  assert.equal(fetchUrlFor('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view').url, 'https://drive.usercontent.google.com/download?id=1AbCdEfGhIjKlMnOp&export=download');
+  assert.equal(oneDriveKind('https://onedrive.live.com/?id=7FACE5BCD3295F06%21s7&cid=7FACE5BCD3295F06&parId=root'), 'private');
+  assert.equal(oneDriveKind('https://1drv.ms/u/s!AbCd'), 'share');
+  assert.equal(fetchUrlFor('https://1drv.ms/u/s!AbCd').url, 'https://api.onedrive.com/v1.0/shares/u!aHR0cHM6Ly8xZHJ2Lm1zL3UvcyFBYkNk/root/content');
+  assert.equal(inAppSite('https://atelier-cw.booth.pm/items/7248386').site, 'BOOTH');
+  assert.equal(inAppSite('https://note.com/asuka_cw/n/n67a274905e00').site, 'note');
+  assert.equal(inAppSite('https://note.com/asuka_cw'), null);
+  assert.equal(inAppSite('https://wakeful-quarter-c0e.notion.site/etc-1').site, 'Notion');
+});
+
+test('ブラウザのDL元の記録から、登録するDL先を作る', () => {
+  assert.deepEqual(downloadsFromZone({ hostUrl: 'https://example.com/cw/forest_v1.zip', referrerUrl: 'https://example.com/cw/' }),
+    [{ url: 'https://example.com/cw/forest_v1.zip', kind: 'direct' }, { url: 'https://example.com/cw/', kind: 'page' }]);
+  // 期限付きのファイルURLは使わず、DLしたページだけ
+  assert.deepEqual(downloadsFromZone({ hostUrl: 'https://file.notion.so/f/f/a/b/x.wsn?expirationTimestamp=1&signature=s', referrerUrl: 'https://x.notion.site/p' }),
+    [{ url: 'https://x.notion.site/p', kind: 'page' }]);
+  assert.deepEqual(downloadsFromZone({}), []);
+});
+
+test('Googleドライブのフォルダの一覧と、DLキーのフォーム', () => {
+  const links = extractDriveFolder('<div class="flip-entry"><a href="https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=drive_web" target="_blank"><div class="flip-entry-title">森.zip</div></a></div><a href="https://drive.google.com/drive/folders/1ZyXwVuTsRqPoNm">旧版</a>');
+  assert.deepEqual(links.map((l) => [l.text, l.kind]), [['森.zip', 'file'], ['旧版', 'page']]);
+  const forms = extractDownloadForms('<form method="POST"><input type="password" name="password"><input type="submit" value="認証"></form><form><input name="q"><input type="submit" value="送信"></form>', 'https://uu.getuploader.com/x/download/6');
+  assert.equal(forms.length, 1);
+  assert.equal(forms[0].kind, 'key');
+  assert.equal(forms[0].inputs[0].type, 'password');
 });

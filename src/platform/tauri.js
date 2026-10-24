@@ -1,18 +1,21 @@
-// アプリ版（Tauri）の入れ物。
+// アプリ版（Tauri・ポータブル版）の入れ物。
 // ファイル操作・ネット接続・起動は、Tauri公式のプラグインを使う。
 // どのフォルダに触れるかは、ユーザーがダイアログで選んだフォルダだけに限られる
-// （選んだ場所はTauriの許可範囲に追加され、persisted-scopeで次回以降も記憶される）。
+// （選んだ場所はTauriの許可範囲に追加され、exe の横の CWCatalog-data に記憶される）。
 
 import { readDir, readFile, writeFile, mkdir, remove, stat, exists } from '@tauri-apps/plugin-fs';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { fetch as httpFetch } from '@tauri-apps/plugin-http';
 import { openUrl, openPath } from '@tauri-apps/plugin-opener';
-import { check as checkUpdate } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
 import { decodeHtml, fileNameFrom } from '../core/weblink.js';
+import { compareVersions } from '../core/catalog.js';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
+// ポータブル版の更新情報（リリースのときに作る）
+const UPDATE_INFO_URL = 'https://github.com/seihayukimi-oss/cw-catalog-tool/releases/latest/download/latest-portable.json';
+export const ARCHIVE_EXTS = ['zip', 'wsn', 'cab', 'lzh', 'lha', '7z'];
 const join = (a, b) => `${a.replace(/[\\/]+$/, '')}\\${b}`;
 const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
 
@@ -80,11 +83,57 @@ export const platform = {
   canCheckPages: true,
   canUpdateSelf: true,
   canInAppBrowse: true,
+  canPickDownloads: true,
+  canRegisterWindows: true,
+  isPortable: true,
 
   async pickFolder({ title = 'CardWirthのフォルダ（CardWirth.exe がある場所）を選んでください' } = {}) {
     const path = await openDialog({ directory: true, recursive: true, multiple: false, title });
     if (!path) throw Object.assign(new Error('キャンセルされました'), { name: 'AbortError' });
     return { dir: new TauriDir(path), ref: path, label: path };
+  },
+
+  /** zip・wsn などを選んでもらう（DL元のURLも一緒に読む）。複数選べる */
+  async pickArchiveFiles() {
+    const picked = await openDialog({ multiple: true, title: '入れたいシナリオのファイルを選んでください', filters: [{ name: 'シナリオ（zip・wsn・cab・lzh・7z）', extensions: ARCHIVE_EXTS }] });
+    if (!picked || (Array.isArray(picked) && !picked.length)) throw Object.assign(new Error('キャンセルされました'), { name: 'AbortError' });
+    const paths = Array.isArray(picked) ? picked : [picked];
+    return Promise.all(paths.map((p) => this.readPath(p)));
+  },
+
+  /** 渡されたファイル（ダブルクリック・右クリックの「CWカタログで開く」など）を読む */
+  async readPath(path) {
+    const [bytes, zone] = await Promise.all([readFile(path), invoke('zone_info', { path }).catch(() => ({}))]);
+    return { name: baseName(path), bytes, path, zone };
+  },
+
+  /** 「ダウンロード」フォルダの zip・wsn などの一覧（新しい順・DL元のURLつき） */
+  async downloadsList() {
+    return invoke('downloads_list');
+  },
+  async downloadsRead(name) {
+    return new Uint8Array(await invoke('downloads_read', { name }));
+  },
+
+  /** 起動したときに渡されたファイル・リンクと、そのあと渡されたもの */
+  async takeOpenArgs() {
+    return invoke('take_open_args').catch(() => []);
+  },
+  onOpenArgs(cb) {
+    listen('cw-open-args', (ev) => cb(ev.payload || []));
+  },
+
+  async portableInfo() {
+    return invoke('portable_info');
+  },
+
+  async assocStatus() { return invoke('assoc_status'); },
+  async assocRegister() { return invoke('assoc_register'); },
+  async assocUnregister() { return invoke('assoc_unregister'); },
+
+  async toggleFullscreen() {
+    const w = getCurrentWindow();
+    await w.setFullscreen(!(await w.isFullscreen()));
   },
 
   async pickSourceFolder() {
@@ -204,20 +253,23 @@ export const platform = {
     await openPath(p);
   },
 
-  /** アプリ自体の更新を確認する。あれば { version, notes, install() } */
-  async checkSelfUpdate() {
-    const u = await checkUpdate();
-    if (!u) return null;
+  /**
+   * アプリ自体の更新を確認する（ポータブル版）。あれば { version, notes, install() }
+   * 入れ替えは Rust 側で、署名を確かめてから行う。
+   */
+  async checkSelfUpdate(currentVersion) {
+    const r = await httpFetch(UPDATE_INFO_URL, { headers: { 'User-Agent': UA }, cache: 'no-cache' });
+    if (r.status === 404) return null; // まだリリースが無い
+    if (!r.ok) throw new Error(`更新の情報を取れませんでした（${r.status}）`);
+    const info = await r.json();
+    if (!info?.version || !info.url || !info.signature) throw new Error('更新の情報の形が正しくありません');
+    if (compareVersions(info.version, currentVersion) <= 0) return null;
     return {
-      version: u.version,
-      notes: u.body || '',
-      async install(onProgress) {
-        let total = 0, got = 0;
-        await u.downloadAndInstall((ev) => {
-          if (ev.event === 'Started') total = ev.data.contentLength || 0;
-          if (ev.event === 'Progress') { got += ev.data.chunkLength; onProgress?.(got, total); }
-        });
-        await relaunch();
+      version: info.version,
+      notes: typeof info.notes === 'string' ? info.notes : '',
+      keyConfigured: await invoke('update_key_configured').catch(() => false),
+      async install() {
+        await invoke('portable_update_install', { url: info.url, signature: info.signature });
       },
     };
   },

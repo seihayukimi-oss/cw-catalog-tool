@@ -1,0 +1,56 @@
+// ポータブル版の配布物を作る（GitHub Actions で実行）：
+//   out/CWCatalog.exe            … アプリ本体
+//   out/cw-catalog.html          … HTML版
+//   out/はじめに.txt              … 起動・更新・アンインストールのしかた
+//   release/CWCatalog-v○-portable.zip … 上の3つをまとめたもの
+//   release/latest-portable.json … 「更新を確認」が見に行く情報（署名があるときだけ）
+// 使い方：node scripts/make-portable.mjs [--release]
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { writeZip } from '../src/core/zip.js';
+
+const release = process.argv.includes('--release');
+const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+const repo = process.env.GITHUB_REPOSITORY || 'seihayukimi-oss/cw-catalog-tool';
+const tag = process.env.GITHUB_REF_NAME || `v${version}`;
+if (release && tag !== `v${version}`) throw new Error(`タグ ${tag} と package.json の版 ${version} が一致しません`);
+
+// tauri build（bundle なし）でできた exe
+const dir = 'src-tauri/target/release';
+const exeName = ['CWCatalog.exe', 'cw-catalog.exe'].find((n) => existsSync(join(dir, n)))
+  || readdirSync(dir).find((n) => /\.exe$/i.test(n));
+if (!exeName) throw new Error('アプリの exe が見つかりません');
+
+const sig = existsSync('out/CWCatalog.exe.sig') ? readFileSync('out/CWCatalog.exe.sig', 'utf8') : null;
+rmSync('out', { recursive: true, force: true });
+mkdirSync('out', { recursive: true });
+copyFileSync(join(dir, exeName), 'out/CWCatalog.exe');
+if (sig) writeFileSync('out/CWCatalog.exe.sig', sig);
+copyFileSync('dist/web/cw-catalog.html', 'out/cw-catalog.html');
+// メモ帳などで文字化けしないよう、BOM付きのUTF-8・改行はCRLF
+const guide = readFileSync('package/はじめに.txt', 'utf8').replace(/\r?\n/g, '\r\n');
+writeFileSync('out/はじめに.txt', '﻿' + guide);
+console.log(`out/: CWCatalog.exe（${exeName} から）・cw-catalog.html・はじめに.txt`);
+
+if (process.argv.includes('--pack')) {
+  rmSync('release', { recursive: true, force: true });
+  mkdirSync('release', { recursive: true });
+  const folder = `CWCatalog-v${version}`;
+  const files = ['CWCatalog.exe', 'cw-catalog.html', 'はじめに.txt'].map((n) => ({ path: `${folder}/${n}`, data: new Uint8Array(readFileSync(join('out', n))) }));
+  writeFileSync(`release/CWCatalog-v${version}-portable.zip`, writeZip(files));
+  copyFileSync('out/CWCatalog.exe', 'release/CWCatalog.exe');
+  copyFileSync('dist/web/cw-catalog.html', `release/cw-catalog-v${version}.html`);
+  if (release) {
+    if (!sig) throw new Error('署名（out/CWCatalog.exe.sig）がありません。TAURI_SIGNING_PRIVATE_KEY を設定してください');
+    const notesFile = process.env.RELEASE_NOTES_FILE;
+    const latest = {
+      version,
+      notes: notesFile && existsSync(notesFile) ? readFileSync(notesFile, 'utf8') : `CWカタログ ${version}`,
+      pub_date: new Date().toISOString(),
+      url: `https://github.com/${repo}/releases/download/${tag}/CWCatalog.exe`,
+      signature: sig.trim(),
+    };
+    writeFileSync('release/latest-portable.json', JSON.stringify(latest, null, 2));
+  }
+  console.log(`release/: ${readdirSync('release').join('・')}`);
+}

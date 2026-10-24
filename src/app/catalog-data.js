@@ -193,7 +193,7 @@ export async function saveOwnEntry(entry, { origKey = '', targetIds = [] }) {
 }
 
 /** 人に渡せるDL一覧（JSON）にする */
-export function exportSource(src) {
+export function exportSource(src, { includeKeys = false } = {}) {
   const cat = S.catalogs.get(src.id);
   const out = exportPersonal(src.name, cat.entries, { hidden: src.hidden, tool: `CWカタログ ${APP_VERSION}` });
   out.authors = cat.authors || {};
@@ -201,8 +201,9 @@ export function exportSource(src) {
   // デフォルトのDL先にしているものを先頭にしておく（受け取った人もそこから取る）
   out.entries = out.entries.map((e) => {
     const d = def(e);
-    if (!d) return e;
-    const dl = [...e.downloads].sort((a, b) => (b.url === d) - (a.url === d));
+    let dl = d ? [...e.downloads].sort((a, b) => (b.url === d) - (a.url === d)) : e.downloads;
+    // DLキーは、選んだときだけ書き出す
+    if (!includeKeys) dl = dl.map(({ dlkey, ...rest }) => rest);
     return { ...e, downloads: dl };
   });
   return out;

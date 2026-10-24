@@ -5,6 +5,7 @@ import { planInstall, performInstall, exportForWeb } from '../core/install.js';
 import { decodeText } from '../core/text.js';
 import { playability } from '../core/catalog.js';
 import { matchWork } from '../core/catalogs.js';
+import { downloadsFromZone } from '../core/urls.js';
 import { S, render, busy, busyText, engine, dirOf, goTab } from './state.js';
 import { store, recordId } from './store.js';
 import { h, toast, modal, fmtSize, formatBadge } from './ui.js';
@@ -12,6 +13,7 @@ import { applyCatalog } from './catalog-data.js';
 import { viewUrlBox } from './download.js';
 import { viewBatch } from './batch.js';
 import { editEntry } from './catalog-view.js';
+import { openLocalFiles, pickFiles, pickDownloads } from './localfiles.js';
 
 export const VERSION_SOURCE = { catalog: '（カタログで確定）', dl: '（カタログからDLした版）', user: '（手入力）', guess: '（名前から推測）' };
 
@@ -35,7 +37,15 @@ export function setupDrop() {
         if (FsaDirFromHandle) return openSource(() => openFolder(FsaDirFromHandle(handle)));
       }
     }
-    const file = e.dataTransfer.files[0];
+    const files = [...e.dataTransfer.files].filter((f) => /\.(zip|wsn|cab|lzh|lha|7z|rar)$/i.test(f.name) || e.dataTransfer.files.length === 1);
+    if (files.length > 1) {
+      // 複数ドロップしたら、まとめて入れる
+      const list = [];
+      for (const f of files) list.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+      await openLocalFiles(list);
+      return;
+    }
+    const file = files[0] || e.dataTransfer.files[0];
     await openSource(async () => openArchive(new Uint8Array(await file.arrayBuffer()), file.name));
   });
 }
@@ -49,6 +59,8 @@ export async function openSource(fn, work = null) {
   const opened = await busy('分析中', fn);
   if (!opened) return;
   S.opened = opened;
+  S.openedZone = S.pendingZone || null; // ダウンロードフォルダなどから開いたときの「DL元」
+  S.pendingZone = null;
   S.pick = 0;
   S.readmeIdx = 0;
   S.readmeEnc = '';
@@ -73,17 +85,23 @@ function defaultVersion(sc) {
 
 export function viewAdd() {
   const fileInput = h('input', {
-    type: 'file', accept: '.zip,.wsn', style: 'display:none',
+    type: 'file', accept: '.zip,.wsn,.cab,.lzh,.lha,.7z', style: 'display:none', multiple: true,
     onchange: async (ev) => {
-      const f = ev.target.files[0];
-      if (f) await openSource(async () => openArchive(new Uint8Array(await f.arrayBuffer()), f.name));
+      const fs = [...ev.target.files];
+      if (fs.length > 1) {
+        const list = [];
+        for (const f of fs) list.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+        await openLocalFiles(list);
+      } else if (fs[0]) await openSource(async () => openArchive(new Uint8Array(await fs[0].arrayBuffer()), fs[0].name));
+      ev.target.value = '';
     },
   });
   const drop = h('div', { class: 'drop stack' },
-    h('div', { class: 'big' }, 'zip・wsn をここにドロップ'),
-    h('div', { class: 'small muted' }, '展開済みのフォルダもドロップできます（Chrome・Edge・アプリ版）'),
+    h('div', { class: 'big' }, 'zip・wsn・cab・lzh・7z をここにドロップ'),
+    h('div', { class: 'small muted' }, '展開済みのフォルダもドロップできます（Chrome・Edge・アプリ版）。複数のファイルは、まとめて入れられます'),
     h('div', { class: 'row', style: 'justify-content:center' },
-      h('button', { class: 'btn', onclick: () => fileInput.click() }, 'ファイルを選ぶ'),
+      h('button', { class: 'btn', onclick: () => (S.platform.pickArchiveFiles ? pickFiles() : fileInput.click()) }, 'ファイルを選ぶ'),
+      S.platform.canPickDownloads ? h('button', { class: 'btn', onclick: pickDownloads }, '「ダウンロード」から選ぶ') : null,
       S.platform.canWriteFolders ? h('button', { class: 'btn', onclick: () => openSource(async () => openFolder(await S.platform.pickSourceFolder())) }, 'フォルダを選ぶ') : null),
     fileInput);
   const batch = S.batch ? viewBatch() : null;
@@ -112,7 +130,8 @@ export function viewAdd() {
       h('div', { class: 'row' },
         sc ? h('button', { class: 'btn sm', onclick: () => editEntry({ prefill: prefillFromOpened() }) }, work ? '個人用カタログに追加・編集' : '個人用カタログに登録') : null,
         h('button', { class: 'btn ghost', onclick: () => { S.opened = null; render(); } }, '閉じる'))),
-    o.nonUtf8Names ? h('p', { class: 'note ok small' }, `UTF-8の目印が無いファイル名 ${o.nonUtf8Names}件 を、文字コードを判定して読み直しました。`) : null,
+    o.nonUtf8Names ? h('p', { class: 'note ok small' }, `日本語のファイル名 ${o.nonUtf8Names}件 を、文字コードを判定して読み直しました。`) : null,
+    S.openedZone ? h('p', { class: 'small muted', style: 'margin:6px 0 0;word-break:break-all' }, `DL元（ブラウザの記録）：${S.openedZone.referrerUrl || S.openedZone.hostUrl}`) : null,
     work ? h('p', { class: 'note ok small' }, `カタログの「${work.name}」ver ${work.version} ${S.matchBy === 'sha256' ? 'とファイルが一致しました（版まで確定）' : S.openedVia === 'catalog' ? 'から取ってきました' : 'と名前が一致しました'}。`) : null,
     o.warnings?.length ? h('details', { class: 'small' }, h('summary', {}, `注意 ${o.warnings.length}件`), h('ul', {}, o.warnings.map((w) => h('li', {}, w)))) : null,
   ));
@@ -438,11 +457,15 @@ function prefillFromOpened() {
   const w = S.openedWork;
   if (w) return { work: w };
   const url = S.lastUrl && /^https?:\/\//.test(S.lastUrl) ? S.lastUrl : '';
+  const fromZone = downloadsFromZone(S.openedZone);
+  const downloads = fromZone.length
+    ? fromZone.map((d) => ({ url: d.url, label: '', kind: d.kind, status: 'active', note: '' }))
+    : url ? [{ url, label: '', kind: /\.(zip|wsn|cab|lzh|lha|7z)(\?|$)/i.test(url) ? 'direct' : 'page', status: 'active', note: '' }] : [];
   return {
     entry: {
       name: sc.name, author: sc.author, version: sc.versionGuess || '', format: sc.format === 'none' ? 'classic' : sc.format,
       wsn_version: sc.wsnVersion ?? null, description: (sc.description || '').trim().slice(0, 2000), tags: [], intro: [],
-      downloads: url ? [{ url, label: '', kind: /\.(zip|wsn)(\?|$)/i.test(url) ? 'direct' : 'page', status: 'active', note: '' }] : [],
+      downloads,
       file: { name: o.source.kind === 'archive' ? o.source.name : '', sha256: o.source.sha256 || '' },
     },
   };

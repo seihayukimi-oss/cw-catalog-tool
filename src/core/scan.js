@@ -82,12 +82,8 @@ export async function scanScenarioFolder(engineRoot, { onProgress } = {}) {
 
     for (const f of files) {
       const n = f.name.toLowerCase();
-      if (!/\.(wsn|zip|cab|lzh)$/.test(n)) continue;
+      if (!/\.(wsn|zip|cab|lzh|lha|7z)$/.test(n)) continue;
       const path = `${rel}/${f.name}`;
-      if (/\.(cab|lzh)$/.test(n)) {
-        items.push({ path, type: 'archive', name: f.name, author: '', format: 'unknown', note: '未解析（cab・lzh）' });
-        continue;
-      }
       const size = await dir.fileSize(f.name).catch(() => 0);
       if (size > MAX_ARCHIVE_SCAN) {
         items.push({ path, type: 'archive', name: f.name, author: '', format: 'unknown', note: '大きいため未解析' });

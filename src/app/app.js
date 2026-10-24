@@ -14,9 +14,11 @@ import { store, recordId, exportRecords, importRecords } from './store.js';
 import { h, toast, modal, fmtDate, formatBadge, sleep } from './ui.js';
 import { loadCatalogs, applyCatalog, workOf, refreshSource, refreshStates } from './catalog-data.js';
 import { viewAdd, setupDrop, VERSION_SOURCE } from './add.js';
-import { downloadWork, handleInstallLink, viewLinkMaker } from './download.js';
-import { viewCatalog, prefsBlock } from './catalog-view.js';
+import { downloadWork, handleInstallLink, viewLinkMaker, loadConsents, viewConsents } from './download.js';
+import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
 import { startBatch } from './batch.js';
+import { setupShell, startShell, viewAppSettings } from './appshell.js';
+import { ownSources, saveOwnEntry } from './catalog-data.js';
 
 const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
 
@@ -29,6 +31,8 @@ export async function startApp(platform) {
   S.categories = (await store.get('categories')) || {};
   S.archive = { on: false, ref: null, label: '', ...((await store.get('archive')) || {}) };
   await loadCatalogs();
+  await loadConsents();
+  await setupShell();
   S.records = await store.records();
   if (S.records.some((r) => r.entryId && !('workKey' in r))) await refreshStates(); // 0.1.4 までの記録を新しい形に
   for (const e of S.engines) {
@@ -41,7 +45,7 @@ export async function startApp(platform) {
   setupDrop();
   render();
   handleInstallLink();
-  if (platform.canUpdateSelf) setTimeout(() => checkSelf(false), 3000);
+  startShell();
 }
 
 // ------------------------------------------------------------ 描画
@@ -86,6 +90,7 @@ function viewMine() {
   if (S.filter.mineState) recs = recs.filter((r) => (S.filter.mineState === 'missing' ? r.missing : (r.state || 'none') === S.filter.mineState));
   recs.sort((a, b) => (b.state === 'update') - (a.state === 'update') || (a.path || '').localeCompare(b.path || '', 'ja'));
   const updates = S.records.filter((r) => r.state === 'update' && workOf(r) && r.type !== 'bookmark');
+  const outside = recordsOf().filter((r) => !r.missing && r.type !== 'bookmark' && !workOf(r) && r.name);
 
   const list = h('div', { class: 'list', id: 'mine-list' }, recs.length ? recs.map(recordCard) : h('p', { class: 'empty' }, recordsOf().length ? '見つかりませんでした' : 'まだ記録がありません。「読み取る」を押してください'));
 
@@ -100,6 +105,7 @@ function viewMine() {
         h('button', { class: 'btn', onclick: checkUpdates }, '更新チェック'),
         updates.length ? h('button', { class: 'btn primary', onclick: () => startBatch(updates.map((r) => ({ work: workOf(r), record: r })), '更新ありをまとめてDL') }, `更新ありをまとめてDL（${updates.length}件）`) : null,
         h('button', { class: 'btn', onclick: addBookmark }, 'カタログ外を登録'),
+        outside.length ? h('button', { class: 'btn', onclick: () => registerOutside(outside) }, `カタログ外を個人用カタログにまとめて登録（${outside.length}件）`) : null,
         S.platform.kind === 'app' && e.kind !== 'wcw' ? h('button', { class: 'btn', onclick: () => busy('起動', () => S.platform.launch(e.ref, e.kind)) }, '起動') : null,
       ),
       h('div', { class: 'row', style: 'margin-top:10px' },
@@ -147,6 +153,7 @@ function recordCard(r) {
         r.readmes?.length ? h('button', { class: 'btn ghost', onclick: () => showReadmes(r) }, 'りどみ') : null,
         r.pageUrl ? h('button', { class: 'btn ghost', onclick: () => S.platform.openUrl(r.pageUrl) }, '配布ページ') : null,
         work ? h('button', { class: 'btn ghost', onclick: () => { S.filter.cat = work.name; S.filter.catSource = ''; goTab('catalog'); } }, 'カタログ') : null,
+        !work && r.type !== 'bookmark' && r.name ? h('button', { class: 'btn ghost', onclick: () => editEntry({ prefill: { entry: entryFromRecord(r) } }) }, '個人用カタログに登録') : null,
         r.missing || r.type === 'bookmark' ? h('button', { class: 'btn ghost danger', onclick: async () => { await store.deleteRecord(r.id); S.records = S.records.filter((x) => x.id !== r.id); render(); } }, '削除') : null,
       )),
     h('div', { class: 'meta' }, [r.author, r.type === 'bookmark' ? r.pageUrl : r.path].filter(Boolean).join('　')),
@@ -442,8 +449,10 @@ function viewSettings() {
         h('button', { class: 'btn', onclick: async () => { const j = await exportRecords(APP_VERSION); await S.platform.saveFile(`cwcatalog-records-${new Date().toISOString().slice(0, 10)}.json`, new TextEncoder().encode(JSON.stringify(j, null, 2))); } }, '書き出す'),
         h('button', { class: 'btn', onclick: () => importIn.click() }, '読み込む'), importIn)),
 
-    S.platform.canUpdateSelf ? h('div', {}, h('h2', {}, 'アプリの更新'),
-      h('div', { class: 'card row' }, h('span', { class: 'grow' }, `今の版：${APP_VERSION}`), h('button', { class: 'btn', onclick: () => checkSelf(true) }, '更新を確認'))) : null,
+    viewAppSettings(),
+
+    h('h2', {}, '同意を覚えているサイト'),
+    viewConsents(),
 
     h('h2', {}, 'このツールについて'),
     h('div', { class: 'card small stack' },
@@ -490,20 +499,44 @@ async function reconnect(e) {
   });
 }
 
-async function checkSelf(manual) {
-  try {
-    const u = await S.platform.checkSelfUpdate();
-    if (!u) { if (manual) toast('最新の版です'); return; }
-    const ok = await modal((close) => h('div', { class: 'stack' },
-      h('h2', {}, `新しい版 ${u.version} があります`),
-      u.notes ? h('pre', { class: 'readme' }, u.notes) : null,
-      h('div', { class: 'row', style: 'justify-content:flex-end' },
-        h('button', { class: 'btn', onclick: () => close(false) }, 'あとで'),
-        h('button', { class: 'btn primary', onclick: () => close(true) }, '更新して再起動'))));
-    if (ok) await busy('アプリを更新中', () => u.install());
-  } catch (e) {
-    if (manual) toast(`更新を確認できませんでした：${e.message}`, { bad: true });
-  }
+/** 自分のフォルダにあるシナリオから、個人用カタログの作品の下書きを作る */
+function entryFromRecord(r) {
+  return {
+    name: r.name, author: r.author || '', version: r.version || r.versionGuess || '',
+    format: ['classic', 'next', 'wsn'].includes(r.format) ? r.format : 'classic', wsn_version: r.wsnVersion ?? null,
+    description: '', tags: [...(r.tags || [])], intro: [], downloads: r.pageUrl ? [{ url: r.pageUrl, label: '', kind: 'page', status: 'active', note: '' }] : [],
+    file: { name: '', sha256: r.sha256 || '' },
+  };
+}
+
+/** カタログ外の作品を、個人用カタログにまとめて登録する（DL先はあとから足す） */
+async function registerOutside(list) {
+  const own = ownSources();
+  const preset = new Set(S.catPrefs.addTo === 'all' ? own.map((s) => s.id) : own.slice(0, 1).map((s) => s.id));
+  const boxes = own.map((s) => ({ s, box: h('input', { type: 'checkbox', checked: preset.has(s.id) }) }));
+  const ok = await modal((close) => h('div', { class: 'stack' },
+    h('h2', {}, 'カタログ外をまとめて登録'),
+    h('p', { style: 'margin:0' }, `「${engine()?.name || ''}」のカタログ外の作品 ${list.length}件 を、個人用カタログに登録します。`),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'DL先は空のまま登録するので、あとから「カタログ」タブの「編集」で足してください。作品名・作者・形式・タグ・バージョンは、フォルダの中身から入れます。'),
+    own.length ? h('div', {}, h('div', { class: 'small muted' }, '入れる個人用カタログ'), h('div', { class: 'row' }, boxes.map((b) => h('label', { class: 'check' }, b.box, b.s.name)))) : h('p', { class: 'small muted' }, '個人用カタログ「マイカタログ」を作って入れます。'),
+    h('div', { class: 'row', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
+      h('button', { class: 'btn primary', onclick: () => close(true) }, '登録する'))));
+  if (!ok) return;
+  await busy('個人用カタログに登録', async () => {
+    let ids = boxes.filter((b) => b.box.checked).map((b) => b.s.id);
+    if (!ids.length) {
+      if (own.length) throw new Error('入れる個人用カタログを1つ以上選んでください');
+      const { createOwn } = await import('./catalog-data.js');
+      ids = [(await createOwn('マイカタログ')).id];
+    }
+    for (const r of list) {
+      const e = entryFromRecord(r);
+      await saveOwnEntry({ id: 'p00000', owner: '', type: 'scenario', compat: undefined, convert: 'self', requires: [], related: [], links: [], readme: '', level: null, updated: '', ...e, compat: e.format === 'wsn' ? { cw150: 'no', next: 'no', py: 'expected' } : e.format === 'next' ? { cw150: 'no', next: 'expected', py: 'unknown' } : { cw150: 'expected', next: 'expected', py: 'expected' } }, { targetIds: ids });
+    }
+    await refreshStates();
+    toast(`${list.length}件を個人用カタログに登録しました。DL先は「カタログ」タブの「編集」で足せます`, { ms: 9000 });
+  });
 }
 
 export const _test = { S, compareVersions };
