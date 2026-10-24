@@ -9,7 +9,7 @@ import { h, toast, modal, fmtDate, formatBadge } from './ui.js';
 import {
   addShared, importList, createOwn, removeSource, setEnabled, setHidden, setHiddenMany, refreshSource, saveSources, exportSource,
   saveOwnEntry, ownSources, sourceById, setDefaultUrl, defaultUrlOf, setCatPrefs, refreshStates,
-  foldersOf, createFolder, renameFolder, deleteFolder, moveFolder, putInFolder, takeOutOfFolder,
+  foldersOf, createFolder, renameFolder, deleteFolder, moveFolder, putInFolder, takeOutOfFolder, labelsOf, importLabels,
 } from './catalog-data.js';
 import { store } from './store.js';
 import { isFavWork, isFavFolder, inFavorites, setFavWorks, toggleFavFolder } from './tags.js';
@@ -220,10 +220,11 @@ function workCard(w, mine) {
   const head = h('div', { class: 'row between' },
     h('div', { class: 'row' }, sel,
       h('button', { class: `btn ghost sm star${isFavWork(w.key) ? ' on' : ''}`, 'aria-label': `${w.name}をお気に入りにする`, 'aria-pressed': isFavWork(w.key) ? 'true' : 'false', title: isFavWork(w.key) ? 'お気に入りから外す' : 'お気に入りにする', onclick: async () => { await setFavWorks([w.key], !isFavWork(w.key)); render(); } }, isFavWork(w.key) ? '★' : '☆'),
-      h('span', { class: 'item-title' }, w.name), w.type && w.type !== 'scenario' ? h('span', { class: 'badge plain' }, '素材・スキン') : formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
+      h('span', { class: 'item-title' }, w.name), w.type && w.type !== 'scenario' ? h('span', { class: 'badge plain' }, w.type === 'skin' ? 'スキン' : '素材') : formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
       mine ? h('span', { class: `badge ${mine.state === 'update' ? 'update' : 'ok'}` }, mine.state === 'update' ? `入っている版 ${mine.version}→${w.version}` : 'フォルダにあり') : null,
       hiddenHere ? h('span', { class: 'badge plain' }, '候補から外しています') : null,
-      foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name))),
+      foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name)),
+      w.listFound ? h('span', { class: 'badge update', title: `ファイル一覧（${w.listFound.list}）で見つけたファイル：${w.listFound.name}` }, `一覧の最新 ${w.listFound.version ? `ver ${w.listFound.version}` : w.listFound.name}`) : null),
     h('div', { class: 'row' },
       h('button', { class: 'btn primary sm', disabled: !def, onclick: () => downloadWork(w) }, 'ダウンロード'),
       open ? h('button', { class: 'btn sm', onclick: () => editEntry({ work: w }) }, inOwn ? '編集' : '個人用カタログへ') : null,
@@ -247,7 +248,7 @@ function workCard(w, mine) {
       return h('li', { class: d.status },
         isDef ? h('span', { class: 'badge ok', title: '「ダウンロード」を押すと、ここから取ります' }, '★デフォルト') : null,
         h('span', {}, dlLabel(d)),
-        h('span', { class: 'badge plain' }, d.kind === 'direct' ? '直接DL' : 'ページ経由'),
+        h('span', { class: 'badge plain' }, d.kind === 'direct' ? '直接DL' : d.kind === 'list' ? 'ファイル一覧' : d.fromList ? '一覧で見つけた最新' : 'ページ経由'),
         h('span', { class: `badge ${age === 'new' ? 'plain' : age === 'closed' ? 'bad' : 'plain'}` }, `${AGE[age]}${age === 'closed' && d.until ? ` ${d.until}` : ''}`),
         h('span', { class: 'badge plain' }, ROLE[role]),
         d.dlkey ? h('span', { class: 'badge plain', title: '個人用カタログに登録したDLキーを、同意画面に入れます' }, 'DLキーあり') : null,
@@ -328,7 +329,12 @@ async function fetchOgp(url) {
 }
 
 // ------------------------------------------------------------ カタログの管理
-const after = async (fn, msg) => busy('カタログ', async () => { const r = await fn(); await refreshStates(); if (msg) toast(typeof msg === 'function' ? msg(r) : msg); });
+const after = async (fn, msg) => {
+  const r = await busy('カタログ', async () => { const x = await fn(); await refreshStates(); if (msg) toast(typeof msg === 'function' ? msg(x) : msg); return x; });
+  // 読み込んだカタログにラベルが付いていれば、取り込むかどうか聞く
+  if (r?.id && r.kind !== 'own' && labelsOf(r).length && !r.labelAsked) { r.labelAsked = true; await saveSources(); await labelDialog(r); }
+  return r;
+};
 
 export function viewManage(open) {
   if (!open) {
@@ -432,11 +438,13 @@ async function sourceMenu(s) {
     s.url && s.url !== 'sample' ? h('p', { class: 'small muted', style: 'margin:0;word-break:break-all' }, s.url) : s.fileName ? h('p', { class: 'small muted', style: 'margin:0' }, `ファイル：${s.fileName}`) : null,
     h('div', { class: 'stack menu-list' },
       s.kind !== 'shared' ? h('button', { class: 'btn', onclick: () => close('export') }, 'DL一覧として書き出す（人に渡せるファイル）') : null,
+      labelsOf(s).length ? h('button', { class: 'btn', onclick: () => close('labels') }, `ラベルを取り込む（${labelsOf(s).length}種類${s.labelSync ? '・自動で取り込み中' : ''}）`) : null,
       s.kind === 'sub' ? h('button', { class: 'btn', onclick: () => close('copy') }, 'コピーして自分用にする（自由に直せるようになります）') : null,
       h('button', { class: 'btn', onclick: () => close('rename') }, '名前を変える'),
       h('button', { class: 'btn danger', onclick: () => close('delete') }, s.kind === 'own' ? '削除する' : '外す')),
     h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn', onclick: () => close(null) }, '閉じる'))));
   if (act === 'export') return exportList(s);
+  if (act === 'labels') return labelDialog(s);
   if (act === 'copy') { const name = await askName('自分用にコピー', `${s.name}（コピー）`); if (name) after(() => createOwn(name, s), `「${name}」を作りました。こちらは自由に直せます`); return; }
   if (act === 'rename') { const name = await askName('名前を変える', s.name); if (name) { s.name = name; s.renamed = true; await saveSources(); after(async () => {}); } return; }
   if (act === 'delete') {
@@ -446,25 +454,73 @@ async function sourceMenu(s) {
 }
 
 async function exportList(s) {
-  const hasKeys = (S.catalogs.get(s.id)?.entries || []).some((e) => e.downloads.some((d) => d.dlkey));
+  const entries = S.catalogs.get(s.id)?.entries || [];
+  const hasKeys = entries.some((e) => e.downloads.some((d) => d.dlkey));
+  // このカタログの作品が入っているフォルダ（ラベルとして書き出せる）
+  const keys = new Set(entries.map((e) => workKey(e)));
+  const folders = S.folders.list.map((f) => ({ f, n: [...keys].filter((k) => (S.folders.map[k] || []).includes(f.id)).length })).filter((x) => x.n);
   let includeKeys = false;
-  if (hasKeys) {
-    const box = h('input', { type: 'checkbox' });
+  let labels = null;
+  if (hasKeys || folders.length) {
+    const box = h('input', { type: 'checkbox', 'aria-label': 'DLキーも書き出す' });
+    const labelOn = h('input', { type: 'checkbox', checked: true, id: 'export-labels', 'aria-label': 'フォルダをラベルとして書き出す' });
+    const picks = folders.map((x) => ({ ...x, box: h('input', { type: 'checkbox', checked: true, 'aria-label': `${x.f.name}を書き出す` }) }));
+    const pickBox = h('div', { class: 'row tag-pick' }, picks.map((p) => h('label', { class: 'chip' }, p.box, p.f.name, h('span', { class: 'n' }, p.n))));
+    labelOn.addEventListener('change', () => { pickBox.hidden = !labelOn.checked; });
     const go = await modal((close) => h('div', { class: 'stack' },
       h('h2', {}, 'DL一覧として書き出す'),
-      h('p', { style: 'margin:0' }, `「${s.name}」には、DLキーを入れた作品があります。`),
-      h('label', { class: 'check' }, box, 'DLキーも書き出す'),
-      h('p', { class: 'small muted', style: 'margin:0' }, '作者さんによっては、サイトに来てDLキーと注意書きを見てほしいと考えています。人に渡すときは、書き出さないのがおすすめです。'),
+      folders.length ? h('div', { class: 'stack' },
+        h('label', { class: 'check' }, labelOn, 'フォルダ（作者さんごと・企画ごとなどの分け方）を、ラベルとして一緒に書き出す'),
+        pickBox,
+        h('p', { class: 'small muted', style: 'margin:0' }, '受け取った人は、ラベルを取り込むかどうか、どのラベルを取り込むかを選べます。')) : null,
+      hasKeys ? h('div', { class: 'stack' },
+        h('p', { style: 'margin:0' }, `「${s.name}」には、DLキーを入れた作品があります。`),
+        h('label', { class: 'check' }, box, 'DLキーも書き出す'),
+        h('p', { class: 'small muted', style: 'margin:0' }, '作者さんによっては、サイトに来てDLキーと注意書きを見てほしいと考えています。人に渡すときは、書き出さないのがおすすめです。')) : null,
       h('div', { class: 'row', style: 'justify-content:flex-end' },
         h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
         h('button', { class: 'btn primary', onclick: () => close(true) }, '書き出す'))));
     if (!go) return;
     includeKeys = box.checked;
+    if (folders.length && labelOn.checked) labels = new Set(picks.filter((p) => p.box.checked).map((p) => p.f.id));
   }
-  const json = exportSource(s, { includeKeys });
+  const json = exportSource(s, { includeKeys, labels });
   const safe = s.name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60) || 'dl-list';
   await S.platform.saveFile(`${safe}.json`, new TextEncoder().encode(JSON.stringify(json, null, 2)));
   toast(`${json.entries.length}件を「${safe}.json」に書き出しました。受け取った人は「DL一覧を読み込む」で使えます`, { ms: 9000 });
+}
+
+/** カタログに付いているラベルを、自分のフォルダとして取り込む（範囲を選ぶ） */
+async function labelDialog(s) {
+  const list = labelsOf(s);
+  if (!list.length) { toast('このカタログにはラベルがありません'); return; }
+  const sync = s.labelSync || null;
+  const picks = list.map((l) => ({ ...l, box: h('input', { type: 'checkbox', checked: !sync?.names || sync.names.includes(l.name), 'aria-label': `ラベル「${l.name}」を取り込む` }) }));
+  const prefix = h('input', { type: 'checkbox', checked: !!sync?.prefix, 'aria-label': 'カタログの名前を付けたフォルダにする' });
+  const auto = h('input', { type: 'checkbox', checked: !!sync, 'aria-label': 'カタログを取り直したときも取り込む' });
+  const res = await modal((close) => h('div', { class: 'stack' },
+    h('h2', {}, `「${s.name}」のラベルを取り込む`),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'カタログを作った人が付けた分け方（作者さんごと・企画ごとなど）を、自分の「フォルダ」として取り込みます。取り込むラベルを選んでください。'),
+    h('div', { class: 'row', style: 'gap:6px' },
+      h('button', { class: 'btn sm', onclick: () => picks.forEach((p) => { p.box.checked = true; }) }, 'すべて選ぶ'),
+      h('button', { class: 'btn ghost sm', onclick: () => picks.forEach((p) => { p.box.checked = false; }) }, 'すべて外す')),
+    h('div', { class: 'row tag-pick', id: 'label-picks' }, picks.map((p) => h('label', { class: 'chip' }, p.box, p.name, h('span', { class: 'n' }, p.n)))),
+    h('label', { class: 'check small' }, prefix, `フォルダの名前の前に、カタログの名前を付ける（例：「${s.name}：${list[0].name}」。自分のフォルダと混ざらないように）`),
+    h('label', { class: 'check small' }, auto, 'このカタログを取り直したときも、選んだラベルを取り込む'),
+    h('div', { class: 'row', style: 'justify-content:flex-end' },
+      s.labelSync ? h('button', { class: 'btn ghost', onclick: () => close('stop') }, '自動の取り込みをやめる') : null,
+      h('button', { class: 'btn', onclick: () => close(null) }, 'やめる'),
+      h('button', { class: 'btn primary', id: 'label-go', onclick: () => close('go') }, '取り込む'))));
+  if (res === 'stop') { s.labelSync = null; await saveSources(); toast('自動の取り込みをやめました'); return; }
+  if (res !== 'go') return;
+  const names = picks.filter((p) => p.box.checked).map((p) => p.name);
+  if (!names.length) { toast('取り込むラベルを選んでください', { bad: true }); return; }
+  const opt = { names: names.length === list.length && auto.checked ? null : names, prefix: prefix.checked };
+  s.labelSync = auto.checked ? opt : null;
+  await saveSources();
+  const n = await importLabels(s, opt);
+  toast(`${names.length}種類のラベルを取り込みました（${n}件をフォルダに入れました）`, { ms: 8000 });
+  render();
 }
 
 function askName(title, value, label = 'カタログの名前') {
@@ -506,14 +562,14 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       author: h('input', { type: 'text', value: base.author || '' }),
       version: h('input', { type: 'text', class: 'ver', value: base.version || '' }),
       updated: h('input', { type: 'date', value: base.updated || '' }),
-      type: h('select', { 'aria-label': '種類' }, [['scenario', 'シナリオ'], ['material', '素材・スキン（シナリオではないもの）']].map(([k, l]) => h('option', { value: k, selected: ((base.type || 'scenario') === 'scenario' ? 'scenario' : 'material') === k ? 'selected' : null }, l))),
+      type: h('select', { 'aria-label': '種類' }, [['scenario', 'シナリオ'], ['skin', 'スキン（CardWirthPy）'], ['material', '素材（画像・音など）']].map(([k, l]) => h('option', { value: k, selected: (['scenario', 'skin'].includes(base.type || 'scenario') ? base.type || 'scenario' : 'material') === k ? 'selected' : null }, l))),
       format: h('select', {}, [['classic', 'クラシック（1.50・Next・Py）'], ['next', 'Next仕様'], ['wsn', 'Py仕様（WSN）']].map(([k, l]) => h('option', { value: k, selected: (base.format || 'classic') === k ? 'selected' : null }, l))),
       tags: h('input', { type: 'text', value: (base.tags || []).join('、'), placeholder: '探索、短編（「、」か「,」で区切る）' }),
       description: h('textarea', { rows: 4, style: 'width:100%' }),
     };
     f.description.value = base.description || '';
     const intros = (base.intro || []).map((i) => ({ ...i }));
-    const dls = (base.downloads || []).map((d) => ({ ...ageRoleOf(d.status), url: d.url, label: d.label || '', kind: d.kind || 'page', note: d.note || '', until: d.until || '', dlkey: d.dlkey || '' }));
+    const dls = (base.downloads || []).filter((d) => !d.fromList).map((d) => ({ ...ageRoleOf(d.status), url: d.url, label: d.label || '', kind: d.kind || 'page', note: d.note || '', until: d.until || '', dlkey: d.dlkey || '', match: d.match || '' }));
     let def = curDefault || dls[0]?.url || '';
 
     const introBox = h('div', { class: 'stack' });
@@ -539,7 +595,8 @@ export async function editEntry({ work = null, prefill = null } = {}) {
         showAdvice(adv, d.url),
         h('div', { class: 'row small' },
           h('input', { type: 'text', value: d.label, placeholder: '名前（例：作者サイト、斧）', style: 'width:11em', oninput: (ev) => { d.label = ev.target.value; } }),
-          sel({ page: '配布ページ', direct: '直接DL（zipそのもの）' }, d.kind, (x) => { d.kind = x; }, '種類'),
+          sel({ page: '配布ページ', direct: '直接DL（zipそのもの）', list: 'ファイル一覧（アップローダーなど）' }, d.kind, (x) => { d.kind = x; drawDls(); }, '種類'),
+          d.kind === 'list' ? h('input', { type: 'text', value: d.match, placeholder: '一覧で探す名前（空なら作品名）', style: 'width:13em', 'aria-label': '一覧で探す名前', oninput: (ev) => { d.match = ev.target.value; } }) : null,
           sel({ new: '新（今の配布先）', old: '旧（移転済み）', closed: '終了' }, d.age, (x) => { d.age = x; }, '新旧'),
           sel({ normal: '通常', mirror: '予備' }, d.role, (x) => { d.role = x; }, '通常・予備'),
           h('input', { type: 'text', value: d.dlkey, placeholder: 'DLキー（任意）', style: 'width:9em', 'aria-label': 'DLキー', autocomplete: 'off', oninput: (ev) => { d.dlkey = ev.target.value.trim(); } }),
@@ -561,10 +618,10 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       const format = f.format.value;
       const entry = {
         id: base.id && /^p\d+$/.test(base.id) ? base.id : 'p00000',
-        owner: base.owner || '', type: f.type.value === 'scenario' ? 'scenario' : (base.type && base.type !== 'scenario' ? base.type : 'material'), name, author: f.author.value.trim(), version: f.version.value.trim(),
+        owner: base.owner || '', type: f.type.value === 'material' && base.type && !['scenario', 'skin'].includes(base.type) ? base.type : f.type.value, name, author: f.author.value.trim(), version: f.version.value.trim(),
         updated: f.updated.value || '', format, wsn_version: format === 'wsn' ? base.wsn_version ?? null : null,
         compat: base.format === format && base.compat ? base.compat : COMPAT_BY_FORMAT[format], convert: base.convert || 'self',
-        downloads: dls.filter((d) => d.url).map((d) => ({ label: d.label.trim(), url: d.url, kind: d.kind, status: statusOf(d.age, d.role), until: d.until, note: d.note.trim(), ...(d.dlkey ? { dlkey: d.dlkey } : {}) })),
+        downloads: dls.filter((d) => d.url).map((d) => ({ label: d.label.trim(), url: d.url, kind: d.kind, status: statusOf(d.age, d.role), until: d.until, note: d.note.trim(), ...(d.dlkey ? { dlkey: d.dlkey } : {}), ...(d.kind === 'list' && d.match?.trim() ? { match: d.match.trim() } : {}) })),
         file: base.file || {}, readme: base.readme || '', level: base.level || null,
         tags: f.tags.value.split(/[、,，]/).map((t) => t.trim()).filter(Boolean).slice(0, 30),
         description: f.description.value.trim(), requires: [], related: [], links: base.links || [],
@@ -587,6 +644,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       h('label', { class: 'field' }, '紹介文', f.description),
       h('div', {}, h('div', { class: 'small muted' }, '紹介ページ（DLの前に見てもらう、作者さんのサイト・X・Misskeyなど）'), introBox),
       h('div', {}, h('div', { class: 'small muted' }, 'DL先（「デフォルト」にしたところから先に取ります。取れなければ、新→予備→旧の順に試します）'), dlBox),
+      h('p', { class: 'small muted', style: 'margin:0' }, '「ファイル一覧」にすると、アップローダーの一覧ページ（例：https://uu.getuploader.com/○○/）から、作品名に合うファイルのうち版がいちばん新しいものを、「更新チェック」のときに探します（アプリ版）。新しい版を上げるたびにURLが変わるアップローダーで便利です。'),
       h('p', { class: 'small muted', style: 'margin:0' }, 'DLキーは、この個人用カタログの中だけに保存します（DL一覧として書き出すときは、書き出すかどうかを選べます）。'),
       h('div', {}, h('div', { class: 'small muted' }, `入れる個人用カタログ${inOwn.size ? '（チェックを外すと、そのカタログから抜けます）' : ''}`),
         h('div', { class: 'row' }, targets.map((t) => h('label', { class: 'check' }, t.box, t.s.name)))),

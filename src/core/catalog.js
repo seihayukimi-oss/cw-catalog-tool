@@ -25,7 +25,9 @@ export function sanitizeEntry(e) {
     .map((d) => ({
       label: str(d.label, 100),
       url: d.url,
-      kind: d.kind === 'direct' ? 'direct' : 'page',
+      // list＝ファイル一覧のページ（アップローダーなど）。新しい版のファイルを、一覧から探す
+      kind: d.kind === 'direct' ? 'direct' : d.kind === 'list' ? 'list' : 'page',
+      ...(d.kind === 'list' && typeof d.match === 'string' && d.match.trim() ? { match: d.match.trim().slice(0, 100) } : {}),
       status: STATUS.has(d.status) ? d.status : 'active',
       until: /^\d{4}-\d{2}-\d{2}$/.test(d.until || '') ? d.until : '',
       note: str(d.note, 300),
@@ -54,6 +56,8 @@ export function sanitizeEntry(e) {
     readme: str(e.readme, 300),
     level: e.level && Number.isInteger(e.level.min) ? { min: e.level.min, max: e.level.max } : null,
     tags: (Array.isArray(e.tags) ? e.tags : []).filter((t) => typeof t === 'string').slice(0, 30),
+    // ラベル（作者さんごと・企画ごとなどの分け方）。受け取った人が、取り込むかどうかと範囲を選ぶ
+    labels: (Array.isArray(e.labels) ? e.labels : []).filter((t) => typeof t === 'string').map((t) => t.trim().slice(0, 60)).filter(Boolean).slice(0, 20),
     description: str(e.description, 5000),
     requires: (Array.isArray(e.requires) ? e.requires : []).filter((x) => /^[ep]\d{5,}$/.test(x)),
     related: (Array.isArray(e.related) ? e.related : []).filter((x) => /^[ep]\d{5,}$/.test(x)),

@@ -9,7 +9,7 @@ import { openArchive, archiveKind, sha256Hex } from '../core/archive.js';
 import { chooseDownloads } from '../core/catalogs.js';
 import { decodeHtml, extractDownloadLinks, extractDownloadForms, extractDriveFolder, metaRefreshUrl, pageText, pageTitle, siteNotice } from '../core/weblink.js';
 import { fetchUrlFor, inAppSite, expiresAt, driveId } from '../core/urls.js';
-import { S, render, busy, goTab, confirmBox } from './state.js';
+import { S, render, busy, busyText, busyProgress, goTab, confirmBox } from './state.js';
 import { store } from './store.js';
 import { h, toast, modal, fmtDate } from './ui.js';
 import { defaultUrlOf, setDefaultUrl, setCatPrefs } from './catalog-data.js';
@@ -31,7 +31,7 @@ export async function fetchOnce(url, opts, ctx = {}) {
   if (ex instanceof Date && ex < new Date()) return { kind: 'error', url, message: `期限切れのURLです（${fmtDate(ex)}まで）` };
   const f = fetchUrlFor(url);
   let r;
-  try { r = await S.platform.fetchResource(f.url, opts); } catch (e) {
+  try { r = await S.platform.fetchResource(f.url, ctx.onProgress ? { ...(opts || {}), onProgress: ctx.onProgress } : opts); } catch (e) {
     return { kind: 'error', url, message: `${f.note ? `${f.note}：` : ''}${e.message || String(e)}` };
   }
   let res = classify(r, url);
@@ -128,13 +128,13 @@ export async function fetchFromUrl(url, work = null, hd = singleHandler(work), c
  * 使えない（読み込めない・期限切れ）配布元は飛ばして次へ。ブラウザの制限で読めないのは「使えない」ではないので、そこで止める。
  * @returns {{res, used, failed: {d, message}[], first}}
  */
-export async function tryDownloads(work, { onTry } = {}) {
+export async function tryDownloads(work, { onTry, onProgress } = {}) {
   const list = chooseDownloads(work, defaultUrlOf(work));
   if (!list.length) return { res: { kind: 'none' }, used: null, failed: [], first: null };
   const failed = [];
   for (const d of list) {
     onTry?.(d);
-    const res = await fetchOnce(d.url, undefined, { dl: d });
+    const res = await fetchOnce(d.url, undefined, { dl: d, onProgress });
     if (res.kind === 'error' || res.kind === 'other') { failed.push({ d, message: res.message || 'zip・wsnではありませんでした' }); continue; }
     return { res, used: d, failed, first: list[0] };
   }
@@ -346,32 +346,88 @@ function goNav(st, i) {
   render();
 }
 
-/** 選んだファイルをまとめて取ってくる。zipなどはそのまま、そうでないファイル（画像・音など）は1つのzipにまとめて素材として入れる */
-async function fetchPicked(st, hd, links) {
-  if (links.length === 1) return fetchFromUrl(links[0].url, null, hd, { dl: st.dl });
-  const got = await busy(`${links.length}件を取ってきています`, async () => {
-    const archives = [], loose = [], failed = [];
+/** 同時に何件かずつ処理する（Googleドライブなどで、たくさんのファイルを速く取るため） */
+async function eachParallel(list, n, fn) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => {
+    while (i < list.length) { const k = i++; await fn(list[k], k); }
+  }));
+}
+const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 80) || '無題';
+
+/** Googleドライブのフォルダの中を、下のフォルダまでたどってファイルを並べる（path＝フォルダの中での場所） */
+async function listFolderTree(st, onStep) {
+  const out = [];
+  const seen = new Set();
+  const walk = async (links, prefix, depth) => {
     for (const l of links) {
-      const res = await fetchOnce(l.url, undefined, { dl: st.dl });
-      if (res.kind === 'zip') archives.push({ name: res.fileName, bytes: res.bytes });
-      else if (res.kind === 'other' && res.bytes?.length) loose.push({ name: res.fileName || l.text, bytes: res.bytes });
-      else failed.push(l.text || l.url);
+      if (l.type === 'folder') {
+        if (depth >= 6 || seen.has(l.url) || out.length > 3000) continue;
+        seen.add(l.url);
+        onStep?.(`${prefix}${l.text}`);
+        const res = await fetchOnce(l.url);
+        if (res.kind === 'page' && res.st.folder) await walk(res.st.links, `${prefix}${safeName(l.text)}/`, depth + 1);
+      } else out.push({ ...l, path: `${prefix}${safeName(l.text)}` });
     }
-    return { archives, loose, failed };
-  });
+  };
+  await walk(st.links, '', 0);
+  return out;
+}
+
+/**
+ * 選んだファイルをまとめて取ってくる（同時に6件ずつ）。
+ * zipなどはそのまま「まとめてDL」の一覧へ。そうでないファイル（画像・音など）は、フォルダの形のまま1つのzipにまとめて素材（スキン）として入れる
+ * @param {{url, text, path?}[]} links
+ */
+async function fetchPicked(st, hd, links, { title = '' } = {}) {
+  if (links.length === 1 && !title) return fetchFromUrl(links[0].url, null, hd, { dl: st.dl });
+  S.progressByCount = true;
+  let got;
+  try {
+    got = await busy(`${links.length}件を取ってきています`, async () => {
+      const archives = [], loose = [], failed = [];
+      let done = 0;
+      busyProgress(0, `${links.length}件を取ってきています… 0 / ${links.length}`);
+      await eachParallel(links, 6, async (l) => {
+        const res = await fetchOnce(l.url, undefined, { dl: st.dl }).catch((e) => ({ kind: 'error', message: e.message }));
+        if (res.kind === 'zip') archives.push({ name: res.fileName, bytes: res.bytes, path: l.path });
+        else if (res.kind === 'other' && res.bytes?.length) loose.push({ name: res.fileName || l.text, bytes: res.bytes, path: l.path });
+        else failed.push(l.path || l.text || l.url);
+        done++;
+        busyProgress(done / links.length, `${links.length}件を取ってきています… ${done} / ${links.length}（${Math.floor((done / links.length) * 100)}%）`);
+      });
+      return { archives, loose, failed };
+    });
+  } finally {
+    S.progressByCount = false;
+  }
   if (!got) return;
   const files = [...got.archives];
   if (got.loose.length) {
-    const base = (st.title || '素材').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
+    const base = safeName(title || st.title || '素材');
     const tree = {};
-    for (const f of got.loose) tree[`${base}/${f.name.replace(/[\\/:*?"<>|]/g, '_')}`] = f.bytes;
+    for (const f of got.loose) {
+      // フォルダごとに取ったときは、中の場所のまま。ファイルを選んだときは、名前だけ
+      const rel = f.path ? f.path.split('/').slice(0, -1).concat(safeName(f.name)).join('/') : safeName(f.name);
+      tree[`${base}/${rel}`] = f.bytes;
+    }
     files.push({ name: `${base}.zip`, bytes: zipSync(tree, { level: 0 }) });
   }
   if (got.failed.length) toast(`取れなかったもの ${got.failed.length}件：${got.failed.slice(0, 3).join('、')}${got.failed.length > 3 ? ' …' : ''}`, { bad: true, ms: 9000 });
   if (!files.length) return;
   const { startLocalBatch } = await import('./batch.js');
-  await startLocalBatch(files, `選んだ${links.length}件を入れる`);
-  if (got.loose.length) toast(`zipなどではないファイル ${got.loose.length}件は、1つにまとめて素材として入れられるようにしました`, { ms: 8000 });
+  await startLocalBatch(files, title ? `「${title}」をまるごと入れる` : `選んだ${links.length}件を入れる`);
+  if (got.loose.length) toast(`zipなどではないファイル ${got.loose.length}件は、フォルダの形のまま1つにまとめました（素材・スキンとして入れられます）`, { ms: 9000 });
+}
+
+/** フォルダをまるごと（下のフォルダも）取ってくる */
+async function fetchWholeFolder(st, hd) {
+  const list = await busy('フォルダの中を調べています', () => listFolderTree(st, (p) => busyText(`フォルダの中を調べています… ${p}`)));
+  if (!list) return;
+  if (!list.length) { toast('このフォルダには、取ってこられるファイルがありませんでした', { bad: true }); return; }
+  const ok = await confirmBox(`「${st.title}」の中のファイル ${list.length}件を、フォルダの形のまま取ってきます。よろしいですか？`, { yes: '取ってくる', no: 'やめる' });
+  if (!ok) return;
+  return fetchPicked(st, hd, list, { title: st.title || 'フォルダ' });
 }
 
 /** 配布ページを読んだ結果（同意フォーム・リンク一覧・アプリ内ブラウザ） */
@@ -414,6 +470,9 @@ export function pagePanel(st, hd, work = null) {
     st.notice ? h('div', { class: 'note warn' }, st.notice) : null,
     st.forms?.length ? viewAgree(st, hd) : null,
     navBar,
+    st.folder && st.links.length ? h('div', { class: 'row' },
+      h('button', { class: 'btn primary sm', onclick: () => fetchWholeFolder(st, hd) }, `📁 このフォルダをまるごと取ってくる（下のフォルダも）`),
+      h('span', { class: 'small muted' }, 'フォルダの形のまま取ってきます。画像・音などは1つにまとめて、素材・スキンとして入れられます')) : null,
     st.links.length ? h('div', {}, st.folder ? `フォルダの中に ${st.links.length}件 ありました（フォルダ ${st.links.filter((l) => l.type === 'folder').length}・ファイル ${files.length}）` : `ダウンロードらしいリンクが ${st.links.length}件 ありました`) : (!st.forms?.length ? h('div', {}, st.folder ? 'フォルダの中身を読み取れませんでした（空のフォルダか、共有の設定が「リンクを知っている全員」になっていないのかもしれません）' : 'ダウンロードのリンクは見つかりませんでした') : null),
     st.links.length ? h('ul', { class: 'dl link-list' }, st.links.map(row)) : null,
     files.length > 1 ? selBar() : null,

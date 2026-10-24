@@ -17,7 +17,7 @@ import { h, toast, modal, fmtSize, fmtDate } from './ui.js';
 import { archiveDirOf } from './add.js';
 import { openLocalFiles } from './localfiles.js';
 import { applyTags } from './tags.js';
-import { MAT, showLog } from './materials.js';
+import { isStashId, showLog } from './materials.js';
 import { backupOpts, backupPlace, backupFull } from './backup.js';
 
 const ARCH = /\.(zip|wsn|cab|lzh|lha|7z)$/i;
@@ -57,7 +57,7 @@ function newerFirst(a, b) {
 }
 
 async function analyze() {
-  const recs = S.records.filter((r) => r.type !== 'bookmark' && r.engineId !== MAT && !r.missing && r.name);
+  const recs = S.records.filter((r) => r.type !== 'bookmark' && !isStashId(r.engineId) && !r.missing && r.name);
   // 1. Scenarioフォルダの二重（同じ場所の記録＝zipの中の複数シナリオは1つに数える）
   const byEngine = new Map();
   for (const r of recs) {

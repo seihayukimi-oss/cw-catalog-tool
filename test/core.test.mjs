@@ -491,3 +491,26 @@ test('実物：zipの中にwsnが入っている（BOOTHの配り方）', { skip
   const o2 = await openArchive(two, 'セット.zip');
   assert.equal(o2.scenarios.length, 2);
 });
+
+test('スキン（Skin.xml）を見分ける', async () => {
+  const { skinRootOf, parseSkinXml } = await import('../src/core/skin.js');
+  assert.equal(skinRootOf([{ path: '和風/Skin.xml' }, { path: '和風/Resource/a.png' }]), '和風/');
+  assert.equal(skinRootOf([{ path: 'Skin.xml' }]), '');
+  assert.equal(skinRootOf([{ path: 'a/b.png' }]), null);
+  assert.deepEqual(parseSkinXml('<Skin><Property><Name>和風 &amp; 夜</Name><Type>MedievalFantasy</Type><Author>清葉</Author></Property></Skin>'), { name: '和風 & 夜', type: 'MedievalFantasy', author: '清葉' });
+});
+
+test('アップローダーの一覧から、作品の最新のファイルを探す', async () => {
+  const { extractFileList, findNewest } = await import('../src/core/filelist.js');
+  const html = `<table><tr><td><a href="https://uu.getuploader.com/u/download/17" title="水の都_ver1_02.zip">水の都_ver1_02.zip</a></td><td><a href="https://uu.getuploader.com/u/edit/17" title="編集">編集</a></td></tr>
+    <tr><td><a href="https://uu.getuploader.com/u/download/9" title="水の都_ver1_01.zip">水の都_ver1_01.zip</a></td></tr>
+    <tr><td><a href="https://uu.getuploader.com/u/download/13" title="星間列車の相席屋ver1.0.0.zip">星間列車の相席屋ver1.0.0.zip</a></td></tr>
+    <tr><td><a href="https://uu.getuploader.com/u/index/date/asc/1" title="日時">日時</a></td></tr></table>`;
+  const list = extractFileList(html, 'https://uu.getuploader.com/u/');
+  assert.equal(list.length, 3);
+  const n = findNewest(list, '水の都');
+  assert.equal(n.url, 'https://uu.getuploader.com/u/download/17');
+  assert.equal(n.version, '1.02');
+  assert.equal(findNewest(list, '星間列車の相席屋').version, '1.0.0');
+  assert.equal(findNewest(list, 'ない作品'), null);
+});

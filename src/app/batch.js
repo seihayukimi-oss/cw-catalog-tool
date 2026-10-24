@@ -11,8 +11,8 @@ import { h, toast, modal, fmtSize, formatBadge, sleep } from './ui.js';
 import { tryDownloads, dlLabel, pagePanel, inAppDownload, deliver, tryAutoAgree } from './download.js';
 import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { readmeModal, installOpened, ensureDir, destFields, engineSelect, watchdog } from './add.js';
-import { installMaterial } from '../core/install.js';
-import { MAT, materialsDirOf, scanMaterials } from './materials.js';
+import { KINDS, stashDirOf, installNonScenario, autoSkinCat } from './materials.js';
+import { readSkin } from '../core/skin.js';
 import { backupOpts } from './backup.js';
 
 const STATUS = {
@@ -90,7 +90,15 @@ async function runFetch() {
     it.status = 'fetch';
     it.message = '';
     render();
-    const out = await tryDownloads(it.work, { onTry: (d) => { it.message = `${dlLabel(d)} から取得中…`; render(); } }).catch((e) => ({ res: { kind: 'error', message: e.message } }));
+    let from = '';
+    const out = await tryDownloads(it.work, {
+      onTry: (d) => { from = dlLabel(d); it.message = `${from} から取得中…`; render(); },
+      onProgress: (got, total) => {
+        it.message = `${from} から取得中… ${total > 0 ? `${Math.floor((got / total) * 100)}%（${fmtSize(got)} / ${fmtSize(total)}）` : fmtSize(got)}`;
+        const el = document.getElementById(`bi-msg-${it.id}`);
+        if (el) el.textContent = it.message; else render();
+      },
+    }).catch((e) => ({ res: { kind: 'error', message: e.message } }));
     it.used = out.used;
     if (out.used && out.failed?.length) {
       it.fellBack = { from: out.first, to: out.used, why: out.failed[0].message };
@@ -137,13 +145,17 @@ async function analyze(it, bytes, fileName) {
     const o = await openArchive(bytes, fileName);
     it.material = false;
     if (!o.scenarios.length) {
-      // シナリオではないもの（スキン・素材など）：素材の置き場所に入れる
-      if (!S.materials?.ref) { it.status = 'error'; it.message = `${fileName} はシナリオではないようです（スキン・素材など）。「設定」の「素材・スキンの置き場所」を決めると、まとめて入れられます`; return; }
+      // シナリオではないもの（スキン・素材など）：それぞれの置き場所に入れる
+      const skin = await readSkin(o).catch(() => null);
+      const kind = skin || it.work?.type === 'skin' ? 'skin' : 'material';
+      if (!S.stash?.[kind]?.ref) { it.status = 'error'; it.message = `${fileName} はシナリオではないようです（${KINDS[kind].label}）。「設定」の「${KINDS[kind].place}」を決めると、まとめて入れられます`; return; }
       it.opened = o;
       it.material = true;
+      it.matKind = kind;
+      it.skin = skin;
       it.pick = 0;
       it.ack = !o.readmes.length;
-      it.folderName = (o.archiveName || o.source.name).replace(/\.[^.]+$/, '');
+      it.folderName = skin?.folderName || (o.archiveName || o.source.name).replace(/\.[^.]+$/, '');
       it.matCat = it.matCat || '';
       it.status = 'ready';
       it.message = '';
@@ -211,10 +223,8 @@ export function viewBatch() {
   const ready = b.items.filter(installable);
   const fetchedAll = !b.running && !b.items.some((i) => i.status === 'wait' || i.status === 'fetch');
   const hasNew = b.items.some((i) => !i.target);
-  const dest = destFields(b.engineId, {
-    cat: b.cat, newCat: b.newCat, name: null, idPrefix: 'batch',
-    onCat: (v) => { b.cat = v; }, onNewCat: (v) => { b.newCat = v; },
-  });
+  b.catState ||= {};
+  const dest = destFields(b.engineId, { state: b.catState, name: null, idPrefix: 'batch' });
   b.catValue = dest.value;
 
   return h('div', { class: 'card stack batch', id: 'batch' },
@@ -230,9 +240,12 @@ export function viewBatch() {
     !b.done ? h('div', { class: 'card soft stack', style: 'margin:0' },
       h('h3', {}, '入れ先'),
       S.engines.length ? h('div', { class: 'grid2' },
-        hasNew ? h('label', { class: 'field' }, 'エンジン', engineSelect((v) => { b.engineId = v; b.cat = ''; }, true, b.engineId, 'batch-engine')) : null,
+        hasNew ? h('label', { class: 'field' }, 'エンジン', engineSelect((v) => { b.engineId = v; b.catState = {}; }, true, b.engineId, 'batch-engine')) : null,
         hasNew ? dest.cat : null,
       ) : h('p', { class: 'small muted' }, 'エンジンが未登録です。「設定」タブで登録してください。'),
+      hasNew && S.engines.length > 1 ? h('div', { class: 'row' },
+        h('button', { class: 'btn sm', id: 'batch-assign', disabled: b.installing, onclick: () => { const n = assignEngines(b); toast(n ? `${n}件のエンジンを、形式に合わせて振り分けました` : '振り分けが変わる作品はありませんでした'); render(); } }, '形式に合わせてエンジンに振り分ける'),
+        h('span', { class: 'small muted' }, 'Py仕様（WSN）→ CardWirthPy、Next仕様 → CardWirthNext、クラシック → 上で選んだエンジン。作品ごとに「エンジン」で変えることもできます（分類フォルダは同じ名前で作ります）')) : null,
       b.items.some((i) => i.target) ? h('p', { class: 'small muted', style: 'margin:0' }, '「更新」の作品は、今入っている場所に置き換えます（前のものはバックアップします）。') : null,
       S.archive.on && S.archive.ref ? h('p', { class: 'small muted', style: 'margin:0' }, `元のzip・wsnは「${S.archive.label}」にも保存します。`) : null,
       b.installing ? h('div', { class: 'stack' },
@@ -263,7 +276,7 @@ function itemCard(it) {
         h('span', { class: 'item-title' }, it.name),
         h('span', { class: `badge ${cls}` }, label),
         it.target ? h('span', { class: 'badge update' }, '更新') : null,
-        it.material ? h('span', { class: 'badge plain' }, '素材・スキン') : null,
+        it.material ? h('span', { class: 'badge plain' }, KINDS[it.matKind]?.label || '素材') : null,
         sc && !it.material ? formatBadge(sc) : null),
       h('div', { class: 'row' },
         it.status === 'ready' && it.opened.readmes.length ? h('button', {
@@ -272,15 +285,17 @@ function itemCard(it) {
         it.status === 'error' && it.work ? h('button', { class: 'btn sm', onclick: () => { it.status = 'wait'; if (!S.batch.running) runFetch(); else render(); } }, 'もう一度') : null,
         ['wait', 'error', 'action', 'ready'].includes(it.status) && !S.batch.installing ? h('button', { class: 'btn ghost sm', onclick: () => { S.batch.items = S.batch.items.filter((x) => x !== it); if (!S.batch.items.length) S.batch = null; render(); } }, '外す') : null)),
     h('div', { class: 'meta' }, [it.work?.author, it.work ? `ver ${it.work.version}` : '', it.zone?.referrerUrl || it.zone?.hostUrl ? `DL元：${(it.zone.referrerUrl || it.zone.hostUrl).replace(/^https?:\/\//, '').slice(0, 60)}` : '', it.used ? `取得元：${dlLabel(it.used)}` : '', it.opened ? `${it.opened.source.name}・${fmtSize(it.opened.source.size)}` : ''].filter(Boolean).join('・')),
-    it.message ? h('div', { class: `small ${it.status === 'error' || it.status === 'failed' ? 'note bad' : 'muted'}` }, it.message) : null,
+    it.message ? h('div', { class: `small ${it.status === 'error' || it.status === 'failed' ? 'note bad' : 'muted'}`, id: `bi-msg-${it.id}` }, it.message) : null,
     it.fellBack && it.status !== 'done' ? h('div', { class: 'small muted' }, `デフォルトの「${dlLabel(it.fellBack.from)}」から取れなかったので、「${dlLabel(it.fellBack.to)}」から取りました。`) : null,
   );
   if (it.status === 'ready' && it.material) {
-    const cats = S.categories[MAT] || [];
+    const k = KINDS[it.matKind];
+    const cats = S.categories[k.id] || [];
     card.append(h('div', { class: 'row small', style: 'margin-top:6px' },
-      h('span', { class: 'muted' }, `素材の置き場所（${S.materials.label}）に入れます`),
-      h('label', { class: 'row' }, '分類フォルダ', h('input', { type: 'text', list: 'mat-cats', value: it.matCat, placeholder: '例：スキン', style: 'width:9em', disabled: !editable, oninput: (ev) => { it.matCat = ev.target.value; } }),
-        h('datalist', { id: 'mat-cats' }, cats.map((c) => h('option', { value: c })))),
+      h('label', { class: 'row' }, '入れ方', h('select', { disabled: !editable, 'aria-label': `${it.name}の入れ方`, onchange: (ev) => { it.matKind = ev.target.value; render(); } },
+        Object.values(KINDS).map((x) => h('option', { value: x.key, selected: x.key === it.matKind ? 'selected' : null }, `${x.label}として（${x.place}）`)))),
+      h('label', { class: 'row' }, '分類フォルダ', h('input', { type: 'text', list: `cats-${k.key}`, value: it.matCat, placeholder: it.matKind === 'skin' ? `空なら自動（${autoSkinCat(it.skin)}）` : '空なら直下', style: 'width:11em', disabled: !editable, oninput: (ev) => { it.matCat = ev.target.value; } }),
+        h('datalist', { id: `cats-${k.key}` }, cats.map((c) => h('option', { value: c })))),
       h('label', { class: 'row' }, 'フォルダ名', h('input', { type: 'text', value: it.folderName, disabled: !editable, oninput: (ev) => { it.folderName = ev.target.value; } }))));
   } else if (it.status === 'ready') {
     if (it.opened.scenarios.length > 1) {
@@ -292,6 +307,10 @@ function itemCard(it) {
       it.target
         ? h('span', { class: 'muted' }, `置き換える場所：${it.target.path}${it.engineId && it.engineId !== S.batch.engineId ? `（${engine(it.engineId)?.name || ''}）` : ''}`)
         : h('label', { class: 'row' }, 'フォルダ名', h('input', { type: 'text', value: it.folderName, disabled: !editable, oninput: (ev) => { it.folderName = ev.target.value; } })),
+      !it.target && S.engines.length > 1 ? h('label', { class: 'row' }, 'エンジン', h('select', {
+        disabled: !editable, 'aria-label': `${it.name}を入れるエンジン`,
+        onchange: (ev) => { it.engineId = ev.target.value === S.batch.engineId ? null : ev.target.value; render(); },
+      }, S.engines.map((e) => h('option', { value: e.id, selected: (it.engineId || S.batch.engineId) === e.id ? 'selected' : null }, e.name)))) : null,
       it.exact ? h('span', { class: 'badge ok' }, 'カタログのファイルと一致') : null));
     if (play && !play.ok) {
       card.append(h('div', { class: 'note bad small', style: 'margin-top:6px' }, `${eng.name}：${play.reason}`,
@@ -323,6 +342,20 @@ function itemCard(it) {
   return card;
 }
 
+/** 形式に合わせてエンジンを決める（Py仕様→Py、Next仕様→Next、それ以外は全体で選んだエンジン） */
+function assignEngines(b) {
+  const byKind = (k) => S.engines.find((e) => e.kind === k)?.id || null;
+  let n = 0;
+  for (const it of b.items) {
+    if (it.target || it.material || !it.opened || it.status !== 'ready') continue;
+    const fmt = it.opened.scenarios[it.pick]?.format;
+    const want = fmt === 'wsn' ? byKind('py') : fmt === 'next' ? byKind('next') : null;
+    const next = want && want !== b.engineId ? want : null;
+    if ((it.engineId || null) !== next) { it.engineId = next; n++; }
+  }
+  return n;
+}
+
 async function readAll() {
   for (const it of S.batch.items.filter((i) => i.include && i.status === 'ready' && !i.ack)) {
     const r = await readmeModal(it.opened, it.name, { next: true });
@@ -340,10 +373,8 @@ async function installAll() {
   b.cat = cat;
   // フォルダの許可は、ボタンを押した直後にまとめて聞く
   const dirs = new Map();
-  let matDir = null;
-  if (items.some((i) => i.material)) {
-    matDir = await materialsDirOf(true);
-    if (!matDir) { toast('素材の置き場所を使う許可がありませんでした', { bad: true }); return; }
+  for (const kind of new Set(items.filter((i) => i.material).map((i) => i.matKind))) {
+    if (!(await stashDirOf(kind, true))) { toast(`${KINDS[kind].place}を使う許可がありませんでした`, { bad: true }); return; }
   }
   for (const id of new Set(items.filter((i) => !i.material).map((i) => i.engineId || b.engineId))) {
     const eng = engine(id);
@@ -375,9 +406,10 @@ async function installAll() {
     };
     if (it.material) {
       try {
-        const r = await installMaterial(matDir, it.opened, { category: (it.matCat || '').trim(), folderName: it.folderName.trim() });
+        const cat = (it.matCat || '').trim() || (it.matKind === 'skin' ? autoSkinCat(it.skin) : '');
+        const r = await installNonScenario(it.opened, { kind: it.matKind, to: 'stash', cat, name: it.folderName, skin: it.matKind === 'skin' ? it.skin : null });
         it.status = 'done';
-        it.message = `素材の置き場所（${S.materials.label}）の ${r.dest} に入れました`;
+        it.message = `${r.where} の ${r.dest} に入れました${r.zip ? `（元のzipは ${r.zip} に）` : ''}`;
         okN++;
       } catch (e) {
         it.status = 'failed';
@@ -405,7 +437,6 @@ async function installAll() {
     render();
   }
   wd.stop();
-  if (items.some((i) => i.material && i.status === 'done')) await scanMaterials(true).catch(() => {});
   S.records = await store.records();
   b.installing = false;
   b.done = !b.items.some((i) => ['ready', 'action', 'wait', 'fetch', 'error'].includes(i.status));

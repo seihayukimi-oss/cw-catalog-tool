@@ -246,3 +246,6 @@ pre.log { max-height: 40vh; white-space: pre-wrap; word-break: break-all; }
 .credit-list { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
 .credit-list dt { color: var(--muted); }
 .credit-list dd { margin: 0; word-break: break-all; }
+#busy-prog { width: 160px; height: 10px; accent-color: var(--accent); }
+.cat-pick { display: flex; flex-direction: column; gap: 6px; }
+.cat-pick .cat-new input { width: 100%; }

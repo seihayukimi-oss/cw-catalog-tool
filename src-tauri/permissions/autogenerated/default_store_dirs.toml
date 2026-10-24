@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-default-store-dirs"
+description = "Enables the default_store_dirs command without any pre-configured scope."
+commands.allow = ["default_store_dirs"]
+
+[[permission]]
+identifier = "deny-default-store-dirs"
+description = "Denies the default_store_dirs command without any pre-configured scope."
+commands.deny = ["default_store_dirs"]

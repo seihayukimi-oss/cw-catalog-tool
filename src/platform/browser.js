@@ -60,7 +60,7 @@ export const platform = {
    * URLの中身を取る。ブラウザの制限（他のサイトのファイルは、相手が許可していないと読めない）で
    * 取れなかったときは { blocked: true } を返す。
    */
-  async fetchResource(url, { method = 'GET', body, headers = {} } = {}) {
+  async fetchResource(url, { method = 'GET', body, headers = {}, onProgress } = {}) {
     let r;
     try {
       // 同じサイトの中でだけCookieを使う（他のサイトにはブラウザの決まりでどのみち送られない）
@@ -72,7 +72,7 @@ export const platform = {
     const len = Number(r.headers.get('content-length') || 0);
     if (len > 2 * 1024 * 1024 * 1024) throw new Error('ファイルが大きすぎます');
     return {
-      bytes: new Uint8Array(await r.arrayBuffer()),
+      bytes: await readWithProgress(r, len, onProgress || platform.netProgress),
       contentType: r.headers.get('content-type') || '',
       fileName: fileNameFrom(r.url || url, r.headers.get('content-disposition') || ''),
       finalUrl: r.url || url,
@@ -111,6 +111,27 @@ export const platform = {
 };
 
 /** テスト用：ブラウザ内の保存領域（OPFS）をエンジンのフォルダとして使う */
+/** 中身を読みながら、進み具合を知らせる */
+async function readWithProgress(r, total, cb) {
+  if (!cb || !r.body) return new Uint8Array(await r.arrayBuffer());
+  const reader = r.body.getReader();
+  const parts = [];
+  let got = 0, last = 0;
+  cb(0, total);
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    got += value.length;
+    if (Date.now() - last > 150) { last = Date.now(); cb(got, total); }
+  }
+  cb(got, total);
+  const out = new Uint8Array(got);
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
 export async function opfsFolder(name) {
   const root = await navigator.storage.getDirectory();
   const h = await root.getDirectoryHandle(name, { create: true });

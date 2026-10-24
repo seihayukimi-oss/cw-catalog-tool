@@ -9,10 +9,11 @@
 import { scanScenarioFolder, detectEngineKind, checkEngineFolder } from '../core/scan.js';
 import { ENGINE_KINDS, compareVersions } from '../core/catalog.js';
 import { comparePage } from '../core/pagecheck.js';
+import { netProgress } from './state.js';
 import { S, views, setRenderer, render, busy, busyText, engine, recordsOf, dirOf, rerenderList, confirmBox, goTab, TAB_LABEL, APP_VERSION } from './state.js';
 import { store, recordId, exportRecords, importRecords } from './store.js';
 import { h, toast, modal, fmtDate, formatBadge, sleep } from './ui.js';
-import { loadCatalogs, applyCatalog, workOf, refreshSource, refreshStates } from './catalog-data.js';
+import { loadCatalogs, applyCatalog, workOf, refreshSource, refreshStates, checkFileLists } from './catalog-data.js';
 import { viewAdd, setupDrop, VERSION_SOURCE } from './add.js';
 import { downloadWork, handleInstallLink, viewLinkMaker, loadConsents, viewConsents } from './download.js';
 import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
@@ -23,13 +24,14 @@ import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName } from '
 import { openTidy, viewTidy } from './tidy.js';
 import { loadBackup, viewBackupSettings } from './backup.js';
 import { CREDITS } from './credits.js';
-import { MAT, loadMaterials, viewMaterialsMine, viewMaterialsSettings, moveToCategory } from './materials.js';
+import { MAT, SKIN, loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
 
 const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
 
 // ------------------------------------------------------------ 起動
 export async function startApp(platform) {
   S.platform = platform;
+  platform.netProgress = netProgress;
   document.documentElement.dataset.platform = platform.kind;
   S.engines = await store.engines();
   S.engineId = (await store.get('engineId')) || S.engines[0]?.id || null;
@@ -46,7 +48,7 @@ export async function startApp(platform) {
     if (d) S.dirs.set(e.id, d);
   }
   if (S.archive.ref) S.archiveDir = await platform.openFolder(S.archive.ref).catch(() => null);
-  await loadMaterials();
+  await loadStash();
   await loadBackup();
   Object.assign(views, { mine: viewMine, add: viewAdd, catalog: viewCatalog, settings: viewSettings });
   setRenderer(draw);
@@ -71,7 +73,8 @@ function draw() {
   root.replaceChildren(
     h('header', { class: 'top' }, h('div', { class: 'top-inner' },
       h('div', { class: 'brand' }, h('h1', {}, 'CWカタログ'), h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`),
-        S.busy ? h('span', { class: 'small muted' }, `${S.busy}…`) : null),
+        S.busy ? h('span', { class: 'small muted' }, `${S.busy}…`) : null,
+        S.busy ? h('progress', { id: 'busy-prog', max: 1, hidden: true, 'aria-label': '進み具合' }) : null),
       h('nav', { class: 'tabs', role: 'tablist' }, tabs.map(([k, label, extra]) => h('button', {
         role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', onclick: () => { S.tab = k; render(); },
       }, label, extra))))),
@@ -90,7 +93,8 @@ function viewMine() {
         : h('p', { class: 'note warn' }, `このブラウザはフォルダの読み書きに対応していません。パソコンのChrome・Edgeか、アプリ版を使ってください。zipの中身の確認と、WebCardWirth用の書き出しは「${TAB_LABEL.add}」タブでできます。`),
     );
   }
-  if (S.mineView === 'mat') return viewMaterialsMine(mineSelect);
+  if (S.mineView === 'mat') return viewStashMine('material', mineSelect);
+  if (S.mineView === 'skin') return viewStashMine('skin', mineSelect);
   if (!engine()) S.engineId = S.engines[0].id;
   const e = engine();
   const connected = e && S.dirs.has(e.id);
@@ -137,6 +141,7 @@ function viewMine() {
         h('button', { class: 'btn', onclick: openTidy, title: 'Scenarioフォルダとzipの保存場所の、二重に入っているもの・まだ入れていないもの（積みシナ）を調べます' }, '整理・二重チェック'),
         h('button', { class: 'btn', onclick: addBookmark }, 'カタログ外を登録'),
         outside.length ? h('button', { class: 'btn', onclick: () => registerOutside(outside) }, `カタログ外を個人用カタログにまとめて登録（${outside.length}件）`) : null,
+        openBtn(e.ref, 'フォルダを開く'),
         S.platform.kind === 'app' && e.kind !== 'wcw' ? h('button', { class: 'btn', title: `${e.name} を起動します`, onclick: () => busy('エンジンを起動', () => S.platform.launch(e.ref, e.kind)) }, 'エンジンを起動') : null,
       ),
       h('div', { class: 'row', style: 'margin-top:10px' },
@@ -160,14 +165,16 @@ function mineSelect() {
     'aria-label': 'エンジン', onchange: async (ev) => {
       S.mineSel.clear();
       if (ev.target.value === MAT) { S.mineView = 'mat'; render(); return; }
+      if (ev.target.value === SKIN) { S.mineView = 'skin'; render(); return; }
       S.mineView = '';
       S.engineId = ev.target.value;
       await store.set('engineId', S.engineId);
       render();
     },
   },
-  S.engines.map((x) => h('option', { value: x.id, selected: S.mineView !== 'mat' && x.id === S.engineId ? 'selected' : null }, `${x.name}（${ENGINE_KINDS[x.kind]?.short || x.kind}）`)),
-  h('option', { value: MAT, selected: S.mineView === 'mat' ? 'selected' : null }, '素材・スキンの置き場所'));
+  S.engines.map((x) => h('option', { value: x.id, selected: !S.mineView && x.id === S.engineId ? 'selected' : null }, `${x.name}（${ENGINE_KINDS[x.kind]?.short || x.kind}）`)),
+  h('option', { value: MAT, selected: S.mineView === 'mat' ? 'selected' : null }, '素材の置き場所'),
+  h('option', { value: SKIN, selected: S.mineView === 'skin' ? 'selected' : null }, 'スキンの置き場所'));
 }
 
 function recordCard(r) {
@@ -407,6 +414,16 @@ async function checkUpdates() {
       if (Object.keys(patch).length) { Object.assign(r, patch); changed.push(r); }
     }
 
+    // ファイル一覧（アップローダーなど）を登録した作品：一覧から新しい版を探す（アプリ版だけ）
+    let lists = null;
+    if (S.platform.canCheckPages && online) {
+      lists = await checkFileLists({ onStep: (n) => busyText(`ファイル一覧を確認中… ${n}`) });
+      for (const r of all) {
+        const patch = applyCatalog(r);
+        if (Object.keys(patch).length) { Object.assign(r, patch); if (!changed.includes(r)) changed.push(r); }
+      }
+    }
+
     // カタログ外のブックマーク：アプリ版だけ配布ページを見に行く
     let pages = 0, pageChanged = 0, pageFailed = 0;
     if (S.platform.canCheckPages && online) {
@@ -427,7 +444,7 @@ async function checkUpdates() {
     S.records = await store.records();
     await store.set('lastCheck', new Date().toISOString());
     const n = S.records.filter((r) => r.state === 'update').length;
-    toast([`更新あり ${n}件`, pages ? `ページ確認 ${pages}件（変化 ${pageChanged}件${pageFailed ? `・確認できず ${pageFailed}件` : ''}）` : ''].filter(Boolean).join('／'));
+    toast([`更新あり ${n}件`, lists?.checked ? `ファイル一覧 ${lists.checked}件（新しいファイル ${lists.found}件${lists.failed ? `・読めなかった一覧 ${lists.failed}件` : ''}）` : '', pages ? `ページ確認 ${pages}件（変化 ${pageChanged}件${pageFailed ? `・確認できず ${pageFailed}件` : ''}）` : ''].filter(Boolean).join('／'));
   });
 }
 
@@ -438,6 +455,7 @@ function viewSettings() {
       h('div', {}, h('div', { class: 'item-title' }, e.name), h('div', { class: 'meta' }, `${ENGINE_KINDS[e.kind]?.name || e.kind}・${e.label || ''}`)),
       h('div', { class: 'row' },
         h('span', { class: `badge ${S.dirs.has(e.id) ? 'ok' : 'plain'}` }, S.dirs.has(e.id) ? '接続中' : '未接続'),
+        openBtn(e.ref, 'フォルダを開く'),
         !S.dirs.has(e.id) ? h('button', { class: 'btn sm', onclick: () => (e.ref ? connectEngine(e.id) : reconnect(e)) }, '接続') : null,
         e.needsReconnect || !e.ref || S.platform.kind === 'app' ? h('button', { class: 'btn sm', onclick: () => reconnect(e) }, '選び直す') : null,
         h('button', {
@@ -483,7 +501,7 @@ function viewSettings() {
     viewArchiveSettings(dev),
 
     h('h2', {}, '素材・スキンの置き場所'),
-    viewMaterialsSettings(dev),
+    viewStashSettings(dev),
 
     h('h2', {}, 'バックアップ先'),
     viewBackupSettings(dev),
@@ -531,7 +549,7 @@ function viewSettings() {
 function viewArchiveSettings(dev) {
   const pick = async (useOpfs = false) => busy('保存場所を選ぶ', async () => {
     const p = useOpfs ? await S.platform.opfsFolder('test-archive') : await S.platform.pickFolder({ title: 'zip・wsnを保存するフォルダを選んでください', id: 'cw-archive' });
-    S.archive = { ...S.archive, ref: p.ref, label: p.label, on: true };
+    S.archive = { ...S.archive, ref: p.ref, label: p.label, on: true, auto: false };
     S.archiveDir = p.dir;
     await store.set('archive', S.archive);
     toast(`「${p.label}」に保存するようにしました`);
@@ -543,7 +561,8 @@ function viewArchiveSettings(dev) {
         type: 'checkbox', checked: S.archive.on, disabled: !S.archive.ref, 'aria-label': 'インストールしたときにzipも保存する',
         onchange: async (ev) => { S.archive.on = ev.target.checked; await store.set('archive', S.archive); render(); },
       }), 'インストールしたときに、元のzip・wsnも保存する'),
-      h('span', { class: 'grow small muted' }, S.archive.ref ? `保存場所：${S.archive.label}${S.archiveDir ? '' : '（次に保存するとき許可を聞きます）'}` : '保存場所：未設定'),
+      h('span', { class: 'grow small muted', style: 'word-break:break-all' }, S.archive.ref ? `保存場所：${S.archive.label}${S.archive.auto ? '（最初から用意したフォルダ）' : ''}${S.archiveDir ? '' : '（次に保存するとき許可を聞きます）'}` : '保存場所：未設定'),
+      openBtn(S.archive.ref),
       S.platform.canWriteFolders ? h('button', { class: 'btn sm', onclick: () => pick() }, S.archive.ref ? '保存場所を変える' : '保存場所を選ぶ') : null,
       dev ? h('button', { class: 'btn sm', id: 'dev-opfs-archive', onclick: () => pick(true) }, 'テスト用保存場所') : null),
     !S.platform.canWriteFolders ? h('p', { class: 'note warn small', style: 'margin:0' }, 'このブラウザでは、保存場所の登録はできません。') : null);

@@ -8,6 +8,8 @@ fn main() {
                 "portable_info",
                 "take_open_args",
                 "net_fetch",
+                "default_store_dirs",
+                "open_folder",
                 "portable_update_install",
                 "update_key_configured",
                 "downloads_list",

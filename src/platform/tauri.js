@@ -78,8 +78,26 @@ function cookieHeader(host) {
  * 配布元から取ってくる（アプリ側で通信して、中身は一時ファイル経由で受け取る）。
  * 日本語のファイル名を見出しにそのまま入れてくるサイト（Googleドライブなど）でも止まらない。
  */
-async function netFetch(url, { method = 'GET', body, headers = {}, timeout = null } = {}) {
-  const r = await invoke('net_fetch', { req: { url, method, body: body ?? null, headers: { 'User-Agent': UA, ...headers }, timeout } });
+// 進み具合の知らせ（アプリ側から来る）を、頼んだ通信ごとに振り分ける
+let progSeq = 0;
+const progCbs = new Map();
+let progListen = null;
+
+async function netFetch(url, { method = 'GET', body, headers = {}, timeout = null, onProgress = null } = {}) {
+  const cb = onProgress || platform.netProgress;
+  let progress = null;
+  if (cb) {
+    progListen ||= listen('cw-net-progress', (ev) => { const p = ev.payload || {}; progCbs.get(p.id)?.(p.got, p.total); });
+    await progListen;
+    progress = ++progSeq;
+    progCbs.set(progress, cb);
+  }
+  let r;
+  try {
+    r = await invoke('net_fetch', { req: { url, method, body: body ?? null, headers: { 'User-Agent': UA, ...headers }, timeout, progress } });
+  } finally {
+    if (progress) progCbs.delete(progress);
+  }
   let bytes = new Uint8Array();
   if (r.path) {
     try { bytes = await readFile(r.path); } finally { await remove(r.path).catch(() => {}); }
@@ -135,6 +153,16 @@ export const platform = {
     listen('cw-open-args', (ev) => cb(ev.payload || []));
   },
 
+  /** 最初から用意する保存フォルダ（exe の横の CWCatalog_保存） */
+  async defaultStoreDirs() {
+    return invoke('default_store_dirs');
+  },
+
+  /** フォルダをエクスプローラーで開く（アプリが触れてよいフォルダだけ） */
+  async revealFolder(path) {
+    return invoke('open_folder', { path });
+  },
+
   async portableInfo() {
     return invoke('portable_info');
   },
@@ -176,10 +204,10 @@ export const platform = {
    * 同意ページはCookieで「同意した人」を見分けることがあるので、同じサイトへの一連の通信では
    * 受け取ったCookieを送り返す（このアプリの中だけで、保存はしない）。
    */
-  async fetchResource(url, { method = 'GET', body, headers = {} } = {}) {
+  async fetchResource(url, { method = 'GET', body, headers = {}, onProgress } = {}) {
     const host = new URL(url).hostname;
     const cookie = cookieHeader(host);
-    const r = await netFetch(url, { method, body, headers: { ...(cookie ? { Cookie: cookie } : {}), ...headers } });
+    const r = await netFetch(url, { method, body, onProgress, headers: { ...(cookie ? { Cookie: cookie } : {}), ...headers } });
     keepCookies(host, r.set_cookie);
     let fin = host;
     try { fin = new URL(r.url).hostname; } catch { /* そのまま */ }
@@ -231,7 +259,7 @@ export const platform = {
 
   /** 配布ページを読む（更新チェック用）。相手に負担をかけないよう呼ぶ側で間隔をあける */
   async fetchText(url) {
-    const r = await netFetch(url, { timeout: 15 });
+    const r = await netFetch(url, { timeout: 15, onProgress: () => {} });
     if (!r.ok) throw new Error(`ページを開けませんでした（${r.status}）`);
     return decodeHtml(r.bytes, r.content_type || '');
   },

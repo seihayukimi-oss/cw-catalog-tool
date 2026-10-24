@@ -1,137 +1,231 @@
-// 素材・スキンなど（シナリオではないもの）：
-//  ・「素材の置き場所」（自分で選んだフォルダ）に、分類フォルダを分けて入れる（実際のファイルも分かれる）
-//  ・自分のフォルダ一覧で「素材の置き場所」を選ぶと、入っているものを一覧にして、タグ付け・分類フォルダへの移動ができる
+// 素材・スキン（シナリオではないもの）：
+//  ・「素材の置き場所」「スキンの置き場所」に、分類フォルダを分けて入れる（実際のファイルも分かれる）
+//    スキン（Skin.xml があるもの）は、分類フォルダをスキンの種類で自動で決められる。Pyのエンジンの Data/Skin にも入れられる
+//  ・アプリ版は、最初から exe の横の「CWCatalog_保存」の中に「zip保存」「素材」「スキン」を用意して使う（設定で変えられる）
+//  ・自分のフォルダ一覧で置き場所を選ぶと、入っているものを一覧にして、タグ付け・分類フォルダへの移動ができる
 // シナリオも、選んで「分類フォルダへ移す」で、Scenario の中の分類フォルダ（例：Scenario/_店）へ動かせる。
 
-import { installMaterial, moveWithin } from '../core/install.js';
-import { BACKUP_DIR } from '../core/install.js';
+import { installMaterial, moveWithin, BACKUP_DIR } from '../core/install.js';
+import { readSkin } from '../core/skin.js';
 import { S, render, busy, dirOf, engine, rerenderList } from './state.js';
 import { store, recordId } from './store.js';
 import { h, toast, modal, fmtDate } from './ui.js';
 import { applyCatalog } from './catalog-data.js';
 import { tagEditor, tagChips, pickTags, applyTags, addTagName } from './tags.js';
+import { catPicker } from './catpick.js';
 
 export const MAT = '__mat';
+export const SKIN = '__skin';
+export const KINDS = {
+  material: { key: 'material', id: MAT, kv: 'materials', label: '素材', place: '素材の置き場所', opfs: 'test-materials', zipSub: '素材', example: '例：効果音、立ち絵、背景' },
+  skin: { key: 'skin', id: SKIN, kv: 'skins', label: 'スキン', place: 'スキンの置き場所', opfs: 'test-skins', zipSub: 'スキン', example: '例：和風、現代' },
+};
+export const isStashId = (id) => id === MAT || id === SKIN;
+const kindOfId = (id) => (id === SKIN ? KINDS.skin : KINDS.material);
+const stash = (k) => S.stash[k];
+const isApp = () => S.platform.kind === 'app';
 
-export async function loadMaterials() {
-  S.materials = { ref: null, label: '', ...((await store.get('materials')) || {}) };
-  if (S.materials.ref) S.materialsDir = await S.platform.openFolder(S.materials.ref).catch(() => null);
+// ------------------------------------------------------------ 置き場所
+export async function loadStash() {
+  S.stash = {};
+  S.stashDir = {};
+  for (const k of Object.values(KINDS)) S.stash[k.key] = { ref: null, label: '', keepZip: true, ...((await store.get(k.kv)) || {}) };
+  // アプリ版：最初から使える保存フォルダ（exe の横の CWCatalog_保存）
+  if (S.platform.defaultStoreDirs) {
+    const d = await S.platform.defaultStoreDirs().catch(() => null);
+    if (d) {
+      S.storeRoot = d.root;
+      for (const k of Object.values(KINDS)) {
+        if (!S.stash[k.key].ref) { S.stash[k.key] = { ...S.stash[k.key], ref: d[k.key], label: d[k.key], auto: true }; await store.set(k.kv, S.stash[k.key]); }
+      }
+      if (!S.archive.ref) { S.archive = { ...S.archive, ref: d.zip, label: d.zip, on: true, auto: true }; await store.set('archive', S.archive); }
+    }
+  }
+  for (const k of Object.values(KINDS)) {
+    if (S.stash[k.key].ref) S.stashDir[k.key] = await S.platform.openFolder(S.stash[k.key].ref).catch(() => null);
+  }
+  S.materials = S.stash.material; // 前からの呼び方
 }
 
-export async function materialsDirOf(ask = true) {
-  if (S.materialsDir) return S.materialsDir;
-  if (!S.materials?.ref) return null;
-  const d = await S.platform.openFolder(S.materials.ref, { ask });
-  if (d) S.materialsDir = d;
+export async function stashDirOf(kind, ask = true) {
+  if (S.stashDir[kind]) return S.stashDir[kind];
+  const st = stash(kind);
+  if (!st?.ref) return null;
+  const d = await S.platform.openFolder(st.ref, { ask });
+  if (d) S.stashDir[kind] = d;
   return d;
 }
+export const materialsDirOf = (ask) => stashDirOf('material', ask);
 
-export async function pickMaterialsFolder(useOpfs = false) {
-  return busy('素材の置き場所を選ぶ', async () => {
-    const p = useOpfs ? await S.platform.opfsFolder('test-materials') : await S.platform.pickFolder({ title: '素材・スキンなどを置くフォルダを選んでください', id: 'cw-materials' });
-    S.materials = { ref: p.ref, label: p.label };
-    S.materialsDir = p.dir;
-    await store.set('materials', S.materials);
-    toast(`素材は「${p.label}」に入れるようにしました`);
-    await scanMaterials(true);
+export async function pickStashFolder(kind, useOpfs = false) {
+  const k = KINDS[kind];
+  return busy(`${k.place}を選ぶ`, async () => {
+    const p = useOpfs ? await S.platform.opfsFolder(k.opfs) : await S.platform.pickFolder({ title: `${k.label}を置くフォルダを選んでください`, id: `cw-${kind}` });
+    S.stash[kind] = { ...S.stash[kind], ref: p.ref, label: p.label, auto: false, lastScan: '' };
+    S.stashDir[kind] = p.dir;
+    if (kind === 'material') S.materials = S.stash.material;
+    await store.set(k.kv, S.stash[kind]);
+    toast(`${k.label}は「${p.label}」に入れるようにしました`);
+    await scanStash(kind, true);
   });
 }
+export const pickMaterialsFolder = (useOpfs) => pickStashFolder('material', useOpfs);
 
-/** 素材の置き場所の分類フォルダ（1段目のフォルダ） */
+/** 置き場所の分類フォルダ（1段目のフォルダ） */
 async function categoriesOf(d) {
   return (await d.entries()).filter((e) => e.kind === 'dir' && e.name !== BACKUP_DIR).map((e) => e.name).sort((a, b) => a.localeCompare(b, 'ja'));
 }
 
-/** 素材の置き場所を読み取る：1段目＝分類フォルダ、その中のフォルダ・ファイル＝1つの素材（分類が無いものは1段目のもの） */
-export async function scanMaterials(quiet = false) {
-  const d = await materialsDirOf(true);
-  if (!d) throw new Error('素材の置き場所を使う許可がありませんでした');
-  const old = new Map(S.records.filter((r) => r.engineId === MAT).map((r) => [r.id, r]));
+/** 置き場所を読み取る：1段目＝分類フォルダ、その中のフォルダ・ファイル＝1つの素材（スキン）。分類に入っていないファイルは1段目のもの */
+export async function scanStash(kind, quiet = false) {
+  const k = KINDS[kind];
+  const d = await stashDirOf(kind, true);
+  if (!d) throw new Error(`${k.place}を使う許可がありませんでした`);
+  const old = new Map(S.records.filter((r) => r.engineId === k.id).map((r) => [r.id, r]));
   const items = [];
   const cats = await categoriesOf(d);
   const now = new Date().toISOString();
-  const push = (path, kind) => {
-    const id = recordId(MAT, path);
+  const push = (path, fk) => {
+    const id = recordId(k.id, path);
     const prev = old.get(id) || {};
     old.delete(id);
-    items.push({ tags: [], ...prev, id, engineId: MAT, type: 'material', path, name: path.split('/').pop(), author: '', format: 'none', kind, missing: false, seenAt: now });
+    items.push({ tags: [], ...prev, id, engineId: k.id, type: kind, path, name: path.split('/').pop(), author: '', format: 'none', kind: fk, missing: false, seenAt: now });
   };
-  for (const e of await d.entries()) {
-    if (e.kind === 'file') push(e.name, 'file');
-  }
+  for (const e of await d.entries()) if (e.kind === 'file') push(e.name, 'file');
   for (const c of cats) {
     const sub = await d.dir(c);
-    const ents = await sub.entries();
-    // 中に素材らしいフォルダ・ファイルがあれば分類フォルダ、空なら空の分類
-    for (const e of ents) push(`${c}/${e.name}`, e.kind);
+    // スキンは、分類フォルダを使わずにそのまま置かれていることもある（Skin.xml があればそれが1つのスキン）
+    if (kind === 'skin' && (await sub.has('Skin.xml'))) { push(c, 'dir'); continue; }
+    for (const e of await sub.entries()) push(`${c}/${e.name}`, e.kind);
   }
   const missing = [...old.values()].map((r) => ({ ...r, missing: true }));
   await store.putRecords([...items, ...missing]);
   S.records = await store.records();
-  S.categories[MAT] = cats;
+  S.categories[k.id] = cats;
   await store.set('categories', S.categories);
-  S.materials.lastScan = now;
-  await store.set('materials', S.materials);
-  if (!quiet) toast(`素材 ${items.length}件を読み取りました${missing.length ? `（見つからないもの ${missing.length}件）` : ''}`);
+  S.stash[kind].lastScan = now;
+  await store.set(k.kv, S.stash[kind]);
+  if (!quiet) toast(`${k.label} ${items.length}件を読み取りました${missing.length ? `（見つからないもの ${missing.length}件）` : ''}`);
+}
+export const scanMaterials = (quiet) => scanStash('material', quiet);
+
+// ------------------------------------------------------------ 入れる
+const pyEngines = () => S.engines.filter((e) => e.kind === 'py');
+
+/**
+ * シナリオではないものを入れる（ひとつずつ・まとめて の両方で使う）
+ * @param {object} o openArchive の結果
+ * @param {{kind: 'material'|'skin', to?: string, cat: string, name: string, asArc?: boolean, skip?: Set<string>, skin?: object}} m
+ *   to：スキンのとき、'stash'（スキンの置き場所）かPyのエンジンのid（Data/Skin に入れる）
+ * @returns {Promise<{dest: string, written: number, where: string, zip: string|null}>}
+ */
+export async function installNonScenario(o, m) {
+  let files = o.files.filter((f) => !m.skip?.has(f.path));
+  if (!m.asArc && !files.length) throw new Error('入れるファイルを1つ以上選んでください');
+  // スキンは、Skin.xml のあるフォルダの中身だけを入れる
+  if (m.kind === 'skin' && m.skin && m.skin.root) {
+    files = files.filter((f) => f.path.startsWith(m.skin.root)).map((f) => ({ ...f, path: f.path.slice(m.skin.root.length) }));
+  }
+  const src = m.asArc ? o : { ...o, files };
+  let root, where, category = m.cat;
+  if (m.kind === 'skin' && m.to && m.to !== 'stash') {
+    const e = engine(m.to);
+    root = await dirOf(m.to, true);
+    if (!root) throw new Error(`${e?.name || 'エンジン'}のフォルダに接続できませんでした`);
+    category = 'Data/Skin';
+    where = `${e.name} の Data/Skin`;
+  } else {
+    const k = KINDS[m.kind];
+    root = await stashDirOf(m.kind, true);
+    if (!root) throw new Error(`${k.place}を使う許可がありませんでした。「設定」で選び直してください`);
+    where = `${k.place}（${stash(m.kind).label}）`;
+  }
+  const r = await installMaterial(root, src, { category, folderName: m.name.trim(), asArchive: !!m.asArc });
+  // 元のzipも残す（設定でオン・オフ）
+  let zip = null;
+  if (!m.asArc && stash(m.kind)?.keepZip && S.archive.ref) {
+    const { saveArchive } = await import('./add.js');
+    zip = await saveArchive(o, { force: true, subdir: KINDS[m.kind].zipSub }).catch(() => null);
+  }
+  if (!(m.kind === 'skin' && m.to && m.to !== 'stash')) await scanStash(m.kind, true).catch(() => {});
+  return { ...r, where, zip };
 }
 
+/** スキンの分類フォルダを自動で決める（Skin.xml の種類） */
+export const autoSkinCat = (skin) => (skin?.type || 'その他').replace(/[\\/:*?"<>|]/g, '_');
 
 /** 「シナリオをDLする」タブで、シナリオではないものを開いたときの欄 */
 export function viewMaterialInstall(o) {
+  if (o.skinInfo === undefined) {
+    o.skinInfo = null;
+    readSkin(o).then((info) => { o.skinInfo = info; if (info && o.mat) { o.mat.kind = 'skin'; o.mat.name = info.folderName; o.mat.catState = {}; } render(); }).catch(() => {});
+  }
+  const skin = o.skinInfo;
+  const m = o.mat || (o.mat = { kind: skin ? 'skin' : 'material', to: 'stash', name: skin?.folderName || (o.archiveName || o.source.name).replace(/\.[^.]+$/, ''), asArc: false, catState: {}, skip: new Set() });
+  const k = KINDS[m.kind];
   const card = h('div', { class: 'card stack' },
-    h('h3', {}, 'シナリオではないようです（スキン・素材・効果音など）'),
-    h('p', { class: 'small muted', style: 'margin:0' }, 'Summary.wsm・Summary.xml が無いので、シナリオとしては入れられません。素材・スキンなどとして、「素材の置き場所」に分類フォルダを分けて入れられます。'));
-  if (!S.materials?.ref) {
+    h('h3', {}, skin ? `スキンのようです（${skin.name || skin.folderName}${skin.type ? `・種類：${skin.type}` : ''}${skin.author ? `・${skin.author}` : ''}）` : 'シナリオではないようです（スキン・素材・効果音など）'),
+    h('p', { class: 'small muted', style: 'margin:0' }, skin
+      ? 'Skin.xml があるので、CardWirthPy のスキンとして入れられます。'
+      : 'Summary.wsm・Summary.xml が無いので、シナリオとしては入れられません。素材・スキンとして、置き場所に分類フォルダを分けて入れられます。'),
+    h('div', { class: 'row', role: 'radiogroup', 'aria-label': '入れ方' },
+      Object.values(KINDS).map((x) => h('label', { class: 'check' },
+        h('input', { type: 'radio', name: 'mat-kind', checked: m.kind === x.key, onchange: () => { m.kind = x.key; m.catState = {}; render(); } }), `${x.label}として入れる`))));
+  const st = stash(m.kind);
+  const toEngine = m.kind === 'skin' && m.to !== 'stash';
+  if (!toEngine && !st?.ref) {
     card.append(h('div', { class: 'row' },
-      S.platform.canWriteFolders ? h('button', { class: 'btn primary', onclick: () => pickMaterialsFolder().then(render) }, '素材の置き場所を決める') : h('span', { class: 'small muted' }, 'このブラウザでは、フォルダに入れられません。'),
-      location.hash.includes('dev-opfs') && S.platform.opfsFolder ? h('button', { class: 'btn', id: 'dev-opfs-materials', onclick: () => pickMaterialsFolder(true).then(render) }, 'テスト用（素材）') : null));
+      S.platform.canWriteFolders ? h('button', { class: 'btn primary', onclick: () => pickStashFolder(m.kind).then(render) }, `${k.place}を決める`) : h('span', { class: 'small muted' }, 'このブラウザでは、フォルダに入れられません。'),
+      location.hash.includes('dev-opfs') && S.platform.opfsFolder ? h('button', { class: 'btn', id: `dev-opfs-${m.kind === 'skin' ? 'skins' : 'materials'}`, onclick: () => pickStashFolder(m.kind, true).then(render) }, `テスト用（${k.label}）`) : null));
     return card;
   }
-  const cats = S.categories[MAT] || [];
-  // 入力は o に覚えておく（ほかの処理で画面が描き直されても消えないように）
-  const m = o.mat || (o.mat = { cat: '', newCat: '', name: (o.archiveName || o.source.name).replace(/\.[^.]+$/, ''), asArc: false });
-  const catSel = h('select', { id: 'mat-cat', 'aria-label': '分類フォルダ', onchange: (ev) => { m.cat = ev.target.value; newCat.hidden = m.cat !== '__new'; } },
-    h('option', { value: '' }, '（素材の置き場所の直下）'), cats.map((c) => h('option', { value: c, selected: m.cat === c ? 'selected' : null }, c)), h('option', { value: '__new', selected: m.cat === '__new' ? 'selected' : null }, '新しい分類フォルダ…'));
-  const newCat = h('input', { type: 'text', id: 'mat-newcat', value: m.newCat, placeholder: '新しい分類フォルダの名前（例：スキン、効果音、立ち絵）', hidden: m.cat !== '__new', oninput: (ev) => { m.newCat = ev.target.value; } });
   const nameIn = h('input', { type: 'text', id: 'mat-name', value: m.name, 'aria-label': 'フォルダ名', oninput: (ev) => { m.name = ev.target.value; } });
   const asArc = h('input', { type: 'checkbox', checked: m.asArc, 'aria-label': 'zipのまま置く', onchange: (ev) => { m.asArc = ev.target.checked; pick.hidden = m.asArc; } });
-  m.skip ||= new Set();
   const pick = filePicker(o, m);
   pick.hidden = m.asArc;
-  card.append(
-    h('div', { class: 'grid2' },
-      h('label', { class: 'field' }, '分類フォルダ', catSel, newCat),
-      h('label', { class: 'field' }, 'フォルダ名', nameIn)),
-    o.source.kind === 'archive' ? h('label', { class: 'check small' }, asArc, '展開せずに、zipなどのまま置く') : null,
+  const cp = toEngine ? null : catPicker({
+    cats: S.categories[k.id] || [], rootLabel: `（${k.place}の直下）`, state: m.catState, idPrefix: 'mat',
+    autoLabel: m.kind === 'skin' ? `自動（スキンの種類で分ける：${autoSkinCat(skin)}）` : '', placeholder: `新しい分類フォルダの名前（${k.example}）`,
+  });
+  const dests = m.kind === 'skin' ? h('label', { class: 'field' }, '入れ先',
+    h('select', { id: 'skin-to', onchange: (ev) => { m.to = ev.target.value; render(); } },
+      h('option', { value: 'stash', selected: m.to === 'stash' ? 'selected' : null }, `スキンの置き場所（${st?.label || '未設定'}）`),
+      pyEngines().map((e) => h('option', { value: e.id, selected: m.to === e.id ? 'selected' : null }, `${e.name} の Data/Skin（すぐ使える）`)))) : null;
+  card.append(...[
+    dests,
+    h('div', { class: 'grid2' }, cp?.el, h('label', { class: 'field' }, 'フォルダ名', nameIn)),
+    o.source.kind === 'archive' && m.kind === 'material' ? h('label', { class: 'check small' }, asArc, '展開せずに、zipなどのまま置く') : null,
     pick,
     h('div', { class: 'row' },
       h('button', {
-        class: 'btn primary', onclick: async () => {
-          const cat = m.cat === '__new' ? m.newCat.trim() : m.cat;
-          const chosen = o.files.filter((f) => !m.skip.has(f.path));
-          if (!m.asArc && !chosen.length) { toast('入れるファイルを1つ以上選んでください', { bad: true }); return; }
-          if (m.cat === '__new' && !cat) { toast('新しい分類フォルダの名前を入れてください', { bad: true }); return; }
+        class: 'btn primary', id: 'mat-install', onclick: async () => {
+          let cat = cp ? cp.value() : '';
+          if (cat === '__auto') cat = autoSkinCat(skin);
+          if (m.catState?.isNew && !cat) { toast('新しい分類フォルダの名前を入れてください', { bad: true }); return; }
           if (o.readmes?.length && !o.matAck) {
             const { readmeModal } = await import('./add.js');
             if (!(await readmeModal(o, o.source.name))) return;
             o.matAck = true;
           }
-          await busy('素材の置き場所に入れる', async () => {
-            const d = await materialsDirOf(true);
-            if (!d) throw new Error('素材の置き場所を使う許可がありませんでした');
-            const r = await installMaterial(d, m.asArc ? o : { ...o, files: chosen }, { category: cat, folderName: m.name.trim(), asArchive: m.asArc });
-            await scanMaterials(true);
-            toast(`「${S.materials.label}」の ${r.dest} に入れました（${m.asArc ? 'zipのまま' : `${r.written}ファイル`}）`, { ms: 8000 });
+          await busy(`${k.label}を入れる`, async () => {
+            const r = await installNonScenario(o, { ...m, cat, skin });
+            toast(`${r.where} の ${r.dest} に入れました（${m.asArc ? 'zipのまま' : `${r.written}ファイル`}）${r.zip ? `。元のzipは「${r.zip}」に残しました` : ''}`, { ms: 9000 });
             S.opened = null;
           });
         },
-      }, '素材の置き場所に入れる'),
-      h('span', { class: 'small muted' }, `入れ先：${S.materials.label}${o.readmes?.length ? '（入れる前に Readme（利用規約）を確認します）' : ''}`)));
+      }, toEngine ? `${engine(m.to)?.name} に入れる` : `${k.place}に入れる`),
+      h('span', { class: 'small muted' }, [
+        toEngine ? `入れ先：${engine(m.to)?.name} の Data/Skin` : `入れ先：${st.label}`,
+        st?.keepZip && S.archive.ref && !m.asArc ? `元のzipも「${S.archive.label}」の「${k.zipSub}」に残します` : '',
+        o.readmes?.length ? '入れる前に Readme（利用規約）を確認します' : '',
+      ].filter(Boolean).join('／'))),
+  ].filter(Boolean));
   return card;
 }
 
-/** 素材のどのファイルを入れるか選ぶ欄（最初は全部。フォルダごとにも選べる） */
+/** どのファイルを入れるか選ぶ欄（最初は全部。フォルダごとにも選べる） */
 function filePicker(o, m) {
+  m.skip ||= new Set();
   const groups = new Map();
   for (const f of o.files) {
     const dir = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '';
@@ -164,28 +258,31 @@ function filePicker(o, m) {
     box);
 }
 
+// ------------------------------------------------------------ 分類フォルダへ移す
 /**
- * 選んだもの（シナリオ・素材）を、分類フォルダへ動かす（実際のファイルを動かす）
- * @param {object[]} recs 同じ入れ物（同じエンジン、または素材の置き場所）の記録
+ * 選んだもの（シナリオ・素材・スキン）を、分類フォルダへ動かす（実際のファイルを動かす）
+ * @param {object[]} recs 同じ入れ物（同じエンジン、または同じ置き場所）の記録
  */
 export async function moveToCategory(recs) {
-  const isMat = recs[0].engineId === MAT;
-  const base = isMat ? '' : 'Scenario';
-  const cats = S.categories[recs[0].engineId] || [];
+  const id = recs[0].engineId;
+  const isStash = isStashId(id);
+  const k = isStash ? kindOfId(id) : null;
+  const base = isStash ? '' : 'Scenario';
+  const cats = S.categories[id] || [];
   const target = await modal((close) => {
-    const newIn = h('input', { type: 'text', class: 'grow', placeholder: '新しい分類フォルダの名前' });
+    const state = {};
+    const cp = catPicker({ cats, rootLabel: isStash ? `（${k.place}の直下）` : '（Scenario の直下）', state, idPrefix: 'move' });
     return h('div', { class: 'stack' },
       h('h2', {}, `${recs.length}件を分類フォルダへ移す`),
-      h('p', { class: 'small muted', style: 'margin:0' }, `${isMat ? '素材の置き場所' : 'Scenario フォルダ'}の中で、実際のフォルダやファイルを動かします（宿の冒険の記録などには影響しません）。`),
-      h('div', { class: 'stack menu-list' },
-        h('button', { class: 'btn', onclick: () => close({ cat: '' }) }, isMat ? '（素材の置き場所の直下）' : '（Scenario の直下）'),
-        cats.map((c) => h('button', { class: 'btn', onclick: () => close({ cat: c }) }, c))),
-      h('div', { class: 'row' }, newIn, h('button', { class: 'btn primary', onclick: () => { const n = newIn.value.trim(); if (n) close({ cat: n }); } }, '新しく作って移す')),
-      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn', onclick: () => close(null) }, 'やめる')));
+      h('p', { class: 'small muted', style: 'margin:0' }, `${isStash ? k.place : 'Scenario フォルダ'}の中で、実際のフォルダやファイルを動かします（宿の冒険の記録などには影響しません）。`),
+      cp.el,
+      h('div', { class: 'row', style: 'justify-content:flex-end' },
+        h('button', { class: 'btn', onclick: () => close(null) }, 'やめる'),
+        h('button', { class: 'btn primary', id: 'move-go', onclick: () => { const c = cp.value(); if (state.isNew && !c) { toast('新しい分類フォルダの名前を入れてください', { bad: true }); return; } close({ cat: c }); } }, '移す')));
   });
   if (!target) return;
   await busy('分類フォルダへ移す', async () => {
-    const d = isMat ? await materialsDirOf(true) : await dirOf(recs[0].engineId, true);
+    const d = isStash ? await stashDirOf(k.key, true) : await dirOf(id, true);
     if (!d) throw new Error('フォルダに接続できませんでした');
     const toDir = [base, target.cat].filter(Boolean).join('/');
     const log = [];
@@ -198,7 +295,7 @@ export async function moveToCategory(recs) {
         if (dest === path) continue;
         for (const r of group) {
           const nr = { ...r, id: recordId(r.engineId, dest, r.inner || ''), path: dest };
-          if (!isMat) Object.assign(nr, applyCatalog(nr));
+          if (!isStash) Object.assign(nr, applyCatalog(nr));
           await store.deleteRecord(r.id);
           await store.putRecord(nr);
         }
@@ -210,7 +307,7 @@ export async function moveToCategory(recs) {
     }
     S.records = await store.records();
     if (target.cat && !cats.includes(target.cat)) {
-      S.categories[recs[0].engineId] = [...cats, target.cat].sort();
+      S.categories[id] = [...cats, target.cat].sort();
       await store.set('categories', S.categories);
     }
     S.mineSel.clear();
@@ -226,23 +323,37 @@ export function showLog(title, lines) {
     h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn primary', onclick: () => close(true) }, '閉じる'))));
 }
 
-export const materialsLabel = () => (S.materials?.label ? `素材の置き場所（${S.materials.label}）` : '素材の置き場所');
-
-// ------------------------------------------------------------ 設定タブ
-export function viewMaterialsSettings(dev) {
-  return h('div', { class: 'card stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, 'スキン・素材・効果音など、シナリオではないものを入れるフォルダです。中に「分類フォルダ」（例：スキン、効果音）を作って分けられます。エンジンのScenarioフォルダとは別の場所を選んでください。'),
-    h('div', { class: 'row' },
-      h('span', { class: 'grow small muted' }, S.materials?.ref ? `素材の置き場所：${S.materials.label}${S.materialsDir ? '' : '（次に使うとき許可を聞きます）'}` : '素材の置き場所：未設定'),
-      S.platform.canWriteFolders ? h('button', { class: 'btn sm', onclick: () => pickMaterialsFolder().then(render) }, S.materials?.ref ? '置き場所を変える' : '置き場所を選ぶ') : null,
-      dev ? h('button', { class: 'btn sm', id: 'dev-opfs-materials-set', onclick: () => pickMaterialsFolder(true).then(render) }, 'テスト用（素材）') : null),
-    !S.platform.canWriteFolders ? h('p', { class: 'note warn small', style: 'margin:0' }, 'このブラウザでは、素材の置き場所の登録はできません。') : null);
+/** フォルダをエクスプローラーで開くボタン（アプリ版だけ） */
+export function openBtn(path, label = 'エクスプローラーで開く') {
+  if (!isApp() || !path || !S.platform.revealFolder) return null;
+  return h('button', { class: 'btn ghost sm', title: path, onclick: () => S.platform.revealFolder(path).catch((e) => toast(`開けませんでした：${e.message || e}`, { bad: true })) }, `📂 ${label}`);
 }
 
-// ------------------------------------------------------------ 自分のフォルダ一覧（素材の置き場所を選んだとき）
-export function viewMaterialsMine(makeSel) {
+// ------------------------------------------------------------ 設定タブ
+export function viewStashSettings(dev) {
+  return h('div', { class: 'stack' }, Object.values(KINDS).map((k) => {
+    const st = stash(k.key);
+    const keep = h('input', { type: 'checkbox', checked: st.keepZip !== false, 'aria-label': `${k.label}の元のzipも残す`, onchange: async (ev) => { st.keepZip = ev.target.checked; await store.set(k.kv, st); } });
+    return h('div', { class: 'card stack' },
+      h('h3', { style: 'margin:0' }, k.place),
+      h('div', { class: 'row' },
+        h('span', { class: 'grow small', style: 'word-break:break-all' }, st.ref ? `${st.label}${st.auto ? '（最初から用意したフォルダ）' : ''}${S.stashDir[k.key] ? '' : '（次に使うとき許可を聞きます）'}` : '未設定'),
+        openBtn(st.ref),
+        S.platform.canWriteFolders ? h('button', { class: 'btn sm', onclick: () => pickStashFolder(k.key).then(render) }, st.ref ? '置き場所を変える' : '置き場所を選ぶ') : null,
+        dev ? h('button', { class: 'btn sm', id: `dev-opfs-${k.key === 'skin' ? 'skins' : 'materials'}-set`, onclick: () => pickStashFolder(k.key, true).then(render) }, `テスト用（${k.label}）`) : null),
+      h('label', { class: 'check small' }, keep, `入れたときに、元のzipも「zip・wsnの保存場所」の「${k.zipSub}」フォルダに残す`),
+      k.key === 'skin' ? h('p', { class: 'small muted', style: 'margin:0' }, 'スキン（Skin.xml があるもの）は、種類（Skin.xml の Type）で分類フォルダを自動で分けられます。CardWirthPy を登録していれば、その Data/Skin に直接入れることもできます。') : null,
+      !S.platform.canWriteFolders ? h('p', { class: 'note warn small', style: 'margin:0' }, 'このブラウザでは、置き場所の登録はできません。') : null);
+  }));
+}
+export const viewMaterialsSettings = viewStashSettings;
+
+// ------------------------------------------------------------ 自分のフォルダ一覧（置き場所を選んだとき）
+export function viewStashMine(kind, makeSel) {
+  const k = KINDS[kind];
+  const st = stash(kind);
   const q = S.filter.mine.normalize('NFKC').toLowerCase();
-  const mine = S.records.filter((r) => r.engineId === MAT);
+  const mine = S.records.filter((r) => r.engineId === k.id);
   let recs = mine.filter((r) => !q || `${r.name} ${r.path} ${(r.tags || []).join(' ')}`.normalize('NFKC').toLowerCase().includes(q));
   const allRecs = recs;
   const tg = S.filter.mineTag || '';
@@ -253,14 +364,15 @@ export function viewMaterialsMine(makeSel) {
   const head = h('div', { class: 'card' },
     h('div', { class: 'row' },
       makeSel(),
-      S.materials?.ref
-        ? h('button', { class: 'btn', onclick: () => busy('素材を読み取る', () => scanMaterials()) }, '読み取る')
-        : h('button', { class: 'btn primary', onclick: () => pickMaterialsFolder().then(render) }, '素材の置き場所を決める'),
-      S.materials?.ref ? h('button', { class: 'btn ghost sm', onclick: () => pickMaterialsFolder().then(render) }, '置き場所を変える') : null),
+      st?.ref
+        ? h('button', { class: 'btn', onclick: () => busy(`${k.label}を読み取る`, () => scanStash(kind)) }, '読み取る')
+        : h('button', { class: 'btn primary', onclick: () => pickStashFolder(kind).then(render) }, `${k.place}を決める`),
+      openBtn(st?.ref),
+      st?.ref ? h('button', { class: 'btn ghost sm', onclick: () => pickStashFolder(kind).then(render) }, '置き場所を変える') : null),
     h('div', { class: 'row', style: 'margin-top:10px' },
-      h('input', { type: 'search', class: 'grow', placeholder: '名前・分類・タグで絞り込み', value: S.filter.mine, oninput: (ev) => { S.filter.mine = ev.target.value; rerenderList('mine-body', () => viewMaterialsMine(makeSel)); } })),
-    h('p', { class: 'small muted', style: 'margin:8px 0 0' },
-      S.materials?.ref ? `素材の置き場所：${S.materials.label}${S.materials.lastScan ? `／最後に読み取った日時：${fmtDate(S.materials.lastScan)}／${mine.length}件` : ''}` : 'スキン・素材などは「シナリオをDLする」タブで開くと、ここ（素材の置き場所）に分類して入れられます。'),
+      h('input', { type: 'search', class: 'grow', placeholder: '名前・分類・タグで絞り込み', value: S.filter.mine, oninput: (ev) => { S.filter.mine = ev.target.value; rerenderList('mine-body', () => viewStashMine(kind, makeSel)); } })),
+    h('p', { class: 'small muted', style: 'margin:8px 0 0;word-break:break-all' },
+      st?.ref ? `${k.place}：${st.label}${st.lastScan ? `／最後に読み取った日時：${fmtDate(st.lastScan)}／${mine.length}件` : ''}` : `${k.label}は「シナリオをDLする」タブで開くと、ここ（${k.place}）に分類して入れられます。`),
     tagChips(allRecs));
 
   const selBar = recs.length ? h('div', { class: 'card batch-bar', id: 'mine-bar' },
@@ -274,7 +386,6 @@ export function viewMaterialsMine(makeSel) {
       h('button', { class: 'btn sm', onclick: async () => { const present = [...new Set(sel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${sel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(sel, [], t); render(); } } }, 'タグを外す'),
       h('button', { class: 'btn sm', onclick: async () => { const ok = sel.filter((r) => !r.missing); if (ok.length) await moveToCategory(ok); render(); } }, '分類フォルダへ移す')) : null) : null;
 
-  // 分類フォルダごとにまとめる
   const groups = new Map();
   for (const r of recs) {
     const c = r.path.includes('/') ? r.path.split('/')[0] : '';
@@ -284,12 +395,13 @@ export function viewMaterialsMine(makeSel) {
   const list = h('div', { class: 'list', id: 'mine-list' }, recs.length
     ? [...groups].map(([c, rs]) => h('details', { class: 'group', open: true },
       h('summary', {}, h('span', { class: 'group-name' }, c || '（分類なし）'), h('span', { class: 'badge plain' }, `${rs.length}件`)),
-      rs.map(materialCard)))
-    : h('p', { class: 'empty' }, mine.length ? '見つかりませんでした' : S.materials?.ref ? 'まだ記録がありません。「読み取る」を押してください' : 'まだ素材の置き場所が決まっていません'));
+      rs.map(stashCard)))
+    : h('p', { class: 'empty' }, mine.length ? '見つかりませんでした' : st?.ref ? 'まだ記録がありません。「読み取る」を押してください' : `まだ${k.place}が決まっていません`));
   return h('div', {}, head, h('div', { id: 'mine-body' }, selBar, list));
 }
+export const viewMaterialsMine = (makeSel) => viewStashMine('material', makeSel);
 
-function materialCard(r) {
+function stashCard(r) {
   const save = async (patch) => { Object.assign(r, patch); await store.putRecord(r); S.records = await store.records(); render(); };
   const fav = (r.tags || []).includes('お気に入り');
   return h('div', { class: 'card' },

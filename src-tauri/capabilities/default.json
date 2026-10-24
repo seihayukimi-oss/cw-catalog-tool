@@ -12,6 +12,8 @@
     "allow-portable-info",
     "allow-take-open-args",
     "allow-net-fetch",
+    "allow-default-store-dirs",
+    "allow-open-folder",
     "allow-portable-update-install",
     "allow-update-key-configured",
     "allow-downloads-list",

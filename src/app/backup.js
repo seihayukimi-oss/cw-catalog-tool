@@ -51,6 +51,11 @@ export function backupFull(kind, engineId, dest) {
   return isApp() ? join(base, dest.replace(/\//g, '\\')) : `「${label}」の中の ${dest}`;
 }
 
+function openBtnLite(path) {
+  if (S.platform.kind !== 'app' || !S.platform.revealFolder) return null;
+  return h('button', { class: 'btn ghost sm', title: path, onclick: () => S.platform.revealFolder(path).catch((e) => toast(`開けませんでした：${e.message || e}`, { bad: true })) }, '📂 エクスプローラーで開く');
+}
+
 export function viewBackupSettings(dev) {
   const pick = async (useOpfs = false) => busy('バックアップ先を選ぶ', async () => {
     const p = useOpfs ? await S.platform.opfsFolder('test-backup') : await S.platform.pickFolder({ title: 'バックアップを置くフォルダを選んでください', id: 'cw-backup' });
@@ -74,6 +79,7 @@ export function viewBackupSettings(dev) {
         ? `バックアップ先：${S.backupFolder.label}（この中に「エンジンの名前」「zipの保存場所」のフォルダを作って分けます）`
         : `バックアップ先：いつもの場所（それぞれのエンジンのフォルダの中の ${BACKUP_DIR}）`),
       S.platform.canWriteFolders ? h('button', { class: 'btn sm', onclick: () => pick().then(render) }, S.backupFolder?.ref ? 'バックアップ先を変える' : 'バックアップ先を選ぶ') : null,
+      S.backupFolder?.ref ? openBtnLite(S.backupFolder.ref) : null,
       S.backupFolder?.ref ? h('button', { class: 'btn ghost sm', onclick: reset }, 'いつもの場所に戻す') : null,
       dev ? h('button', { class: 'btn sm', id: 'dev-opfs-backup', onclick: () => pick(true).then(render) }, 'テスト用（バックアップ）') : null),
     h('p', { class: 'small muted', style: 'margin:0' }, 'エンジンのScenarioフォルダの中は選ばないでください。外付けのドライブなども選べます。'));

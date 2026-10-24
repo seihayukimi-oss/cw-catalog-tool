@@ -11,6 +11,7 @@ use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Runtime, Webview
 use tauri_plugin_fs::FsExt;
 
 pub const DATA_DIR_NAME: &str = "CWCatalog-data";
+pub const STORE_DIR_NAME: &str = "CWCatalog_保存";
 const OLD_IDENTIFIER: &str = "io.github.cwcatalog.tool";
 const SCOPE_FILE: &str = "allowed-folders.json";
 const WINDOW_FILE: &str = "window.json";
@@ -85,6 +86,16 @@ impl Portable {
 
     pub fn downloads_dir(&self) -> PathBuf {
         self.data_dir.join("downloads")
+    }
+
+    /// 最初から用意しておく保存フォルダ（exe の横の「CWCatalog_保存」）。exe の横に置けないときは CWCatalog-data の中
+    pub fn store_root(&self) -> PathBuf {
+        if self.beside_exe {
+            if let Some(exe_dir) = self.data_dir.parent() {
+                return exe_dir.join(STORE_DIR_NAME);
+            }
+        }
+        self.data_dir.join(STORE_DIR_NAME)
     }
 
     /// 前のインストール版の記録（画面側のデータベース）と、選んだフォルダの許可を引き継ぐ

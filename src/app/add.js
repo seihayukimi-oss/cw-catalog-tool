@@ -15,6 +15,7 @@ import { viewBatch } from './batch.js';
 import { editEntry } from './catalog-view.js';
 import { openLocalFiles, pickFiles, pickDownloads } from './localfiles.js';
 import { viewMaterialInstall } from './materials.js';
+import { catPicker } from './catpick.js';
 import { backupOpts, backupFull } from './backup.js';
 import { existsAt } from '../core/fs.js';
 
@@ -183,10 +184,9 @@ export function viewAdd() {
 
   // 入れ先
   const eng = engine();
-  const dest = destFields(S.engineId, {
-    cat: S.destCat, newCat: S.destNewCat, name: S.destName ?? sc.folderName,
-    onCat: (v) => { S.destCat = v; }, onNewCat: (v) => { S.destNewCat = v; }, onName: (v) => { S.destName = v; },
-  });
+  S.destCatState ||= {};
+  const dest = destFields(S.engineId, { state: S.destCatState, name: S.destName ?? sc.folderName, onName: (v) => { S.destName = v; } });
+  S.destCatValue = dest.value;
   const dv = defaultVersion(sc);
   const verIn = h('input', { type: 'text', class: 'ver', id: 'dest-ver', value: S.destVer ?? dv.version, oninput: (ev) => { S.destVer = ev.target.value; } });
 
@@ -201,7 +201,7 @@ export function viewAdd() {
   parts.push(h('div', { class: 'card stack' },
     h('h3', {}, '入れ先'),
     S.engines.length ? h('div', { class: 'grid2' },
-      h('label', { class: 'field' }, 'エンジン', engineSelect((v) => { S.destCat = undefined; }, true)),
+      h('label', { class: 'field' }, 'エンジン', engineSelect((v) => { S.destCatState = {}; }, true)),
       dest.cat,
       dest.name,
       h('label', { class: 'field' }, 'バージョン（記録用）', verIn),
@@ -235,18 +235,13 @@ export function engineSelect(onChange, showConnect = false, value = S.engineId, 
 }
 
 /** 分類フォルダ・フォルダ名の欄 */
-export function destFields(engineId, { cat, newCat, name, onCat, onNewCat, onName, idPrefix = 'dest' }) {
-  const cats = S.categories[engineId] || [];
-  const catSel = h('select', { id: `${idPrefix}-cat` }, h('option', { value: '' }, '（Scenario直下）'), cats.map((c) => h('option', { value: c }, c)), h('option', { value: '__new' }, '新しいフォルダ…'));
-  catSel.value = cat && (cats.includes(cat) || cat === '__new') ? cat : '';
-  const newIn = h('input', { type: 'text', id: `${idPrefix}-newcat`, placeholder: '新しい分類フォルダ名', style: catSel.value === '__new' ? '' : 'display:none', value: newCat || '' });
-  catSel.addEventListener('change', () => { onCat?.(catSel.value); newIn.style.display = catSel.value === '__new' ? '' : 'none'; });
-  newIn.addEventListener('input', () => onNewCat?.(newIn.value));
+export function destFields(engineId, { state, name, onName, idPrefix = 'dest' }) {
+  const p = catPicker({ cats: S.categories[engineId] || [], rootLabel: '（Scenario直下）', state, idPrefix });
   const nameIn = name === null ? null : h('input', { type: 'text', id: `${idPrefix}-name`, value: name, oninput: (ev) => onName?.(ev.target.value) });
   return {
-    cat: h('label', { class: 'field' }, '分類フォルダ', catSel, newIn),
+    cat: p.el,
     name: nameIn ? h('label', { class: 'field' }, 'フォルダ名', nameIn) : null,
-    value: () => (catSel.value === '__new' ? newIn.value.trim() : catSel.value),
+    value: p.value,
   };
 }
 
@@ -322,12 +317,14 @@ export async function archiveDirOf(ask = true) {
  * 元のzip・wsnを保存場所に置く。同じ名前で同じ大きさのものがあれば置かない。違えば「名前_2.zip」のようにする。
  * @returns {Promise<string|null>} 保存したファイル名
  */
-export async function saveArchive(opened, { force = false } = {}) {
+export async function saveArchive(opened, { force = false, subdir = '' } = {}) {
   const bytes = opened.archiveBytes || opened.bytes;
   if (opened.source.kind !== 'archive' || !bytes) return null;
   if (!force && !S.archive.on) return null;
-  const d = await archiveDirOf(true);
-  if (!d) throw new Error('zipの保存場所を使う許可がありませんでした。設定の「zip・wsnの保存場所」で選び直してください');
+  const root = await archiveDirOf(true);
+  if (!root) throw new Error('zipの保存場所を使う許可がありませんでした。設定の「zip・wsnの保存場所」で選び直してください');
+  // 素材・スキンのzipは、保存場所の中の「素材」「スキン」フォルダに分ける
+  const d = subdir ? await root.dir(subdir, { create: true }) : root;
   const base = (opened.archiveName || opened.source.name).replace(/[\\/:*?"<>|]/g, '_');
   const dot = base.lastIndexOf('.');
   const stem = dot > 0 ? base.slice(0, dot) : base, ext = dot > 0 ? base.slice(dot) : '';
@@ -335,11 +332,11 @@ export async function saveArchive(opened, { force = false } = {}) {
     const name = i === 1 ? base : `${stem}_${i}${ext}`;
     if (await d.has(name)) {
       const size = await d.fileSize(name).catch(() => -1);
-      if (size === bytes.length) return name; // 同じものがもうある
+      if (size === bytes.length) return subdir ? `${subdir}/${name}` : name; // 同じものがもうある
       continue;
     }
     await d.writeFile(name, bytes);
-    return name;
+    return subdir ? `${subdir}/${name}` : name;
   }
   throw new Error('保存場所に同じ名前のファイルが多すぎます');
 }
@@ -410,8 +407,8 @@ async function doInstall() {
   const o = S.opened;
   const sc = o.scenarios[S.pick];
   const eng = engine();
-  const catVal = document.getElementById('dest-cat')?.value ?? '';
-  const cat = catVal === '__new' ? (document.getElementById('dest-newcat')?.value || '').trim() : catVal;
+  const cat = S.destCatValue ? S.destCatValue() : '';
+  if (S.destCatState?.isNew && !cat) { toast('新しい分類フォルダの名前を入れてください', { bad: true }); return; }
   const folderName = (document.getElementById('dest-name')?.value || sc.folderName).trim();
   const version = (document.getElementById('dest-ver')?.value || '').trim();
   const dv = defaultVersion(sc);

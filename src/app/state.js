@@ -98,6 +98,24 @@ export function busyText(text) {
   if (el) el.textContent = text;
 }
 
+const mb = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+/** 見出しの横の進み具合のバー。ratio が null なら隠す */
+export function busyProgress(ratio, text = '') {
+  const bar = document.getElementById('busy-prog');
+  if (bar) {
+    bar.hidden = ratio == null;
+    if (ratio != null) { if (ratio < 0) bar.removeAttribute('value'); else bar.value = Math.min(1, ratio); }
+  }
+  if (text) busyText(text);
+}
+/** ダウンロードの進み具合（1つずつ取るとき）。まとめて取るときは、件数で別に出す */
+export function netProgress(got, total) {
+  if (S.progressByCount) return;
+  const label = S.busy || '取得中';
+  if (total > 0) busyProgress(got / total, `${label}… ${Math.floor((got / total) * 100)}%（${mb(got)} / ${mb(total)}）`);
+  else busyProgress(-1, `${label}… ${mb(got)}`);
+}
+
 export function rerenderList(id, viewFn) {
   // 入力中のフォーカスを失わないよう、一覧の部分だけ差し替える
   const fresh = viewFn().querySelector(`#${id}`);

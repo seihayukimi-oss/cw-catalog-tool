@@ -9,6 +9,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod downloads;
+mod folders;
 mod net;
 mod portable;
 mod update;
@@ -238,6 +239,8 @@ fn main() {
         .setup(move |app| {
             let p = portable();
             p.setup_scope(app.handle());
+            net::cleanup_parts();
+            net::cleanup_parts();
             allow_open_files(app.handle(), &first_open);
             let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("CWカタログ")
@@ -258,6 +261,8 @@ fn main() {
             portable_info,
             take_open_args,
             net::net_fetch,
+            folders::default_store_dirs,
+            folders::open_folder,
             update::portable_update_install,
             update::update_key_configured,
             downloads::downloads_list,

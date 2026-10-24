@@ -8,7 +8,9 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+use tauri::Emitter;
 use tauri_plugin_http::reqwest;
 
 const MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -23,6 +25,44 @@ pub struct NetReq {
     headers: Option<HashMap<String, String>>,
     /// 待つ長さ（秒）。なければ30分（大きいファイル用）
     timeout: Option<u64>,
+    /// 進み具合を知らせるときの番号（画面側で付ける）。なければ知らせない
+    progress: Option<u32>,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct Progress {
+    id: u32,
+    got: u64,
+    total: u64,
+}
+
+/// 通信の部品は1つを使い回す（同じサイトへの続けての通信が速くなる）
+fn client() -> Result<&'static reqwest::Client, String> {
+    static C: OnceLock<reqwest::Client> = OnceLock::new();
+    if let Some(c) = C.get() {
+        return Ok(c);
+    }
+    let c = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .connect_timeout(Duration::from_secs(30))
+        .pool_max_idle_per_host(8)
+        .user_agent(UA)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(C.get_or_init(|| c))
+}
+
+/// 前に落ちたときなどに残った一時ファイルを消す（起動したときに呼ぶ）
+pub fn cleanup_parts() {
+    let dir = crate::portable().downloads_dir();
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with("net-") && name.ends_with(".part") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -52,24 +92,19 @@ fn get(h: &reqwest::header::HeaderMap, name: &str) -> String {
 }
 
 #[tauri::command]
-pub async fn net_fetch(req: NetReq) -> Result<NetResp, String> {
+pub async fn net_fetch(app: tauri::AppHandle, req: NetReq) -> Result<NetResp, String> {
     let url: reqwest::Url = req.url.parse().map_err(|_| "URLが正しくありません".to_string())?;
     if url.scheme() != "https" && url.scheme() != "http" {
         return Err("http・https だけ読めます".into());
     }
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .connect_timeout(Duration::from_secs(30))
-        .timeout(Duration::from_secs(req.timeout.unwrap_or(30 * 60).clamp(5, 3 * 60 * 60)))
-        .user_agent(UA)
-        .build()
-        .map_err(|e| e.to_string())?;
     let method = if req.method.as_deref().map(|m| m.eq_ignore_ascii_case("POST")).unwrap_or(false) {
         reqwest::Method::POST
     } else {
         reqwest::Method::GET
     };
-    let mut rb = client.request(method, url);
+    let mut rb = client()?
+        .request(method, url)
+        .timeout(Duration::from_secs(req.timeout.unwrap_or(30 * 60).clamp(5, 3 * 60 * 60)));
     for (k, v) in req.headers.unwrap_or_default() {
         let (Ok(name), Ok(value)) = (
             reqwest::header::HeaderName::from_bytes(k.as_bytes()),
@@ -109,6 +144,13 @@ pub async fn net_fetch(req: NetReq) -> Result<NetResp, String> {
     let path = dir.join(format!("net-{}-{}.part", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed)));
     let mut f = std::fs::File::create(&path).map_err(|e| e.to_string())?;
     let mut size: u64 = 0;
+    let mut last = Instant::now();
+    let tell = |got: u64| {
+        if let Some(id) = req.progress {
+            let _ = app.emit_to("main", "cw-net-progress", Progress { id, got, total: content_length });
+        }
+    };
+    tell(0);
     loop {
         let chunk = match resp.chunk().await {
             Ok(Some(c)) => c,
@@ -130,7 +172,12 @@ pub async fn net_fetch(req: NetReq) -> Result<NetResp, String> {
             let _ = std::fs::remove_file(&path);
             return Err(e.to_string());
         }
+        if last.elapsed() >= Duration::from_millis(150) {
+            last = Instant::now();
+            tell(size);
+        }
     }
+    tell(size);
     out.path = path.to_string_lossy().to_string();
     out.size = size;
     Ok(out)

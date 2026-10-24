@@ -6,7 +6,8 @@
 import { parseCatalog } from '../core/catalog.js';
 import { combine, workKey, nextPersonalId, exportPersonal, matchWork } from '../core/catalogs.js';
 import { sha256Hex } from '../core/archive.js';
-import { updateState } from '../core/catalog.js';
+import { updateState, compareVersions } from '../core/catalog.js';
+import { extractFileList, findNewest } from '../core/filelist.js';
 import { S, APP_VERSION } from './state.js';
 import { store } from './store.js';
 import { SAMPLE_CATALOG } from './sample-catalog.js';
@@ -15,6 +16,7 @@ const newId = (kind) => `${kind}-${Math.random().toString(36).slice(2, 10)}`;
 const emptyCatalog = () => ({ format: 1, authors: {}, entries: [] });
 
 export async function loadCatalogs() {
+  S.listFinds = (await store.get('listFinds')) || {};
   S.catPrefs = { addTo: 'all', askDefault: true, ...((await store.get('catalogPrefs')) || {}) };
   S.workPrefs = (await store.get('workPrefs')) || {};
   await loadFolders();
@@ -64,6 +66,55 @@ export function rebuild() {
     id: s.id, kind: s.kind, name: s.name, catalog: S.catalogs.get(s.id) || parseCatalog(emptyCatalog()), hidden: s.hidden || [],
   }));
   S.combined = list.some((l) => l.catalog.entries.length) ? combine(list) : null;
+  applyListFinds();
+}
+
+// ------------------------------------------------------------ ファイル一覧（アップローダーなど）で見つけた新しい版
+/** 一覧で見つけた最新のファイルを、作品の版とDL先に反映する（見つけたものを先に試す） */
+function applyListFinds() {
+  if (!S.combined || !S.listFinds) return;
+  for (const w of S.combined.works) {
+    const f = S.listFinds[w.key];
+    if (!f || !w.downloads.some((d) => d.kind === 'list')) continue;
+    w.listFound = f;
+    if (f.version && compareVersions(f.version, w.version) > 0) w.version = f.version;
+    if (!w.downloads.some((d) => d.url === f.url)) w.downloads.unshift({ label: `一覧の最新（${f.name}）`, url: f.url, kind: 'page', status: 'active', note: '', fromList: true });
+  }
+}
+
+/**
+ * 「ファイル一覧」のDL先がある作品について、一覧ページを見に行って最新のファイルを探す
+ * @returns {Promise<{checked: number, found: number, failed: number}>}
+ */
+export async function checkFileLists({ onStep } = {}) {
+  if (!S.combined) return { checked: 0, found: 0, failed: 0 };
+  const targets = S.combined.works.filter((w) => w.downloads.some((d) => d.kind === 'list' && d.status !== 'closed'));
+  const pages = new Map(); // 同じ一覧ページは1回だけ読む
+  let checked = 0, found = 0, failed = 0;
+  for (const w of targets) {
+    for (const d of w.downloads.filter((x) => x.kind === 'list' && x.status !== 'closed')) {
+      onStep?.(w.name);
+      let files = pages.get(d.url);
+      if (!files) {
+        try {
+          const html = await S.platform.fetchText(d.url);
+          files = extractFileList(html, d.url);
+        } catch { files = null; }
+        pages.set(d.url, files || []);
+        if (!files) { failed++; continue; }
+      }
+      checked++;
+      const hit = findNewest(files, d.match || w.name);
+      if (!hit) continue;
+      const prev = S.listFinds[w.key];
+      if (!prev || compareVersions(hit.version, prev.version) > 0 || (hit.version === prev.version && hit.url !== prev.url)) found++;
+      S.listFinds[w.key] = { url: hit.url, name: hit.name, version: hit.version, list: d.url, at: new Date().toISOString() };
+      break;
+    }
+  }
+  await store.set('listFinds', S.listFinds);
+  rebuild();
+  return { checked, found, failed };
 }
 
 export const sourceById = (id) => S.sources.find((s) => s.id === id) || null;
@@ -92,6 +143,8 @@ export async function refreshSource(src, { useMeta = false } = {}) {
   if (json.name && src.kind === 'sub' && !src.renamed) src.name = String(json.name).slice(0, 60);
   await saveSources();
   rebuild();
+  // 「更新したときもラベルを取り込む」にしていれば
+  if (src.labelSync) await importLabels(src, src.labelSync).catch(() => {});
   return true;
 }
 
@@ -264,7 +317,7 @@ export async function saveOwnEntry(entry, { origKey = '', targetIds = [] }) {
 }
 
 /** 人に渡せるDL一覧（JSON）にする */
-export function exportSource(src, { includeKeys = false } = {}) {
+export function exportSource(src, { includeKeys = false, labels = null } = {}) {
   const cat = S.catalogs.get(src.id);
   const out = exportPersonal(src.name, cat.entries, { hidden: src.hidden, tool: `CWカタログ ${APP_VERSION}` });
   out.authors = cat.authors || {};
@@ -275,9 +328,40 @@ export function exportSource(src, { includeKeys = false } = {}) {
     let dl = d ? [...e.downloads].sort((a, b) => (b.url === d) - (a.url === d)) : e.downloads;
     // DLキーは、選んだときだけ書き出す
     if (!includeKeys) dl = dl.map(({ dlkey, ...rest }) => rest);
-    return { ...e, downloads: dl };
+    // ラベル：選んだフォルダの名前を付ける（選ばなければ付けない）
+    const { labels: _old, ...rest } = e;
+    const names = labels ? foldersOf(workKey(e)).filter((f) => labels.has(f.id)).map((f) => f.name) : [];
+    return { ...rest, downloads: dl, ...(names.length ? { labels: names } : {}) };
   });
   return out;
+}
+
+/** カタログに付いているラベルの一覧（名前と件数） */
+export function labelsOf(src) {
+  const count = new Map();
+  for (const e of S.catalogs.get(src.id)?.entries || []) for (const l of e.labels || []) count.set(l, (count.get(l) || 0) + 1);
+  return [...count].map(([name, n]) => ({ name, n })).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+}
+
+/**
+ * カタログのラベルを、自分のフォルダとして取り込む
+ * @param {{names: string[]|null, prefix: boolean}} opt names が null なら全部。prefix なら「カタログ名：ラベル」というフォルダにする
+ * @returns {Promise<number>} 入れた作品の数
+ */
+export async function importLabels(src, { names = null, prefix = false } = {}) {
+  const want = names ? new Set(names) : null;
+  let n = 0;
+  for (const e of S.catalogs.get(src.id)?.entries || []) {
+    for (const l of e.labels || []) {
+      if (want && !want.has(l)) continue;
+      const fname = (prefix ? `${src.name}：${l}` : l).slice(0, 60);
+      let f = S.folders.list.find((x) => x.name === fname);
+      if (!f) f = await createFolder(fname);
+      const key = workKey(e);
+      if (!(S.folders.map[key] || []).includes(f.id)) { await putInFolder([key], f.id); n++; }
+    }
+  }
+  return n;
 }
 
 export async function setDefaultUrl(work, url) {

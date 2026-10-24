@@ -102,6 +102,7 @@ async function run(colorScheme, width) {
     await root.removeEntry('test-archive', { recursive: true }).catch(() => {});
     await root.removeEntry('test-materials', { recursive: true }).catch(() => {});
     await root.removeEntry('test-backup', { recursive: true }).catch(() => {});
+    await root.removeEntry('test-skins', { recursive: true }).catch(() => {});
     const eng = await root.getDirectoryHandle('test-engine', { create: true });
     for (const [path, bytes] of Object.entries(seed)) {
       const parts = path.split('/');
@@ -403,10 +404,16 @@ async function run(colorScheme, width) {
   const [dl3] = await Promise.all([page.waitForEvent('download'), page.locator('dialog').getByRole('button', { name: '書き出す' }).click()]);
   const listPath = await dl3.path();
   const list = JSON.parse(readFileSync(listPath, 'utf8'));
-  ok('DL一覧の書き出し（3件・デフォルトが先頭・DLキーは入れない）', list.entries.length === 3 && !JSON.stringify(list).includes('mizu') && list.entries.find((e) => e.name === '開けられた鳥籠').downloads[0].label === '新サイト', `${list.entries.length}件`);
+  ok('DL一覧の書き出し（3件・デフォルトが先頭・DLキーは入れない・ラベル付き）', list.entries.length === 3 && !JSON.stringify(list).includes('mizu') && list.entries.find((e) => e.name === '開けられた鳥籠').downloads[0].label === '新サイト' && list.entries.find((e) => e.name === '開けられた鳥籠').labels?.[0] === '鳥籠シリーズ', `${list.entries.length}件`);
   await page.getByRole('button', { name: '＋ カタログを追加' }).click();
   await page.locator('#list-file').setInputFiles({ name: '有志の一覧.json', mimeType: 'application/json', buffer: readFileSync(listPath) });
   await page.getByText(/を個人用カタログとして読み込みました（3件）/).waitFor();
+  await page.locator('dialog', { hasText: 'のラベルを取り込む' }).waitFor();
+  ok('ラベル付きのDL一覧を読み込むと、取り込むか聞く', await page.getByLabel('ラベル「鳥籠シリーズ」を取り込む').isChecked());
+  await page.locator('dialog').getByText(/フォルダの名前の前に、カタログの名前を付ける/).click();
+  await page.locator('#label-go').click();
+  await page.getByText(/1種類のラベルを取り込みました（2件をフォルダに入れました）/).waitFor();
+  ok('ラベルを、カタログの名前を付けたフォルダとして取り込む', true);
   ok('DL一覧を個人用カタログとして読み込み', await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).isVisible());
   await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).getByLabel(/を候補に含める/).uncheck();
   await page.waitForTimeout(300);
@@ -458,7 +465,7 @@ async function run(colorScheme, width) {
   if (width > 600) { await page.locator('#credits').screenshot({ path: join(OUT, `credits-${colorScheme}.png`) }); await page.locator('#backup-now').locator('..').locator('..').screenshot({ path: join(OUT, `backup-${colorScheme}.png`) }); }
   await page.locator('#dev-opfs-materials-set').click();
   await page.getByText(/素材は「.+」に入れるようにしました/).waitFor();
-  await page.getByText(/素材の置き場所：ブラウザ内/).waitFor();
+  await page.getByText(/ブラウザ内：test-materials/).first().waitFor();
   await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
   const skin = Buffer.from(zipSync({ 'スキン素材/Resource/Image/a.png': new Uint8Array([137, 80, 78, 71]), 'スキン素材/readme.txt': strToU8('見本のスキンです。改変・再配布はご遠慮ください。') }));
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: 'skin.zip', mimeType: 'application/zip', buffer: skin });
@@ -468,14 +475,14 @@ async function run(colorScheme, width) {
   await page.getByLabel('スキン素材/readme.txtを入れる').uncheck();
   if (width > 600) await page.locator('.file-pick').locator('..').locator('..').screenshot({ path: join(OUT, `filepick-${colorScheme}.png`) });
   ok('素材は入れるファイルを選べる', await page.getByText('1 / 2 ファイルを入れます').isVisible());
-  await page.locator('#mat-cat').selectOption('__new');
+  await page.locator('#mat-isnew').check();
   await page.locator('#mat-newcat').fill('スキン');
   await page.getByRole('button', { name: '素材の置き場所に入れる' }).click();
   await page.locator('dialog').getByRole('button', { name: 'Readme（利用規約）を読みました', exact: true }).click();
   await page.getByText(/スキン\/skin に入れました/).waitFor();
   ok('素材を分類フォルダに入れる（Readmeを確認してから）', true);
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
-  await page.getByLabel('エンジン').selectOption({ label: '素材・スキンの置き場所' });
+  await page.getByLabel('エンジン').selectOption({ label: '素材の置き場所' });
   const mat = page.locator('#mine-list .card', { hasText: 'スキン/skin' });
   await mat.waitFor();
   ok('素材の置き場所を一覧で見る（分類フォルダごと）', await page.locator('#mine-list details.group summary', { hasText: 'スキン' }).isVisible());
@@ -485,10 +492,28 @@ async function run(colorScheme, width) {
   await page.screenshot({ path: join(OUT, `material-mine-${colorScheme}-${width}.png`), fullPage: true });
   await page.locator('#mine-list .card', { hasText: 'スキン/skin' }).getByLabel('skinを選ぶ').check();
   await page.locator('#mine-bar .sel-actions').getByRole('button', { name: '分類フォルダへ移す' }).click();
-  await page.locator('dialog input[type=text]').fill('お気に入りスキン');
-  await page.locator('dialog').getByRole('button', { name: '新しく作って移す' }).click();
+  await page.locator('#move-isnew').check();
+  await page.locator('#move-newcat').fill('お気に入りスキン');
+  await page.locator('#move-go').click();
   await page.locator('dialog', { hasText: '分類フォルダへ移しました（1件）' }).getByRole('button', { name: '閉じる' }).click();
   ok('素材を別の分類フォルダへ移す（実際のフォルダも）', await page.locator('#mine-list .card', { hasText: 'お気に入りスキン/skin' }).isVisible());
+
+  // 12c. スキン（Skin.xml あり）：種類で分類フォルダを自動で決めて、スキンの置き場所へ
+  await page.getByRole('tab', { name: '設定' }).click();
+  await page.locator('#dev-opfs-skins-set').click();
+  await page.getByText(/スキンは「.+」に入れるようにしました/).waitFor();
+  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+  const skinZip = Buffer.from(zipSync({ '和風テスト/Skin.xml': strToU8('<Skin dataVersion="12"><Property><Name>和風テスト</Name><Type>MedievalFantasy</Type><Author>見本</Author></Property></Skin>'), '和風テスト/Resource/Image/b.png': new Uint8Array([137, 80, 78, 71]) }));
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: 'wafu_skin.zip', mimeType: 'application/zip', buffer: skinZip });
+  await page.getByText(/スキンのようです（和風テスト・種類：MedievalFantasy/).waitFor();
+  ok('スキン（Skin.xml）を見分ける', await page.locator('#mat-cat option', { hasText: '自動（スキンの種類で分ける：MedievalFantasy）' }).count() === 1);
+  await page.locator('#mat-install').click();
+  await page.getByText(/MedievalFantasy\/和風テスト に入れました/).waitFor();
+  ok('スキンを種類の分類フォルダに自動で入れる', true);
+  await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
+  await page.getByLabel('エンジン').selectOption({ label: 'スキンの置き場所' });
+  await page.locator('#mine-list .card', { hasText: 'MedievalFantasy/和風テスト' }).waitFor();
+  ok('スキンの置き場所を一覧で見る', true);
   await page.getByLabel('エンジン').selectOption({ index: 0 });
 
   // 13. 選んでタグをまとめて付ける・整理と二重チェック
@@ -537,8 +562,9 @@ async function run(colorScheme, width) {
   // シナリオを分類フォルダへ移す（複数選んで）
   await page.locator('#mine-list > .card', { hasText: 'Scenario/鳥籠2' }).locator('input[type=checkbox]').first().check();
   await page.locator('#mine-bar .sel-actions').getByRole('button', { name: '分類フォルダへ移す' }).click();
-  await page.locator('dialog input[type=text]').fill('_集');
-  await page.locator('dialog').getByRole('button', { name: '新しく作って移す' }).click();
+  await page.locator('#move-isnew').check();
+  await page.locator('#move-newcat').fill('_集');
+  await page.locator('#move-go').click();
   await page.locator('dialog', { hasText: '分類フォルダへ移しました（1件）' }).getByRole('button', { name: '閉じる' }).click();
   ok('シナリオを分類フォルダへ移す', await page.locator('#mine-list > .card', { hasText: 'Scenario/_集/鳥籠2' }).isVisible());
 
@@ -558,7 +584,10 @@ async function run(colorScheme, width) {
   const archived = await treeOf('test-archive');
   const mats = await treeOf('test-materials');
   const bk = await treeOf('test-backup');
-  ok('元のzipを保存場所に保存し、重なりは整理でバックアップ先へ', archived.length === 1 && archived.some((p) => p.endsWith('鳥籠.zip')) && bk.some((p) => /^zipの保存場所\/\d{8}_\d{6}_.+\.zip$/.test(p)), `${archived.join(', ')} / ${bk.join(', ')}`);
+  const skins = await treeOf('test-skins');
+  ok('元のzipを保存場所に保存し、重なりは整理でバックアップ先へ', archived.filter((p) => !p.includes('/')).length === 1 && archived.some((p) => p.endsWith('鳥籠.zip')) && bk.some((p) => /^zipの保存場所\/\d{8}_\d{6}_.+\.zip$/.test(p)), `${archived.join(', ')} / ${bk.join(', ')}`);
+  ok('素材・スキンの元のzipは、保存場所の「素材」「スキン」に分けて残す', archived.includes('素材/skin.zip') && archived.includes('スキン/wafu_skin.zip'), archived.join(', '));
+  ok('スキンは Skin.xml のフォルダの中身を、種類の分類フォルダに入れる', skins.includes('MedievalFantasy/和風テスト/Skin.xml') && skins.includes('MedievalFantasy/和風テスト/Resource/Image/b.png'), skins.join(', '));
   ok('素材は分類フォルダに、1つ上のフォルダを省いて、選んだファイルだけ入る', mats.includes('お気に入りスキン/skin/Resource/Image/a.png') && !mats.some((p) => p.startsWith('スキン/skin') || p.endsWith('readme.txt')), mats.join(', '));
   ok('鳥籠2 は除外したので残り、分類フォルダへ移った', tree.includes('Scenario/_集/鳥籠2/Summary.wsm') && !tree.includes('Scenario/鳥籠2/Summary.wsm'));
   ok('書き込み先は Scenario と CWCatalog_backup だけ', tree.every((p) => p === 'CardWirthNext.exe' || p.startsWith('Scenario/') || p.startsWith('CWCatalog_backup/')));
