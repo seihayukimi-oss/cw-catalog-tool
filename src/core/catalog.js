@@ -56,6 +56,8 @@ export function sanitizeEntry(e) {
     readme: str(e.readme, 300),
     level: e.level && Number.isInteger(e.level.min) ? { min: e.level.min, max: e.level.max } : null,
     tags: (Array.isArray(e.tags) ? e.tags : []).filter((t) => typeof t === 'string').slice(0, 30),
+    // 登録した人（author＝作者さん本人・proxy＝作者さん以外の代理登録）。共用カタログの登録フォームが付ける
+    claim: e.claim === 'author' || e.claim === 'proxy' ? e.claim : '',
     // ラベル（作者さんごと・企画ごとなどの分け方）。受け取った人が、取り込むかどうかと範囲を選ぶ
     labels: (Array.isArray(e.labels) ? e.labels : []).filter((t) => typeof t === 'string').map((t) => t.trim().slice(0, 60)).filter(Boolean).slice(0, 20),
     description: str(e.description, 5000),
@@ -86,7 +88,10 @@ export function parseCatalog(json) {
       site: isHttp(a.site) ? a.site : '',
     };
   }
-  return { format: CATALOG_FORMAT, entries, authors, byId: new Map(entries.map((e) => [e.id, e])) };
+  // 共用カタログの登録・変更のフォーム（あれば）
+  const links = {};
+  for (const k of ['register', 'manage']) if (isHttp(json.links?.[k])) links[k] = json.links[k];
+  return { format: CATALOG_FORMAT, entries, authors, links, byId: new Map(entries.map((e) => [e.id, e])) };
 }
 
 /** 比較用に名前をそろえる（全角半角・空白・記号の違いを無視） */

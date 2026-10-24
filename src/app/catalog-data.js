@@ -131,8 +131,11 @@ async function putCatalog(src, json) {
 /** URLのカタログ（共用・読み込んだDL一覧）を取り直す。meta.json が変わっていなければ本体は取らない */
 export async function refreshSource(src, { useMeta = false } = {}) {
   if (!src.url) return false;
-  if (useMeta && src.url !== 'sample' && /\/index\.json(\?.*)?$/.test(src.url) && src.sha256) {
-    const meta = await S.platform.fetchJson(src.url.replace(/index\.json(\?.*)?$/, 'meta.json')).catch(() => null);
+  // meta.json（指紋）を先に見て、変わっていなければ本体は取らない。登録フォーム（Google Apps Script）なら ?file=meta
+  const metaUrl = /\/index\.json(\?.*)?$/.test(src.url) ? src.url.replace(/index\.json(\?.*)?$/, 'meta.json')
+    : /[?&]file=index(&|$)/.test(src.url) ? src.url.replace(/([?&]file=)index/, '$1meta') : '';
+  if (useMeta && src.url !== 'sample' && metaUrl && src.sha256) {
+    const meta = await S.platform.fetchJson(metaUrl).catch(() => null);
     if (meta?.sha256 && meta.sha256 === src.sha256) { src.checkedAt = new Date().toISOString(); await saveSources(); return false; }
   }
   const json = src.url === 'sample' ? SAMPLE_CATALOG : await S.platform.fetchJson(src.url);

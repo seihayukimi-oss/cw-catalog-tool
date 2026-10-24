@@ -532,3 +532,15 @@ test('firestorage のワンタイムURLをたどる', async () => {
   assert.equal(oneTimeNext(dl, 'https://firestorage.jp/download/4d26d013a37ca361e3992e1a68fefe5e16c14bf9a87709'), 'https://proxy7.firestorage.jp/download25.mcgi?act=download_file&d=5d8e62&key=4d26');
   assert.equal(oneTimeNext(cushion, 'https://example.com/x'), null);
 });
+
+test('登録フォーム（Google Apps Script）の共用カタログを読む', async () => {
+  const { parseCatalog } = await import('../src/core/catalog.js');
+  const cat = parseCatalog({
+    format: 1, kind: 'cw-catalog/shared', name: '共用', links: { register: 'https://docs.google.com/forms/d/e/x/viewform', manage: 'javascript:alert(1)' }, authors: {},
+    entries: [{ id: 'e00001', type: 'scenario', name: '水の都', author: '清葉雪見', version: '1.02', format: 'wsn', compat: { cw150: 'no', next: 'no', py: 'expected' }, downloads: [{ label: '配布元', url: 'https://uu.getuploader.com/u/', kind: 'list', status: 'active' }], tags: ['長編'], claim: 'proxy' }],
+  });
+  assert.equal(cat.entries[0].claim, 'proxy');
+  assert.equal(cat.entries[0].downloads[0].kind, 'list');
+  assert.equal(cat.links.register, 'https://docs.google.com/forms/d/e/x/viewform');
+  assert.equal(cat.links.manage, undefined, 'http(s) 以外のリンクは捨てる');
+});

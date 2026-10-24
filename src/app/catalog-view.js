@@ -223,6 +223,7 @@ function workCard(w, mine) {
       h('span', { class: 'item-title' }, w.name), w.type && w.type !== 'scenario' ? h('span', { class: 'badge plain' }, w.type === 'skin' ? 'スキン' : '素材') : formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
       mine ? h('span', { class: `badge ${mine.state === 'update' ? 'update' : 'ok'}` }, mine.state === 'update' ? `入っている版 ${mine.version}→${w.version}` : 'フォルダにあり') : null,
       hiddenHere ? h('span', { class: 'badge plain' }, '候補から外しています') : null,
+      w.refs.some((r) => r.entry.claim === 'proxy') && !w.refs.some((r) => r.entry.claim === 'author') ? h('span', { class: 'badge plain', title: '作者さん以外の方が登録したものです（作者さんは、登録フォームの「サイト認証」で引き取れます）' }, '代理登録') : null,
       foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name)),
       w.listFound ? h('span', { class: 'badge update', title: `ファイル一覧（${w.listFound.list}）で見つけたファイル：${w.listFound.name}` }, `一覧の最新 ${w.listFound.version ? `ver ${w.listFound.version}` : w.listFound.name}`) : null),
     h('div', { class: 'row' },
@@ -239,6 +240,10 @@ function workCard(w, mine) {
       ['cw150', 'next', 'py'].map((k) => h('span', { class: `badge ${LV[w.compat?.[k] || 'unknown'][1]}` }, `${ENGINE_KINDS[k].short}：${LV[w.compat?.[k] || 'unknown'][0]}`)),
       w.convert === 'forbidden' ? h('span', { class: 'badge bad' }, '変換NG') : null,
       w.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))),
+    // 共用カタログ（登録フォームから）の作品：作品IDと、直す・削除を依頼するフォーム
+    ...w.refs.filter((r) => r.kind === 'shared' && S.catalogs.get(r.sourceId)?.links?.manage).slice(0, 1).map((r) => h('div', { class: 'row small muted', style: 'margin:2px 0 6px' },
+      h('span', {}, `作品ID：${r.entry.id}（${r.sourceName}）`),
+      h('button', { class: 'btn ghost sm', onclick: () => { toast(`フォームの「作品ID」に ${r.entry.id} と入れてください`, { ms: 9000 }); S.platform.openUrl(S.catalogs.get(r.sourceId).links.manage); } }, '登録を直す・削除を依頼'))),
     w.description ? descBlock(w.description) : null,
     introBlock(w),
     h('div', { class: 'small muted', style: 'margin-top:8px' }, w.downloads.length ? 'DL先' : 'DL先：まだ登録されていません（「編集」から足せます）'),
@@ -381,7 +386,7 @@ async function addCatalogDialog() {
     const go = (fn, msg) => { close(true); after(fn, msg); };
     return h('div', { class: 'stack' },
       h('h2', {}, 'カタログを追加'),
-      choice('共用カタログをURLで追加', '作者さんが登録したカタログの index.json のURLを入れます。',
+      choice('共用カタログをURLで追加', '作者さんが登録したカタログの index.json のURL（登録フォームのウェブアプリなら …/exec?file=index）を入れます。',
         sharedUrl, h('button', { class: 'btn primary', onclick: () => {
           const u = sharedUrl.value.trim();
           if (!/^https:\/\//.test(u)) { toast('https:// から始まるURLを入れてください', { bad: true }); return; }
@@ -427,6 +432,8 @@ function sourceRow(s) {
     h('div', { class: 'grow' },
       h('div', { class: 'row' }, h('b', {}, s.name), h('span', { class: 'badge plain' }, kindLabel), !s.enabled ? h('span', { class: 'badge plain' }, '候補に含めない') : null),
       h('div', { class: 'meta' }, [`${s.count || 0}件`, hidden ? `外した作品 ${hidden}件` : '', s.loadedAt ? `読み込み ${fmtDate(s.loadedAt)}` : ''].filter(Boolean).join('・'))),
+    S.catalogs.get(s.id)?.links?.register ? h('button', { class: 'btn sm', title: '作者さん以外の方も登録できます（代理登録）', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.register) }, '作品を登録する') : null,
+    S.catalogs.get(s.id)?.links?.manage ? h('button', { class: 'btn ghost sm', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.manage) }, '登録を直す・削除を依頼') : null,
     s.url ? h('button', { class: 'btn sm', onclick: () => after(() => refreshSource(s), (changed) => (changed ? `「${s.name}」を取り直しました（${s.count}件）` : '変わっていませんでした')) }, '取り直す') : null,
     h('button', { class: 'btn ghost sm', 'aria-label': `${s.name}のメニュー`, onclick: () => sourceMenu(s) }, '⋯'));
 }
