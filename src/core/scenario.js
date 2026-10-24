@@ -1,5 +1,5 @@
 // ファイルの集まり（zipの中身／フォルダの中身）から、
-// 「どこからどこまでがシナリオか」「どれがりどみか」を判定する。
+// 「どこからどこまでがシナリオか」「どれがReadmeか」を判定する。
 
 import { parseSummaryWsm, parseSummaryXml, isWdp } from './summary.js';
 import { decodeText } from './text.js';
@@ -15,7 +15,7 @@ const stripExt = (n) => n.replace(/\.[^.]+$/, '');
 const README_STRONG = /(read[ _-]?me|りどみ|リドミ|リードミー|はじめに|最初に|必読|お読み|よんで|読んで|説明|規約|利用|著作権|ライセンス|license|注意)/i;
 const README_WEAK = /(後記|あとがき|更新履歴|履歴|history|change ?log|おまけ|攻略|ヒント|クレジット|credit|素材)/i;
 
-/** りどみらしさの点数（0なら候補外） */
+/** Readmeらしさの点数（0なら候補外） */
 export function readmeScore(path, insideRoot) {
   const name = basename(path);
   if (!/\.(txt|md)$/i.test(name)) return 0;
@@ -23,7 +23,7 @@ export function readmeScore(path, insideRoot) {
   if (README_STRONG.test(name)) s += 10;
   else if (README_WEAK.test(name)) s += 3;
   if (/^[0-9０-９!！@＠★☆_＿]/.test(name)) s += 2; // 01_Readme.txt, !readme.txt, @Readme.txt
-  if (!insideRoot) s += 1; // シナリオの外（zipのトップ）にあるものは作者が置いたりどみの可能性が高い
+  if (!insideRoot) s += 1; // シナリオの外（zipのトップ）にあるものは作者が置いたReadmeの可能性が高い
   return s;
 }
 
@@ -121,7 +121,7 @@ export async function analyzeFiles(files, opts = {}) {
   return { scenarios, readmes, outside, warnings };
 }
 
-/** りどみを読む（文字コード自動判定） */
+/** Readmeを読む（文字コード自動判定） */
 export async function readReadme(file, force) {
   const bytes = await file.read();
   return decodeText(bytes, force);

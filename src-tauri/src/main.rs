@@ -5,9 +5,11 @@
 //  ・「ダウンロード」フォルダから選ぶ・DL元のURLを読む                                downloads.rs
 //  ・.wsn・右クリック・cwcatalog:// リンクの登録（設定で押した人だけ）                 winint.rs
 //  ・アプリ内ブラウザで配布ページを開き、落ちてきたファイルを受け取る窓
+//  ・配布元からのダウンロード（日本語のファイル名を見出しに入れてくるサイトにも対応）          net.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod downloads;
+mod net;
 mod portable;
 mod update;
 mod winint;
@@ -56,6 +58,21 @@ fn allow_open_files<R: tauri::Runtime>(app: &tauri::AppHandle<R>, args: &[String
 const BROWSER_NOTE: &str = "CWカタログのアプリ内ブラウザ：ログイン状態はこのPCに残すだけで、入力した内容やログイン情報をアプリが読み取ることはありません";
 const BROWSER_TITLE: &str = "配布ページ ― サイトのダウンロードボタンを押すと受け取ります　｜　ログイン状態はこのPCに残すだけで、入力した内容やログイン情報をCWカタログが読み取ることはありません";
 
+/// Googleドライブの「ダウンロード」のアドレスか。アプリ内ブラウザの中では受け取りにくいので、
+/// 開かずにアドレスだけ画面側に渡して、画面側から直接取る（共有リンクで公開されているファイル）。
+fn is_drive_download(u: &tauri::Url) -> bool {
+    let host = u.host_str().unwrap_or("").to_ascii_lowercase();
+    let path = u.path();
+    let export = u.query_pairs().any(|(k, v)| k == "export" && v == "download");
+    (host == "drive.usercontent.google.com" && (path.starts_with("/download") || path.starts_with("/u/")))
+        || ((host == "drive.google.com" || host == "docs.google.com") && path.starts_with("/uc") && export)
+}
+
+#[derive(Clone, serde::Serialize)]
+struct DownloadUrl {
+    url: String,
+}
+
 static POPUP_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// アプリ内ブラウザの窓を作る。ログインなどで開かれる小窓（window.open）も、同じ作りの窓で開く
@@ -70,6 +87,7 @@ fn build_browser_window(
     let _ = std::fs::create_dir_all(&dir);
     let app_dl = app.clone();
     let app_new = app.clone();
+    let app_nav = app.clone();
     // 画面からはみ出さないよう、今のPCの画面（メインの窓がある画面）の大きさに合わせる
     let (w, h) = app
         .get_webview_window("main")
@@ -94,6 +112,21 @@ fn build_browser_window(
                 Ok(window) => tauri::webview::NewWindowResponse::Create { window },
                 Err(_) => tauri::webview::NewWindowResponse::Deny,
             }
+        })
+        .on_navigation(move |url| {
+            if !is_drive_download(url) {
+                return true;
+            }
+            let _ = app_nav.emit_to("main", "cw-download-url", DownloadUrl { url: url.to_string() });
+            let app_close = app_nav.clone();
+            tauri::async_runtime::spawn(async move {
+                for (l, w) in app_close.webview_windows() {
+                    if l == "dl" || l.starts_with("dl-pop-") {
+                        let _ = w.close();
+                    }
+                }
+            });
+            false
         })
         .on_document_title_changed(|w, title| {
             if !title.is_empty() {
@@ -224,6 +257,7 @@ fn main() {
             open_download_window,
             portable_info,
             take_open_args,
+            net::net_fetch,
             update::portable_update_install,
             update::update_key_configured,
             downloads::downloads_list,
@@ -235,4 +269,23 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("CWカタログを起動できませんでした");
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn drive_download_urls() {
+        let yes = [
+            "https://drive.usercontent.google.com/download?id=abcdefghijk&export=download",
+            "https://drive.google.com/uc?id=abcdefghijk&export=download",
+            "https://docs.google.com/uc?export=download&id=abcdefghijk",
+        ];
+        let no = ["https://drive.google.com/file/d/abcdefghijk/view", "https://booth.pm/ja/items/1", "https://drive.google.com/drive/folders/abcdefghijk"];
+        for u in yes {
+            assert!(super::is_drive_download(&u.parse().unwrap()), "{u}");
+        }
+        for u in no {
+            assert!(!super::is_drive_download(&u.parse().unwrap()), "{u}");
+        }
+    }
 }

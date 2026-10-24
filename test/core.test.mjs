@@ -450,7 +450,7 @@ test('配布元のURLの見分け方（期限付き・Googleドライブ・OneDr
   assert.equal(expiresAt('https://ux.getuploader.com/a/download/1'), null);
   assert.deepEqual(driveId('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing'), { kind: 'file', id: '1AbCdEfGhIjKlMnOp' });
   assert.deepEqual(driveId('https://drive.google.com/drive/folders/16NP57gwcu2NThYR8ILVB7TAG8vFspA7L?usp=sharing'), { kind: 'folder', id: '16NP57gwcu2NThYR8ILVB7TAG8vFspA7L' });
-  assert.equal(fetchUrlFor('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view').url, 'https://drive.usercontent.google.com/download?id=1AbCdEfGhIjKlMnOp&export=download');
+  assert.equal(fetchUrlFor('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view').url, 'https://drive.usercontent.google.com/download?id=1AbCdEfGhIjKlMnOp&export=download&confirm=t');
   assert.equal(oneDriveKind('https://onedrive.live.com/?id=7FACE5BCD3295F06%21s7&cid=7FACE5BCD3295F06&parId=root'), 'private');
   assert.equal(oneDriveKind('https://1drv.ms/u/s!AbCd'), 'share');
   assert.equal(fetchUrlFor('https://1drv.ms/u/s!AbCd').url, 'https://api.onedrive.com/v1.0/shares/u!aHR0cHM6Ly8xZHJ2Lm1zL3UvcyFBYkNk/root/content');
@@ -471,7 +471,7 @@ test('ブラウザのDL元の記録から、登録するDL先を作る', () => {
 
 test('Googleドライブのフォルダの一覧と、DLキーのフォーム', () => {
   const links = extractDriveFolder('<div class="flip-entry"><a href="https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=drive_web" target="_blank"><div class="flip-entry-title">森.zip</div></a></div><a href="https://drive.google.com/drive/folders/1ZyXwVuTsRqPoNm">旧版</a>');
-  assert.deepEqual(links.map((l) => [l.text, l.kind]), [['森.zip', 'file'], ['旧版', 'page']]);
+  assert.deepEqual(links.map((l) => [l.text, l.kind, l.type]), [['旧版', 'page', 'folder'], ['森.zip', 'file', 'file']]);
   const forms = extractDownloadForms('<form method="POST"><input type="password" name="password"><input type="submit" value="認証"></form><form><input name="q"><input type="submit" value="送信"></form>', 'https://uu.getuploader.com/x/download/6');
   assert.equal(forms.length, 1);
   assert.equal(forms[0].kind, 'key');

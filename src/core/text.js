@@ -1,4 +1,4 @@
-// 文字コードまわり（りどみの中身・zip内のファイル名）
+// 文字コードまわり（Readmeの中身・zip内のファイル名）
 
 const utf8Strict = new TextDecoder('utf-8', { fatal: true });
 // WHATWG の shift_jis は実質 Windows-31J（CP932）。①②や髙・﨑も読める

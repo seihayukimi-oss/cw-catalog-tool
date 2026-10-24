@@ -1,6 +1,6 @@
 // まとめてDL：カタログで選んだ作品・検索結果・更新ありの作品を、順番に取ってきて、まとめて入れる。
 //  ① 取得：直接DLできるものは自動で。同意やDLキーが必要なページ・ブラウザの制限で取れないものは「操作待ち」に
-//  ② 確認：りどみを読む・入れ先を決める
+//  ② 確認：Readmeを読む・入れ先を決める
 //  ③ まとめてインストール
 
 import { openArchive } from '../core/archive.js';
@@ -13,6 +13,7 @@ import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { readmeModal, installOpened, ensureDir, destFields, engineSelect, watchdog } from './add.js';
 import { installMaterial } from '../core/install.js';
 import { MAT, materialsDirOf, scanMaterials } from './materials.js';
+import { backupOpts } from './backup.js';
 
 const STATUS = {
   wait: ['待機中', 'plain'], fetch: ['取得中', 'plain'], ready: ['準備OK', 'ok'], action: ['操作待ち', 'warn'],
@@ -351,6 +352,10 @@ async function installAll() {
     if (!d) return;
     dirs.set(id, d);
   }
+  // バックアップ先を選んでいれば、その許可もここで聞いておく
+  if (S.backupFolder?.ref && items.some((i) => i.target)) {
+    try { await backupOpts('engine', items[0].engineId || b.engineId); } catch (e) { toast(e.message, { bad: true }); return; }
+  }
   b.installing = true;
   render();
   const wd = watchdog('batch-prog-text');
@@ -389,8 +394,8 @@ async function installAll() {
         version: it.work ? it.work.version : it.opened.scenarios[it.pick].versionGuess || '', versionSource: it.work ? (it.exact ? 'catalog' : 'dl') : 'guess', work: it.work, onProgress: prog,
       });
       it.status = 'done';
-      it.message = `${plan.dest} に入れました${res.backup ? `（前のものは ${res.backup} にバックアップ）` : ''}${archived ? `・zipも保存しました` : ''}`;
-      it.opened = it.opened; // りどみ表示用に残す
+      it.message = `${plan.dest} に入れました${res.backup ? `（前のものは ${res.backupShown} にバックアップ）` : ''}${archived ? `・zipも保存しました` : ''}`;
+      it.opened = it.opened; // Readme表示用に残す
       okN++;
     } catch (e) {
       it.status = 'failed';

@@ -104,12 +104,15 @@ async function listTree(dir, prefix = '') {
  * @param {{onProgress?: (done: number, total: number, phase: 'backup'|'write', name: string) => void, concurrency?: number}} opts
  * @returns {{path: string, backup: string|null, written: number}}
  */
-export async function performInstall(engineRoot, plan, { onProgress, concurrency = 6 } = {}) {
+export async function performInstall(engineRoot, plan, { onProgress, concurrency = 6, backupRoot = null, backupPrefix = '' } = {}) {
   let backup = null;
   const getDir = dirCache(engineRoot);
   const exists = await existsAt(engineRoot, plan.dest);
   if (exists) {
-    backup = `${BACKUP_DIR}/${stamp()}_${plan.dest.split('/').pop()}`;
+    // バックアップ先：設定で選んだフォルダ（backupRoot）か、エンジンのフォルダの CWCatalog_backup
+    const bRoot = backupRoot || engineRoot;
+    const getB = backupRoot ? dirCache(backupRoot) : getDir;
+    backup = await freeBackupPath(bRoot, backupRoot ? backupPrefix : `${BACKUP_DIR}/`, plan.dest.split('/').pop());
     if (exists === 'dir') {
       const src = await dirAt(engineRoot, plan.dest);
       const files = await listTree(src);
@@ -117,7 +120,7 @@ export async function performInstall(engineRoot, plan, { onProgress, concurrency
       await pool(files, concurrency, async (f) => {
         const rel = `${backup}/${f.rel}`;
         const i = rel.lastIndexOf('/');
-        const d = await getDir(rel.slice(0, i));
+        const d = await getB(rel.slice(0, i));
         await d.writeFile(rel.slice(i + 1), await f.dir.readFile(f.name));
         onProgress?.(++done, files.length, 'backup', f.rel);
       });
@@ -125,7 +128,7 @@ export async function performInstall(engineRoot, plan, { onProgress, concurrency
       const segs = plan.dest.split('/');
       const name = segs.pop();
       const d = await dirAt(engineRoot, segs.join('/'));
-      await writeAt(engineRoot, `${backup}/${name}`, await d.readFile(name));
+      await writeAt(bRoot, backup, await d.readFile(name));
     }
     await removeAt(engineRoot, plan.dest);
   }
@@ -158,23 +161,33 @@ export async function exportForWeb(opened, index) {
   return { fileName: `${sc.folderName}.zip`, data: writeZip(files) };
 }
 
+/** バックアップの置き場所の名前（同じ名前があれば _2 などを付ける） */
+async function freeBackupPath(root, prefix, name) {
+  let dest = `${prefix}${stamp()}_${name}`;
+  for (let i = 2; await existsAt(root, dest); i++) dest = `${prefix}${stamp()}_${i}_${name}`;
+  return dest;
+}
+
 /**
- * 二重に入っているものなどを、消さずに CWCatalog_backup に移す（エンジンのフォルダの中だけ）
- * @returns {Promise<string>} 移した先
+ * 二重に入っているものなどを、消さずにバックアップに移す。
+ * 移す先は、backupRoot（設定で選んだフォルダ）があればその中の backupPrefix、なければ同じフォルダの CWCatalog_backup。
+ * @returns {Promise<string>} 移した先（移す先のフォルダからの場所）
  */
-export async function moveToBackup(engineRoot, relPath, { anywhere = false } = {}) {
+export async function moveToBackup(engineRoot, relPath, { anywhere = false, backupRoot = null, backupPrefix = '' } = {}) {
   const kind = await existsAt(engineRoot, relPath);
   if (!kind) throw new Error(`見つかりません：${relPath}`);
   if (!anywhere && !relPath.startsWith('Scenario/')) throw new Error('Scenario の中のものだけ移せます');
   if (relPath.startsWith(`${BACKUP_DIR}/`)) throw new Error('すでにバックアップの中にあります');
   const name = relPath.split('/').pop();
-  let dest = `${BACKUP_DIR}/${stamp()}_${name}`;
-  for (let i = 2; await existsAt(engineRoot, dest); i++) dest = `${BACKUP_DIR}/${stamp()}_${i}_${name}`;
+  const bRoot = backupRoot || engineRoot;
+  const dest = await freeBackupPath(bRoot, backupRoot ? backupPrefix : `${BACKUP_DIR}/`, name);
   if (kind === 'dir') {
     const src = await dirAt(engineRoot, relPath);
-    for (const f of await listTree(src)) await writeAt(engineRoot, `${dest}/${f.rel}`, await f.dir.readFile(f.name));
+    const files = await listTree(src);
+    if (!files.length) await dirAt(bRoot, dest, { create: true });
+    for (const f of files) await writeAt(bRoot, `${dest}/${f.rel}`, await f.dir.readFile(f.name));
   } else {
-    await writeAt(engineRoot, dest, await readAt(engineRoot, relPath));
+    await writeAt(bRoot, dest, await readAt(engineRoot, relPath));
   }
   await removeAt(engineRoot, relPath);
   return dest;

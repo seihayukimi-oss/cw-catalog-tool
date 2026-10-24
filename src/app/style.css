@@ -235,3 +235,14 @@ details.group > summary .group-name { font-size: 1.02rem; }
 .tidy .btn.on { background: var(--soft, #eef); }
 .tidy-selbar { padding-top: 4px; border-top: 1px dashed var(--line); }
 pre.log { max-height: 40vh; white-space: pre-wrap; word-break: break-all; }
+.link-list li.is-folder .grow { font-weight: 600; }
+.link-list .kind-icon { width: 1.4em; text-align: center; flex: none; }
+.folder-nav { padding: 6px 8px; border-radius: 8px; background: var(--soft, rgba(0,0,0,.04)); }
+.folder-nav .crumbs a { color: var(--accent); }
+.pick-bar { position: sticky; bottom: 0; background: var(--card, #fff); padding: 6px 0; border-top: 1px dashed var(--line); }
+.file-pick { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+.file-pick .dir { margin: 4px 0 2px; font-weight: 600; }
+.file-pick label { display: flex; gap: 6px; align-items: center; padding-left: 1.2em; word-break: break-all; }
+.credit-list { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+.credit-list dt { color: var(--muted); }
+.credit-list dd { margin: 0; word-break: break-all; }

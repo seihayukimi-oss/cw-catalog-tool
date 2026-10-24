@@ -7,6 +7,7 @@ fn main() {
                 "open_download_window",
                 "portable_info",
                 "take_open_args",
+                "net_fetch",
                 "portable_update_install",
                 "update_key_configured",
                 "downloads_list",

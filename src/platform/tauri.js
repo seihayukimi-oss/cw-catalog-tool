@@ -59,11 +59,10 @@ const UA = 'CWCatalogTool (+https://github.com/)';
 
 // 一連の通信の間だけ使うCookie（ホスト名ごと）
 const jar = new Map();
-function keepCookies(host, headers) {
-  const raw = headers.get('set-cookie');
-  if (!raw) return;
+function keepCookies(host, list) {
+  if (!list?.length) return;
   const m = jar.get(host) || new Map();
-  for (const part of raw.split(/,(?=\s*[^;,=\s]+=)/)) {
+  for (const part of list) {
     const kv = part.split(';')[0].trim();
     const i = kv.indexOf('=');
     if (i > 0) m.set(kv.slice(0, i), kv.slice(i + 1));
@@ -73,6 +72,19 @@ function keepCookies(host, headers) {
 function cookieHeader(host) {
   const m = jar.get(host);
   return m ? [...m].map(([k, v]) => `${k}=${v}`).join('; ') : '';
+}
+
+/**
+ * 配布元から取ってくる（アプリ側で通信して、中身は一時ファイル経由で受け取る）。
+ * 日本語のファイル名を見出しにそのまま入れてくるサイト（Googleドライブなど）でも止まらない。
+ */
+async function netFetch(url, { method = 'GET', body, headers = {}, timeout = null } = {}) {
+  const r = await invoke('net_fetch', { req: { url, method, body: body ?? null, headers: { 'User-Agent': UA, ...headers }, timeout } });
+  let bytes = new Uint8Array();
+  if (r.path) {
+    try { bytes = await readFile(r.path); } finally { await remove(r.path).catch(() => {}); }
+  }
+  return { ...r, bytes, ok: r.status >= 200 && r.status < 300 };
 }
 
 export const platform = {
@@ -154,11 +166,9 @@ export const platform = {
   },
 
   async fetchFile(url) {
-    const r = await httpFetch(url, { headers: { 'User-Agent': UA } });
+    const r = await netFetch(url);
     if (!r.ok) throw new Error(`ダウンロードできませんでした（${r.status}）`);
-    const len = Number(r.headers.get('content-length') || 0);
-    if (len > 2 * 1024 * 1024 * 1024) throw new Error('ファイルが大きすぎます');
-    return new Uint8Array(await r.arrayBuffer());
+    return r.bytes;
   },
 
   /**
@@ -169,19 +179,16 @@ export const platform = {
   async fetchResource(url, { method = 'GET', body, headers = {} } = {}) {
     const host = new URL(url).hostname;
     const cookie = cookieHeader(host);
-    const r = await httpFetch(url, {
-      method,
-      body,
-      headers: { 'User-Agent': UA, ...(cookie ? { Cookie: cookie } : {}), ...headers },
-    });
-    keepCookies(host, r.headers);
+    const r = await netFetch(url, { method, body, headers: { ...(cookie ? { Cookie: cookie } : {}), ...headers } });
+    keepCookies(host, r.set_cookie);
+    let fin = host;
+    try { fin = new URL(r.url).hostname; } catch { /* そのまま */ }
+    if (fin !== host) keepCookies(fin, r.set_cookie);
     if (!r.ok) throw new Error(`読み込めませんでした（${r.status}）`);
-    const len = Number(r.headers.get('content-length') || 0);
-    if (len > 2 * 1024 * 1024 * 1024) throw new Error('ファイルが大きすぎます');
     return {
-      bytes: new Uint8Array(await r.arrayBuffer()),
-      contentType: r.headers.get('content-type') || '',
-      fileName: fileNameFrom(r.url || url, r.headers.get('content-disposition') || ''),
+      bytes: r.bytes,
+      contentType: r.content_type || '',
+      fileName: fileNameFrom(r.url || url, r.content_disposition || ''),
       finalUrl: r.url || url,
     };
   },
@@ -209,6 +216,8 @@ export const platform = {
           } catch (e) { reject(e); }
         }),
         listen('cw-download-closed', () => { if (!done) { done = true; cleanup(); resolve(null); } }),
+        // Googleドライブの「ダウンロード」は、アプリ内ブラウザでは受け取らず、アドレスだけもらって直接取る
+        listen('cw-download-url', (ev) => { if (!done) { done = true; cleanup(); resolve({ directUrl: ev.payload?.url || '' }); } }),
       ]).then(async (fns) => {
         off = fns;
         try {
@@ -222,15 +231,9 @@ export const platform = {
 
   /** 配布ページを読む（更新チェック用）。相手に負担をかけないよう呼ぶ側で間隔をあける */
   async fetchText(url) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
-    try {
-      const r = await httpFetch(url, { headers: { 'User-Agent': UA }, signal: ctrl.signal });
-      if (!r.ok) throw new Error(`ページを開けませんでした（${r.status}）`);
-      return decodeHtml(new Uint8Array(await r.arrayBuffer()), r.headers.get('content-type') || '');
-    } finally {
-      clearTimeout(t);
-    }
+    const r = await netFetch(url, { timeout: 15 });
+    if (!r.ok) throw new Error(`ページを開けませんでした（${r.status}）`);
+    return decodeHtml(r.bytes, r.content_type || '');
   },
 
   async openUrl(url) {

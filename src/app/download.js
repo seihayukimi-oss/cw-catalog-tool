@@ -4,6 +4,7 @@
 //  ・BOOTH・note・Notion・Privatter+ などは、アプリ内ブラウザで本人が押す
 //  ・同意やDLキーのページは、ツールの画面で同意してもらう（2段階のページにも対応）。サイトごとに「同意を覚える」こともできる
 
+import { zipSync } from 'fflate';
 import { openArchive, archiveKind, sha256Hex } from '../core/archive.js';
 import { chooseDownloads } from '../core/catalogs.js';
 import { decodeHtml, extractDownloadLinks, extractDownloadForms, extractDriveFolder, metaRefreshUrl, pageText, pageTitle, siteNotice } from '../core/weblink.js';
@@ -33,7 +34,13 @@ export async function fetchOnce(url, opts, ctx = {}) {
   try { r = await S.platform.fetchResource(f.url, opts); } catch (e) {
     return { kind: 'error', url, message: `${f.note ? `${f.note}：` : ''}${e.message || String(e)}` };
   }
-  const res = classify(r, url);
+  let res = classify(r, url);
+  // Googleドライブの「大きいのでウイルススキャンできません。それでもダウンロードしますか？」は、作者さんの規約ではないので、そのまま進む
+  if (res.kind === 'page' && /(^|\.)drive\.usercontent\.google\.com$/.test(hostOf(r.finalUrl)) && res.st.forms.length) {
+    const r2 = await submitForm(res.st.forms[0], {}, r.finalUrl).catch(() => null);
+    const c2 = r2 && classify(r2, url);
+    if (c2?.kind === 'zip') return c2;
+  }
   if (res.kind === 'page') {
     res.st.dl = ctx.dl || null;
     // Googleドライブのフォルダは、中のファイルを並べる
@@ -69,7 +76,7 @@ function classify(r, url) {
       },
     };
   }
-  return { kind: 'other', url };
+  return { kind: 'other', url, bytes: r.bytes, fileName: r.fileName || '' };
 }
 
 /**
@@ -219,6 +226,17 @@ export async function tryAutoAgree(st, hd) {
 }
 
 // ------------------------------------------------------------ 同意してダウンロード（A）・アプリ内ブラウザ（B）
+/** ページのフォームを送る（GETならアドレスに付けて、POSTなら本文で） */
+function submitForm(form, values, referer) {
+  const body = new URLSearchParams([...form.fields, ...Object.entries(values)]);
+  if (form.method === 'POST') {
+    return S.platform.fetchResource(form.action, { method: 'POST', body: body.toString(), headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: referer } });
+  }
+  const u = new URL(form.action);
+  for (const [k, v] of body) u.searchParams.set(k, v);
+  return S.platform.fetchResource(u.href, { headers: { Referer: referer } });
+}
+
 /**
  * A：ページのダウンロードフォームを、本人が同意したあとに送信して、zipまで取ってくる。
  * 送信後のページに本物のファイルへのリンクや自動移動があれば、それも1〜2回たどる。
@@ -227,18 +245,7 @@ export async function tryAutoAgree(st, hd) {
 export async function agreeAndDownload(st, form, values, hd) {
   if (st.remember) await rememberConsent(st);
   const res = await busy(st.auto ? '同意を覚えているサイトなので、そのまま取得中' : '同意して取得中', async () => {
-    const body = new URLSearchParams([...form.fields, ...Object.entries(values)]);
-    let target = form.action;
-    let opts;
-    if (form.method === 'POST') {
-      opts = { method: 'POST', body: body.toString(), headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: st.finalUrl || st.url } };
-    } else {
-      const u = new URL(target);
-      for (const [k, v] of body) u.searchParams.append(k, v);
-      target = u.href;
-      opts = { headers: { Referer: st.finalUrl || st.url } };
-    }
-    let r = await S.platform.fetchResource(target, opts);
+    let r = await submitForm(form, values, st.finalUrl || st.url);
     for (let hop = 0; hop < 2 && r && !r.blocked && !archiveKind(r.bytes); hop++) {
       const html = decodeHtml(r.bytes, r.contentType);
       if (extractDownloadForms(html, r.finalUrl).length) break; // 次の同意画面
@@ -275,6 +282,11 @@ export async function inAppDownload(url, hd, why = '') {
   toast(`${why ? `${why}。` : ''}配布ページを別の窓（アプリ内ブラウザ）で開きました。サイトのダウンロードボタンを押すと、ここに取り込みます。ログイン状態はこのPCに残すだけで、入力した内容やログイン情報をCWカタログが読み取ることはありません`, { ms: 12000 });
   const got = await busy('アプリ内ブラウザで待っています', () => S.platform.openInAppBrowser(url));
   if (!got) return;
+  if (got.directUrl) {
+    // Googleドライブのダウンロードは、アプリ内ブラウザでは受け取らずに、ここから直接取る
+    toast('Googleドライブのファイルなので、アプリから直接取ってきます');
+    return fetchFromUrl(got.directUrl, null, hd);
+  }
   if (!archiveKind(got.bytes)) { toast(`${got.fileName} はzip・wsn などのファイルではないようです`, { bad: true }); return; }
   return hd.got(got.bytes, got.fileName || 'download.zip', url);
 }
@@ -315,21 +327,96 @@ export function viewAgree(st, hd) {
       S.platform.kind === 'web' ? h('span', { class: 'small muted' }, '※ HTML版では、多くのサイトでブラウザの制限により送信できません（アプリ版なら取れます）') : null));
 }
 
+/** フォルダの中を移動する（Googleドライブのフォルダ）。戻る・進むができるように、たどった順を覚えておく */
+async function openSubFolder(st, link) {
+  const res = await busy('フォルダを開いています', () => fetchOnce(link.url));
+  if (!res) return;
+  if (res.kind !== 'page' || !res.st.folder) { toast('フォルダを開けませんでした', { bad: true }); return; }
+  const nav = st.nav || (st.nav = { list: [{ url: st.url, title: st.title, links: st.links }], at: 0 });
+  nav.list = nav.list.slice(0, nav.at + 1);
+  nav.list.push({ url: link.url, title: res.st.title && res.st.title !== 'Googleドライブのフォルダ' ? res.st.title : link.text, links: res.st.links });
+  goNav(st, nav.list.length - 1);
+}
+function goNav(st, i) {
+  const n = st.nav;
+  if (!n || i < 0 || i >= n.list.length) return;
+  n.at = i;
+  Object.assign(st, { url: n.list[i].url, title: n.list[i].title, links: n.list[i].links });
+  st.pick = new Set();
+  render();
+}
+
+/** 選んだファイルをまとめて取ってくる。zipなどはそのまま、そうでないファイル（画像・音など）は1つのzipにまとめて素材として入れる */
+async function fetchPicked(st, hd, links) {
+  if (links.length === 1) return fetchFromUrl(links[0].url, null, hd, { dl: st.dl });
+  const got = await busy(`${links.length}件を取ってきています`, async () => {
+    const archives = [], loose = [], failed = [];
+    for (const l of links) {
+      const res = await fetchOnce(l.url, undefined, { dl: st.dl });
+      if (res.kind === 'zip') archives.push({ name: res.fileName, bytes: res.bytes });
+      else if (res.kind === 'other' && res.bytes?.length) loose.push({ name: res.fileName || l.text, bytes: res.bytes });
+      else failed.push(l.text || l.url);
+    }
+    return { archives, loose, failed };
+  });
+  if (!got) return;
+  const files = [...got.archives];
+  if (got.loose.length) {
+    const base = (st.title || '素材').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
+    const tree = {};
+    for (const f of got.loose) tree[`${base}/${f.name.replace(/[\\/:*?"<>|]/g, '_')}`] = f.bytes;
+    files.push({ name: `${base}.zip`, bytes: zipSync(tree, { level: 0 }) });
+  }
+  if (got.failed.length) toast(`取れなかったもの ${got.failed.length}件：${got.failed.slice(0, 3).join('、')}${got.failed.length > 3 ? ' …' : ''}`, { bad: true, ms: 9000 });
+  if (!files.length) return;
+  const { startLocalBatch } = await import('./batch.js');
+  await startLocalBatch(files, `選んだ${links.length}件を入れる`);
+  if (got.loose.length) toast(`zipなどではないファイル ${got.loose.length}件は、1つにまとめて素材として入れられるようにしました`, { ms: 8000 });
+}
+
 /** 配布ページを読んだ結果（同意フォーム・リンク一覧・アプリ内ブラウザ） */
 export function pagePanel(st, hd, work = null) {
   const inApp = S.platform.canInAppBrowse
     ? h('button', { class: 'btn sm', onclick: () => inAppDownload(st.url, hd) }, 'アプリ内で開いてダウンロード')
     : null;
+  st.pick ||= new Set();
+  const pickable = (l) => (st.folder ? l.type !== 'folder' : l.kind === 'file');
+  const files = st.links.filter(pickable);
+  const nav = st.nav;
+  const selBar = () => {
+    const chosen = files.filter((l) => st.pick.has(l.url));
+    return h('div', { class: 'row pick-bar', id: 'pick-bar' },
+      h('span', {}, `選んだもの：${chosen.length}件`),
+      h('button', { class: 'btn sm', disabled: st.pick.size === files.length, onclick: () => { files.forEach((l) => st.pick.add(l.url)); render(); } }, 'ファイルをすべて選ぶ'),
+      chosen.length ? h('button', { class: 'btn ghost sm', onclick: () => { st.pick.clear(); render(); } }, '選択を解除') : null,
+      h('button', { class: 'btn primary sm', disabled: !chosen.length, onclick: () => fetchPicked(st, hd, chosen) }, `選んだ${chosen.length}件を取ってくる`));
+  };
+  const navBar = st.folder && nav && nav.list.length > 1 ? h('div', { class: 'row folder-nav' },
+    h('button', { class: 'btn sm', disabled: nav.at === 0, 'aria-label': '前のフォルダに戻る', onclick: () => goNav(st, nav.at - 1) }, '← 戻る'),
+    h('button', { class: 'btn sm', disabled: nav.at >= nav.list.length - 1, 'aria-label': '次のフォルダに進む', onclick: () => goNav(st, nav.at + 1) }, '進む →'),
+    nav.at > 0 ? h('button', { class: 'btn ghost sm', onclick: () => goNav(st, 0) }, '↑ 最初のフォルダ') : null,
+    h('span', { class: 'small muted crumbs' }, nav.list.slice(0, nav.at + 1).map((x, i) => [i ? ' ／ ' : '', i < nav.at ? h('a', { href: '#', onclick: (ev) => { ev.preventDefault(); goNav(st, i); } }, `📁 ${x.title}`) : h('b', {}, `📁 ${x.title}`)]))) : null;
+  const row = (l) => {
+    const isFolder = st.folder && l.type === 'folder';
+    const canPick = pickable(l);
+    return h('li', { class: isFolder ? 'is-folder' : canPick ? 'is-file' : null },
+      canPick ? h('input', { type: 'checkbox', checked: st.pick.has(l.url), 'aria-label': `${l.text || l.url}を選ぶ`, onchange: (ev) => { if (ev.target.checked) st.pick.add(l.url); else st.pick.delete(l.url); document.getElementById('pick-bar')?.replaceWith(selBar()); } }) : null,
+      h('span', { class: 'kind-icon', 'aria-hidden': 'true' }, isFolder ? '📁' : canPick ? '📄' : '🔗'),
+      h('span', { class: `badge ${isFolder ? 'folder' : l.kind === 'file' ? 'ok' : 'plain'}` }, isFolder ? 'フォルダ' : l.kind === 'file' ? 'ファイル（zipなど）' : st.folder ? 'ファイル' : 'ページ'),
+      h('span', { class: 'grow', style: 'word-break:break-all' }, l.text || l.url),
+      isFolder
+        ? h('button', { class: 'btn sm', onclick: () => openSubFolder(st, l) }, 'フォルダを開く ▶')
+        : h('button', { class: 'btn sm', onclick: () => fetchFromUrl(l.url, work, hd, { dl: st.dl }) }, '取ってくる'),
+      h('button', { class: 'btn ghost sm', onclick: () => S.platform.openUrl(l.url) }, '開く'));
+  };
   return h('div', { class: 'stack small' },
-    h('div', {}, h('b', {}, st.title || st.url)),
+    h('div', {}, h('b', {}, st.folder ? `📁 ${st.title || st.url}` : st.title || st.url)),
     st.notice ? h('div', { class: 'note warn' }, st.notice) : null,
     st.forms?.length ? viewAgree(st, hd) : null,
-    st.links.length ? h('div', {}, st.folder ? `フォルダの中に ${st.links.length}件 ありました` : `ダウンロードらしいリンクが ${st.links.length}件 ありました`) : (!st.forms?.length ? h('div', {}, st.folder ? 'フォルダの中身を読み取れませんでした（共有の設定が「リンクを知っている全員」になっているか確かめてください）' : 'ダウンロードのリンクは見つかりませんでした') : null),
-    st.links.length ? h('ul', { class: 'dl' }, st.links.map((l) => h('li', {},
-      h('span', { class: 'badge plain' }, l.kind === 'file' ? 'ファイル' : st.folder ? 'その他' : 'ページ'),
-      h('span', { class: 'grow', style: 'word-break:break-all' }, l.text || l.url),
-      h('button', { class: 'btn sm', onclick: () => fetchFromUrl(l.url, work, hd, { dl: st.dl }) }, '取ってくる'),
-      h('button', { class: 'btn ghost sm', onclick: () => S.platform.openUrl(l.url) }, '開く')))) : null,
+    navBar,
+    st.links.length ? h('div', {}, st.folder ? `フォルダの中に ${st.links.length}件 ありました（フォルダ ${st.links.filter((l) => l.type === 'folder').length}・ファイル ${files.length}）` : `ダウンロードらしいリンクが ${st.links.length}件 ありました`) : (!st.forms?.length ? h('div', {}, st.folder ? 'フォルダの中身を読み取れませんでした（空のフォルダか、共有の設定が「リンクを知っている全員」になっていないのかもしれません）' : 'ダウンロードのリンクは見つかりませんでした') : null),
+    st.links.length ? h('ul', { class: 'dl link-list' }, st.links.map(row)) : null,
+    files.length > 1 ? selBar() : null,
     h('div', { class: 'row' }, inApp, h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(st.url) }, 'ブラウザで開く')));
 }
 
@@ -407,7 +494,7 @@ export async function askInstallLink({ url, entryId, name }) {
     name ? h('div', { class: 'item-title' }, name) : null,
     work ? h('div', { class: 'meta' }, `${work.author}・ver ${work.version}・カタログの作品 ${entryId}`) : null,
     h('div', { class: 'note' }, h('div', { class: 'small muted' }, '取得先'), h('b', {}, host), h('div', { class: 'small', style: 'word-break:break-all' }, target)),
-    h('p', { class: 'small muted', style: 'margin:0' }, 'リンクを押したサイトから、取り込みを頼まれました。取ってきたあとに中身とりどみを表示するので、入れるかどうかはそこで決められます。知らないサイトからの場合は「やめる」を押してください。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'リンクを押したサイトから、取り込みを頼まれました。取ってきたあとに中身とReadmeを表示するので、入れるかどうかはそこで決められます。知らないサイトからの場合は「やめる」を押してください。'),
     S.platform.kind === 'web' && !entryId ? h('p', { class: 'small muted', style: 'margin:0' }, 'アプリ版（ポータブル版）を持っていて「Windows設定との連携」を登録していれば、「アプリで開く」でアプリから取れます（同意ページなども取れます）。') : null,
     h('div', { class: 'row', style: 'justify-content:flex-end' },
       h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
@@ -463,7 +550,7 @@ export function viewLinkMaker() {
 
   return h('div', { class: 'card stack link-maker' },
     h('p', { style: 'margin:0' }, '作者さんのサイトやWikiの作品ページに、「CWカタログで入れる」ボタンを置けます。遊ぶ人がそれを押すと、ダウンロード・展開・フォルダ探しをしなくても、CWカタログが作品を取り込みます。'),
-    h('pre', { class: 'readme', style: 'max-height:none' }, '作品ページ\n  宵に降る光 ver1.02\n  [ダウンロード]  [CWカタログで入れる] ← これを作ります\n\n押すと → CWカタログが開く →「このシナリオを取ってきますか？」→ りどみを見て → インストール'),
+    h('pre', { class: 'readme', style: 'max-height:none' }, '作品ページ\n  宵に降る光 ver1.02\n  [ダウンロード]  [CWカタログで入れる] ← これを作ります\n\n押すと → CWカタログが開く →「このシナリオを取ってきますか？」→ Readmeを見て → インストール'),
     h('div', { class: 'small muted' }, '① 作品のURLと作品名を入れる'),
     pick,
     h('div', { class: 'row' }, urlIn, nameIn),
@@ -478,7 +565,7 @@ export function viewLinkMaker() {
 export function viewConsents() {
   const hosts = Object.entries(S.consents || {}).sort((a, b) => (b[1].at || '').localeCompare(a[1].at || ''));
   return h('div', { class: 'card stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, '同意画面で「このサイトの同意を覚える」にしたサイトです。規約・注意書きの文章が前と同じなら、まとめてDLのときも止まらずに取ってきます（文章が変わったら、もう一度聞きます）。りどみの確認は、今までどおり必ず出ます。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, '同意画面で「このサイトの同意を覚える」にしたサイトです。規約・注意書きの文章が前と同じなら、まとめてDLのときも止まらずに取ってきます（文章が変わったら、もう一度聞きます）。Readmeの確認は、今までどおり必ず出ます。'),
     hosts.length ? h('ul', { class: 'dl' }, hosts.map(([host, rec]) => h('li', {},
       h('b', {}, host), h('span', { class: 'small muted grow' }, rec.at ? `覚えた日時：${fmtDate(rec.at)}` : ''),
       h('button', {

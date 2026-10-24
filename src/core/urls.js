@@ -88,7 +88,8 @@ export function inAppSite(url) {
  */
 export function fetchUrlFor(url) {
   const d = driveId(url);
-  if (d?.kind === 'file') return { url: `https://drive.usercontent.google.com/download?id=${d.id}&export=download`, note: 'Googleドライブ' };
+  // confirm=t：大きいファイルで出る「ウイルススキャンできません」の確認を飛ばす（Googleドライブの仕様）
+  if (d?.kind === 'file') return { url: `https://drive.usercontent.google.com/download?id=${d.id}&export=download&confirm=t`, note: 'Googleドライブ' };
   if (d?.kind === 'folder') return { url: `https://drive.google.com/embeddedfolderview?id=${d.id}`, note: 'Googleドライブのフォルダ' };
   if (oneDriveKind(url) === 'share') return { url: `https://api.onedrive.com/v1.0/shares/u!${b64url(url)}/root/content`, note: 'OneDrive' };
   return { url };

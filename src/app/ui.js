@@ -1,4 +1,4 @@
-// 画面づくりの小さな道具。文字は必ず textContent で入れる（りどみやカタログの文字をHTMLとして解釈しない）。
+// 画面づくりの小さな道具。文字は必ず textContent で入れる（Readmeやカタログの文字をHTMLとして解釈しない）。
 
 export function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);

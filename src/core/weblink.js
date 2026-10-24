@@ -205,7 +205,9 @@ export function extractDriveFolder(html) {
     if (!id && !folder) continue;
     const text = unescapeHtml(m[3].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 160);
     const url = id ? `https://drive.google.com/file/d/${id}/view` : `https://drive.google.com/drive/folders/${folder}`;
-    if (!out.has(url)) out.set(url, { url, text: text || url, kind: id && ARCHIVE_EXT.test(text) ? 'file' : 'page' });
+    if (!out.has(url)) out.set(url, { url, text: text || url, kind: id && ARCHIVE_EXT.test(text) ? 'file' : 'page', type: id ? 'file' : 'folder' });
   }
-  return [...out.values()].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'file' ? -1 : 1)).slice(0, 200);
+  // フォルダ → zipなど → そのほかのファイル の順
+  const rank = (l) => (l.type === 'folder' ? 0 : l.kind === 'file' ? 1 : 2);
+  return [...out.values()].sort((a, b) => rank(a) - rank(b)).slice(0, 300);
 }

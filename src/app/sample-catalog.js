@@ -12,7 +12,7 @@ export const SAMPLE_CATALOG = {
       compat: { cw150: 'verified', next: 'verified', py: 'expected' }, convert: 'self',
       downloads: [
         { label: 'GitHub Releases', url: 'https://github.com/example-author/sample-forest/releases/download/v1.10/sample_forest_v1.10.zip', kind: 'direct', status: 'active' },
-        { label: '作者サイト', url: 'https://example.com/cw/dl.html', kind: 'page', status: 'mirror', note: 'DLキーはりどみ参照' },
+        { label: '作者サイト', url: 'https://example.com/cw/dl.html', kind: 'page', status: 'mirror', note: 'DLキーはReadme参照' },
         { label: '斧アップローダー（移転前）', url: 'https://ux.getuploader.com/example/download/1', kind: 'page', status: 'closed', until: '2026-11-25' },
       ],
       file: { name: 'sample_forest_v1.10.zip' }, readme: 'りどみ.txt', level: { min: 1, max: 3 },

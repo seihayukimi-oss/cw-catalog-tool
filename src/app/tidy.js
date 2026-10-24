@@ -18,6 +18,7 @@ import { archiveDirOf } from './add.js';
 import { openLocalFiles } from './localfiles.js';
 import { applyTags } from './tags.js';
 import { MAT, showLog } from './materials.js';
+import { backupOpts, backupPlace, backupFull } from './backup.js';
 
 const ARCH = /\.(zip|wsn|cab|lzh|lha|7z)$/i;
 const MAX_OPEN = 300 * 1024 * 1024;
@@ -123,18 +124,10 @@ async function analyze() {
 
 // ------------------------------------------------------------ 動かす先の表示
 const isApp = () => S.platform.kind === 'app';
-const join = (...p) => p.filter(Boolean).join(isApp() ? '\\' : '/');
 const disp = (rel) => (isApp() ? rel.replace(/\//g, '\\') : rel);
-/** エンジンのフォルダの CWCatalog_backup の場所（表示用） */
-export function engineBackupPlace(engineId) {
-  const e = engine(engineId);
-  if (!e) return BACKUP_DIR;
-  return isApp() ? join(e.ref, BACKUP_DIR) : `「${e.label}」フォルダの中の ${BACKUP_DIR}`;
-}
-function archiveBackupPlace() {
-  return isApp() ? join(S.archive.ref, BACKUP_DIR) : `「${S.archive.label}」フォルダの中の ${BACKUP_DIR}`;
-}
-const fullOf = (base, rel) => (isApp() && base ? join(base, disp(rel)) : rel);
+/** エンジンのバックアップ先（表示用） */
+export const engineBackupPlace = (engineId) => backupPlace('engine', engineId);
+const archiveBackupPlace = () => backupPlace('zip');
 const placeOf = (it) => (it.kind === 'rec' ? engineBackupPlace(it.rec.engineId) : archiveBackupPlace());
 const labelOf = (it) => (it.kind === 'rec' ? `${engine(it.rec.engineId)?.name || ''}：${disp(it.rec.path)}` : `保存場所：${disp(it.z.rel)}`);
 
@@ -159,9 +152,10 @@ async function perform(list, backup) {
     try {
       const d = await dirFor(it);
       if (backup) {
-        const dest = await moveToBackup(d, rel, { anywhere: it.kind === 'zip' });
-        const base = it.kind === 'rec' ? engine(it.rec.engineId)?.ref : S.archive.ref;
-        log.push(`移した　${labelOf(it)}\n　　→ ${isApp() ? fullOf(base, dest) : `${it.kind === 'rec' ? `「${engine(it.rec.engineId)?.label}」` : `「${S.archive.label}」`}の中の ${dest}`}`);
+        const kind = it.kind === 'rec' ? 'engine' : 'zip';
+        const eid = it.kind === 'rec' ? it.rec.engineId : '';
+        const dest = await moveToBackup(d, rel, { anywhere: it.kind === 'zip', ...(await backupOpts(kind, eid)) });
+        log.push(`移した　${labelOf(it)}\n　　→ ${backupFull(kind, eid, dest)}`);
       } else {
         await removeAt(d, rel);
         log.push(`消した　${labelOf(it)}`);

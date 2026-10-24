@@ -15,6 +15,8 @@ import { viewBatch } from './batch.js';
 import { editEntry } from './catalog-view.js';
 import { openLocalFiles, pickFiles, pickDownloads } from './localfiles.js';
 import { viewMaterialInstall } from './materials.js';
+import { backupOpts, backupFull } from './backup.js';
+import { existsAt } from '../core/fs.js';
 
 export const VERSION_SOURCE = { catalog: '（カタログで確定）', dl: '（カタログからDLした版）', user: '（手入力）', guess: '（名前から推測）' };
 
@@ -115,7 +117,7 @@ export function viewAdd() {
           h('li', {}, '「カタログ」タブで作品を選ぶと、まとめてDLしてまとめて入れられます'),
           h('li', {}, '文字化けしたファイル名を正しく読み直します（UTF-8・Shift_JISを自動判定）'),
           h('li', {}, 'シナリオの範囲・形式（クラシック／Next／Py）・暗号化の有無を判定します'),
-          h('li', {}, 'りどみを表示してから、エンジンのScenarioフォルダに入れます（同じものがあればバックアップしてから置き換え）'),
+          h('li', {}, 'Readmeを表示してから、エンジンのScenarioフォルダに入れます（同じものがあればバックアップしてから置き換え）'),
           h('li', {}, 'WebCardWirthの「追加データのインストール（ZIP）」で入れやすいzipに書き出せます'))));
   }
 
@@ -154,7 +156,7 @@ export function viewAdd() {
     h('div', { class: 'meta' }, `${sc.author}・${sc.root || '(zipのトップ)'}・${sc.files.length}ファイル・${fmtSize(sc.size)}`),
     sc.description ? h('div', { class: 'desc full' }, sc.description.replace(/^\n+|\s+$/g, '')) : null));
 
-  // りどみ
+  // Readme
   if (o.readmes.length) {
     const cur = o.readmes[S.readmeIdx];
     const pre = h('pre', { class: 'readme', id: 'readme-view' }, '読み込み中…');
@@ -166,7 +168,7 @@ export function viewAdd() {
       if (info) info.textContent = `${t.encoding === 'shift_jis' ? 'Shift_JIS' : t.encoding.toUpperCase()}${t.lossy ? '（一部読めない文字あり）' : ''}`;
     });
     parts.push(h('div', { class: 'card stack' },
-      h('div', { class: 'row between' }, h('h3', {}, 'りどみ'),
+      h('div', { class: 'row between' }, h('h3', {}, 'Readme'),
         h('div', { class: 'row small' }, h('span', { id: 'readme-enc', class: 'muted' }),
           h('select', { 'aria-label': '文字コード', onchange: (ev) => { S.readmeEnc = ev.target.value; render(); } },
             [['', '自動'], ['utf-8', 'UTF-8'], ['shift_jis', 'Shift_JIS'], ['utf-16le', 'UTF-16']].map(([v, l]) => h('option', { value: v, selected: S.readmeEnc === v ? 'selected' : null }, l))))),
@@ -265,7 +267,7 @@ async function connectEngineQuiet(id) {
 function authorReadme(work) {
   const a = work && S.combined?.authors?.[work.owner];
   if (!a?.readme_url) return null;
-  const box = h('details', { class: 'small' }, h('summary', {}, `作者さん共通のりどみ（${a.names[0] || work.author}）`));
+  const box = h('details', { class: 'small' }, h('summary', {}, `作者さん共通のReadme（${a.names[0] || work.author}）`));
   box.addEventListener('toggle', async () => {
     if (!box.open || box.dataset.loaded) return;
     box.dataset.loaded = '1';
@@ -279,7 +281,7 @@ function authorReadme(work) {
   return box;
 }
 
-/** りどみを別の窓で読む（まとめてDLのとき）。「読みました」を押すと true */
+/** Readmeを別の窓で読む（まとめてDLのとき）。「読みました」を押すと true */
 export function readmeModal(opened, title, { next = false } = {}) {
   return modal((close) => {
     let idx = 0, enc = '';
@@ -297,7 +299,7 @@ export function readmeModal(opened, title, { next = false } = {}) {
     }, r.path.split('/').pop())));
     show();
     return h('div', { class: 'stack' },
-      h('div', { class: 'row between' }, h('h2', { style: 'margin:0' }, `${title} のりどみ`),
+      h('div', { class: 'row between' }, h('h2', { style: 'margin:0' }, `${title} のReadme`),
         h('div', { class: 'row' }, encInfo, h('select', { 'aria-label': '文字コード', onchange: (ev) => { enc = ev.target.value; show(); } },
           [['', '自動'], ['utf-8', 'UTF-8'], ['shift_jis', 'Shift_JIS'], ['utf-16le', 'UTF-16']].map(([v, l]) => h('option', { value: v }, l))))),
       tabs, pre,
@@ -351,7 +353,9 @@ export async function installOpened({ opened, pick, eng, dir, cat, folderName, v
   const sc = opened.scenarios[pick];
   const plan = planInstall(opened, pick, eng, cat, { folderName });
   onProgress?.(0, plan.files.length, 'write', '');
-  const res = await performInstall(dir, plan, { onProgress });
+  const bk = (await existsAt(dir, plan.dest)) ? await backupOpts('engine', eng.id) : {};
+  const res = await performInstall(dir, plan, { onProgress, ...bk });
+  res.backupShown = res.backup ? (S.backupFolder?.ref || S.platform.kind === 'app' ? backupFull('engine', eng.id, res.backup) : res.backup) : null;
   const readmes = [];
   for (const r of opened.readmes.slice(0, 4)) {
     const f = opened.files.find((x) => x.path === r.path);
@@ -433,7 +437,7 @@ async function doInstall() {
       versionSource: version && version === dv.version ? dv.source || 'user' : 'user', work: S.openedWork, onProgress: setProgress,
     });
     S.records = await store.records();
-    toast(`「${sc.name}」を ${plan.dest} に入れました${res.backup ? `（前のものは ${res.backup} にバックアップ）` : ''}${archived ? `。zipは「${S.archive.label}」に保存しました` : ''}`, { ms: 9000 });
+    toast(`「${sc.name}」を ${plan.dest} に入れました${res.backup ? `（前のものは ${res.backupShown} にバックアップ）` : ''}${archived ? `。zipは「${S.archive.label}」に保存しました` : ''}`, { ms: 9000 });
     S.opened = null;
     S.destName = S.destVer = undefined;
     S.force = false;

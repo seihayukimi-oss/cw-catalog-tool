@@ -94,16 +94,22 @@ export function viewMaterialInstall(o) {
     h('option', { value: '' }, '（素材の置き場所の直下）'), cats.map((c) => h('option', { value: c, selected: m.cat === c ? 'selected' : null }, c)), h('option', { value: '__new', selected: m.cat === '__new' ? 'selected' : null }, '新しい分類フォルダ…'));
   const newCat = h('input', { type: 'text', id: 'mat-newcat', value: m.newCat, placeholder: '新しい分類フォルダの名前（例：スキン、効果音、立ち絵）', hidden: m.cat !== '__new', oninput: (ev) => { m.newCat = ev.target.value; } });
   const nameIn = h('input', { type: 'text', id: 'mat-name', value: m.name, 'aria-label': 'フォルダ名', oninput: (ev) => { m.name = ev.target.value; } });
-  const asArc = h('input', { type: 'checkbox', checked: m.asArc, 'aria-label': 'zipのまま置く', onchange: (ev) => { m.asArc = ev.target.checked; } });
+  const asArc = h('input', { type: 'checkbox', checked: m.asArc, 'aria-label': 'zipのまま置く', onchange: (ev) => { m.asArc = ev.target.checked; pick.hidden = m.asArc; } });
+  m.skip ||= new Set();
+  const pick = filePicker(o, m);
+  pick.hidden = m.asArc;
   card.append(
     h('div', { class: 'grid2' },
       h('label', { class: 'field' }, '分類フォルダ', catSel, newCat),
       h('label', { class: 'field' }, 'フォルダ名', nameIn)),
     o.source.kind === 'archive' ? h('label', { class: 'check small' }, asArc, '展開せずに、zipなどのまま置く') : null,
+    pick,
     h('div', { class: 'row' },
       h('button', {
         class: 'btn primary', onclick: async () => {
           const cat = m.cat === '__new' ? m.newCat.trim() : m.cat;
+          const chosen = o.files.filter((f) => !m.skip.has(f.path));
+          if (!m.asArc && !chosen.length) { toast('入れるファイルを1つ以上選んでください', { bad: true }); return; }
           if (m.cat === '__new' && !cat) { toast('新しい分類フォルダの名前を入れてください', { bad: true }); return; }
           if (o.readmes?.length && !o.matAck) {
             const { readmeModal } = await import('./add.js');
@@ -113,15 +119,49 @@ export function viewMaterialInstall(o) {
           await busy('素材の置き場所に入れる', async () => {
             const d = await materialsDirOf(true);
             if (!d) throw new Error('素材の置き場所を使う許可がありませんでした');
-            const r = await installMaterial(d, o, { category: cat, folderName: m.name.trim(), asArchive: m.asArc });
+            const r = await installMaterial(d, m.asArc ? o : { ...o, files: chosen }, { category: cat, folderName: m.name.trim(), asArchive: m.asArc });
             await scanMaterials(true);
-            toast(`「${S.materials.label}」の ${r.dest} に入れました`, { ms: 8000 });
+            toast(`「${S.materials.label}」の ${r.dest} に入れました（${m.asArc ? 'zipのまま' : `${r.written}ファイル`}）`, { ms: 8000 });
             S.opened = null;
           });
         },
       }, '素材の置き場所に入れる'),
       h('span', { class: 'small muted' }, `入れ先：${S.materials.label}${o.readmes?.length ? '（入れる前に Readme（利用規約）を確認します）' : ''}`)));
   return card;
+}
+
+/** 素材のどのファイルを入れるか選ぶ欄（最初は全部。フォルダごとにも選べる） */
+function filePicker(o, m) {
+  const groups = new Map();
+  for (const f of o.files) {
+    const dir = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '';
+    if (!groups.has(dir)) groups.set(dir, []);
+    groups.get(dir).push(f);
+  }
+  const count = h('span', { class: 'small muted' });
+  const upd = () => { count.textContent = `${o.files.length - m.skip.size} / ${o.files.length} ファイルを入れます`; };
+  upd();
+  const box = h('div', { class: 'file-pick' });
+  const draw = () => {
+    box.replaceChildren(...[...groups].map(([dir, fs]) => {
+      const allOn = fs.every((f) => !m.skip.has(f.path));
+      const someOn = fs.some((f) => !m.skip.has(f.path));
+      const head = h('input', { type: 'checkbox', checked: allOn, 'aria-label': `フォルダ「${dir || '（いちばん上）'}」をまとめて選ぶ`, onchange: (ev) => { fs.forEach((f) => (ev.target.checked ? m.skip.delete(f.path) : m.skip.add(f.path))); draw(); upd(); } });
+      head.indeterminate = someOn && !allOn;
+      return h('div', {},
+        h('div', { class: 'dir row' }, head, `📁 ${dir || '（いちばん上）'}`, h('span', { class: 'small muted' }, `${fs.length}件`)),
+        fs.map((f) => h('label', { class: 'small' },
+          h('input', { type: 'checkbox', checked: !m.skip.has(f.path), 'aria-label': `${f.path}を入れる`, onchange: (ev) => { if (ev.target.checked) m.skip.delete(f.path); else m.skip.add(f.path); draw(); upd(); } }),
+          `📄 ${f.path.split('/').pop()}`)));
+    }));
+  };
+  draw();
+  return h('details', { class: 'small', open: o.files.length <= 30 ? true : null },
+    h('summary', {}, '入れるファイルを選ぶ　', count),
+    h('div', { class: 'row', style: 'margin:6px 0' },
+      h('button', { class: 'btn sm', onclick: () => { m.skip.clear(); draw(); upd(); } }, 'すべて選ぶ'),
+      h('button', { class: 'btn ghost sm', onclick: () => { o.files.forEach((f) => m.skip.add(f.path)); draw(); upd(); } }, 'すべて外す')),
+    box);
 }
 
 /**

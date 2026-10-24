@@ -21,6 +21,8 @@ import { setupShell, startShell, viewAppSettings } from './appshell.js';
 import { ownSources, saveOwnEntry } from './catalog-data.js';
 import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName } from './tags.js';
 import { openTidy, viewTidy } from './tidy.js';
+import { loadBackup, viewBackupSettings } from './backup.js';
+import { CREDITS } from './credits.js';
 import { MAT, loadMaterials, viewMaterialsMine, viewMaterialsSettings, moveToCategory } from './materials.js';
 
 const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
@@ -45,6 +47,7 @@ export async function startApp(platform) {
   }
   if (S.archive.ref) S.archiveDir = await platform.openFolder(S.archive.ref).catch(() => null);
   await loadMaterials();
+  await loadBackup();
   Object.assign(views, { mine: viewMine, add: viewAdd, catalog: viewCatalog, settings: viewSettings });
   setRenderer(draw);
   setupDrop();
@@ -197,7 +200,7 @@ function recordCard(r) {
         r.pageChanged ? h('span', { class: 'badge update' }, 'ページに変化あり') : null,
       ),
       h('div', { class: 'row' },
-        r.readmes?.length ? h('button', { class: 'btn ghost', onclick: () => showReadmes(r) }, 'りどみ') : null,
+        r.readmes?.length ? h('button', { class: 'btn ghost', onclick: () => showReadmes(r) }, 'Readme') : null,
         r.pageUrl ? h('button', { class: 'btn ghost', onclick: () => S.platform.openUrl(r.pageUrl) }, '配布ページ') : null,
         work ? h('button', { class: 'btn ghost', onclick: () => { S.filter.cat = work.name; S.filter.catSource = ''; goTab('catalog'); } }, 'カタログ') : null,
         !work && r.type !== 'bookmark' && r.name ? h('button', { class: 'btn ghost', onclick: () => editEntry({ prefill: { entry: entryFromRecord(r) } }) }, '個人用カタログに登録') : null,
@@ -227,7 +230,7 @@ function showReadmes(r) {
     let idx = 0;
     const pre = h('pre', { class: 'readme' }, r.readmes[0].text);
     return h('div', { class: 'stack' },
-      h('h2', {}, `${r.name} のりどみ`),
+      h('h2', {}, `${r.name} のReadme`),
       h('div', { class: 'readme-list' }, r.readmes.map((x, i) => h('button', {
         class: 'btn sm', 'aria-pressed': i === 0 ? 'true' : 'false',
         onclick: (ev) => { idx = i; pre.textContent = r.readmes[i].text; ev.target.parentElement.querySelectorAll('button').forEach((b, j) => b.setAttribute('aria-pressed', j === idx ? 'true' : 'false')); },
@@ -482,6 +485,9 @@ function viewSettings() {
     h('h2', {}, '素材・スキンの置き場所'),
     viewMaterialsSettings(dev),
 
+    h('h2', {}, 'バックアップ先'),
+    viewBackupSettings(dev),
+
     h('h2', {}, 'カタログ'),
     h('div', { class: 'card stack' },
       prefsBlock(),
@@ -507,10 +513,18 @@ function viewSettings() {
     h('div', { class: 'card small stack' },
       h('p', { style: 'margin:0' }, `CWカタログ ${APP_VERSION}（${S.platform.label}）`),
       h('ul', { style: 'margin:0;padding-left:1.2em' },
-        h('li', {}, 'ツールが書き込むのは、登録したエンジンの「Scenario」と「CWCatalog_backup」フォルダ、それと指定したzip・wsnの保存場所・素材の置き場所だけです。宿（Yado）には触りません。'),
+        h('li', {}, 'ツールが書き込むのは、登録したエンジンの「Scenario」と「CWCatalog_backup」フォルダ、それと指定したzip・wsnの保存場所・素材の置き場所・バックアップ先だけです。宿（Yado）には触りません。'),
         h('li', {}, 'zipの中のファイルを実行することはありません。'),
         h('li', {}, 'ネットにつなぐのは、カタログの読み込み・更新チェック・ダウンロード・紹介を見るボタンを押したときだけです。'),
         S.platform.kind === 'web' ? h('li', {}, 'HTML版では、作者さんのサイトから直接ダウンロードできないことが多いです（ブラウザの制限）。その場合は配布ページを開いて、落としたファイルをドロップしてください。') : null)),
+
+    h('h2', {}, 'クレジット'),
+    h('div', { class: 'card stack credits', id: 'credits' },
+      h('dl', { class: 'credit-list' },
+        h('dt', {}, '制作'), h('dd', {}, CREDITS.author),
+        h('dt', {}, 'メール'), h('dd', {}, CREDITS.mail, ' ', h('button', { class: 'btn ghost sm', onclick: async () => { try { await navigator.clipboard.writeText(CREDITS.mail); toast('メールアドレスをコピーしました'); } catch { toast('コピーできませんでした', { bad: true }); } } }, 'コピー')),
+        h('dt', {}, '制作補助ツール'), h('dd', {}, CREDITS.helper)),
+      CREDITS.lines.map((l) => h('p', { style: 'margin:0' }, l))),
   );
 }
 
