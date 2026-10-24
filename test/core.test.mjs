@@ -514,3 +514,21 @@ test('アップローダーの一覧から、作品の最新のファイルを�
   assert.equal(findNewest(list, '星間列車の相席屋').version, '1.0.0');
   assert.equal(findNewest(list, 'ない作品'), null);
 });
+
+test('Readmeからタグを見つける', async () => {
+  const { findTags } = await import('../src/core/autotag.js');
+  assert.deepEqual(findTags('これは男性１人専用の読み物です。戦闘はありません。'), ['読み物', '1人専用', '戦闘なし']);
+  assert.deepEqual(findTags('【店シナ】冒険者向けのアイテムを売っています。'), ['店シナ']);
+  assert.deepEqual(findTags('推奨：3人以上／ボス戦あり／短編／対象レベル：3～5'), ['3人以上', '戦闘あり', '短編', 'Lv3-5']);
+  assert.deepEqual(findTags('二人用シナリオ'), ['2人用']);
+  assert.deepEqual(findTags('普通の説明です'), []);
+});
+
+test('firestorage のワンタイムURLをたどる', async () => {
+  const { oneTimeNext } = await import('../src/core/weblink.js');
+  const cushion = '<a href="https://firestorage.jp/download/d0cbfc555a06eadbfdee66b0644906182ddc7ed69brjoktswdom31sqy4ls"><img src="b.png"></a>';
+  assert.equal(oneTimeNext(cushion, 'https://firestorage.jp/download/0e946d5542168fb66d8edcdc8c0cbbc8f3ba02bf8u8thsp2as'), 'https://firestorage.jp/download/d0cbfc555a06eadbfdee66b0644906182ddc7ed69brjoktswdom31sqy4ls');
+  const dl = '<a href="https://proxy7.firestorage.jp/download25.mcgi?act=download_file&amp;d=5d8e62&amp;key=4d26">今度.zip</a><a href="//url.firestorage.jp/urlimage.fcgi?key=4d26&amp;url=download">フル機能のURL</a>';
+  assert.equal(oneTimeNext(dl, 'https://firestorage.jp/download/4d26d013a37ca361e3992e1a68fefe5e16c14bf9a87709'), 'https://proxy7.firestorage.jp/download25.mcgi?act=download_file&d=5d8e62&key=4d26');
+  assert.equal(oneTimeNext(cushion, 'https://example.com/x'), null);
+});

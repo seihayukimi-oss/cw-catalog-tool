@@ -7,7 +7,7 @@
 import { zipSync } from 'fflate';
 import { openArchive, archiveKind, sha256Hex } from '../core/archive.js';
 import { chooseDownloads } from '../core/catalogs.js';
-import { decodeHtml, extractDownloadLinks, extractDownloadForms, extractDriveFolder, metaRefreshUrl, pageText, pageTitle, siteNotice } from '../core/weblink.js';
+import { decodeHtml, extractDownloadLinks, extractDownloadForms, extractDriveFolder, metaRefreshUrl, pageText, pageTitle, siteNotice, oneTimeNext } from '../core/weblink.js';
 import { fetchUrlFor, inAppSite, expiresAt, driveId } from '../core/urls.js';
 import { S, render, busy, busyText, busyProgress, goTab, confirmBox } from './state.js';
 import { store } from './store.js';
@@ -35,6 +35,13 @@ export async function fetchOnce(url, opts, ctx = {}) {
     return { kind: 'error', url, message: `${f.note ? `${f.note}：` : ''}${e.message || String(e)}` };
   }
   let res = classify(r, url);
+  // ワンタイムURLのサイト（firestorage など）：クッションページ → ダウンロードページ → ファイル と、順にたどる
+  for (let hop = 0; hop < 4 && res.kind === 'page'; hop++) {
+    const next = oneTimeNext(res.st.html || '', r.finalUrl || url);
+    if (!next) break;
+    try { r = await S.platform.fetchResource(next, { headers: { Referer: r.finalUrl || url }, ...(ctx.onProgress ? { onProgress: ctx.onProgress } : {}) }); } catch (e) { return { kind: 'error', url, message: `ワンタイムURLのページをたどれませんでした：${e.message}` }; }
+    res = classify(r, url);
+  }
   // Googleドライブの「大きいのでウイルススキャンできません。それでもダウンロードしますか？」は、作者さんの規約ではないので、そのまま進む
   if (res.kind === 'page' && /(^|\.)drive\.usercontent\.google\.com$/.test(hostOf(r.finalUrl)) && res.st.forms.length) {
     const r2 = await submitForm(res.st.forms[0], {}, r.finalUrl).catch(() => null);

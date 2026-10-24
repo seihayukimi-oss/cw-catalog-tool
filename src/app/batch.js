@@ -13,6 +13,7 @@ import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { readmeModal, installOpened, ensureDir, destFields, engineSelect, watchdog } from './add.js';
 import { KINDS, stashDirOf, installNonScenario, autoSkinCat, destStatus, openBtn } from './materials.js';
 import { readSkin } from '../core/skin.js';
+import { findTagsInOpened } from '../core/autotag.js';
 import { backupOpts } from './backup.js';
 
 const STATUS = {
@@ -164,6 +165,7 @@ async function analyze(it, bytes, fileName) {
     }
     it.opened = o;
     it.pick = 0;
+    it.autoTags = S.autoTag === false ? [] : await findTagsInOpened(o, o.scenarios[0]).catch(() => []);
     it.ack = !o.readmes.length;
     it.folderName = it.target?.folderName || o.scenarios[0].folderName;
     it.exact = !!(o.source.sha256 && it.work?.shas.has(o.source.sha256));
@@ -340,7 +342,8 @@ function itemCard(it) {
         disabled: !editable, 'aria-label': `${it.name}を入れるエンジン`,
         onchange: (ev) => { it.engineId = ev.target.value === S.batch.engineId ? null : ev.target.value; render(); },
       }, S.engines.map((e) => h('option', { value: e.id, selected: (it.engineId || S.batch.engineId) === e.id ? 'selected' : null }, e.name)))) : null,
-      it.exact ? h('span', { class: 'badge ok' }, 'カタログのファイルと一致') : null));
+      it.exact ? h('span', { class: 'badge ok' }, 'カタログのファイルと一致') : null,
+      it.autoTags?.length ? h('span', { class: 'muted' }, `Readmeから見つけたタグ：${it.autoTags.join('・')}`) : null));
     if (play && !play.ok) {
       card.append(h('div', { class: 'note bad small', style: 'margin-top:6px' }, `${eng.name}：${play.reason}`,
         h('label', { class: 'check', style: 'margin-left:8px' }, h('input', { type: 'checkbox', checked: it.force, disabled: !editable, onchange: (ev) => { it.force = ev.target.checked; render(); } }), 'それでも入れる')));
@@ -458,6 +461,7 @@ async function installAll() {
         opened: it.opened, pick: it.pick, eng, dir: dirs.get(it.engineId || b.engineId),
         cat: it.target ? it.target.cat : cat, folderName: it.folderName.trim() || it.opened.scenarios[it.pick].folderName,
         version: it.work ? it.work.version : it.opened.scenarios[it.pick].versionGuess || '', versionSource: it.work ? (it.exact ? 'catalog' : 'dl') : 'guess', work: it.work, onProgress: prog,
+        tags: it.autoTags || [],
       });
       it.status = 'done';
       it.donePath = eng?.ref && S.platform.kind === 'app' ? [eng.ref.replace(/[\\/]+$/, ''), ...plan.dest.split('/')].join('\\') : '';

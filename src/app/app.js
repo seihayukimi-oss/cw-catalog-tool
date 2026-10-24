@@ -20,7 +20,11 @@ import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
 import { startBatch } from './batch.js';
 import { setupShell, startShell, viewAppSettings } from './appshell.js';
 import { ownSources, saveOwnEntry } from './catalog-data.js';
-import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName } from './tags.js';
+import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName, manageTags } from './tags.js';
+import { findTags, findTagsInOpened } from '../core/autotag.js';
+import { decodeText } from '../core/text.js';
+import { openArchive } from '../core/archive.js';
+import { dirAt } from '../core/fs.js';
 import { openTidy, viewTidy } from './tidy.js';
 import { loadBackup, viewBackupSettings } from './backup.js';
 import { CREDITS } from './credits.js';
@@ -118,6 +122,7 @@ function viewMine() {
       h('b', { class: 'small' }, `選んだ${sel.length}件に：`),
       h('button', { class: 'btn primary sm', onclick: async () => { const t = await pickTags(`${sel.length}件にタグを付ける`); if (t?.length) { await applyTags(sel, t, []); toast(`${sel.length}件に「${t.join('・')}」を付けました`); render(); } } }, 'タグを付ける'),
       h('button', { class: 'btn sm', onclick: async () => { const present = [...new Set(sel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${sel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(sel, [], t); toast(`${sel.length}件から「${t.join('・')}」を外しました`); render(); } } }, 'タグを外す'),
+      h('button', { class: 'btn sm', onclick: () => retagFromReadme(sel) }, 'Readmeからタグを付ける'),
       h('button', {
         class: 'btn sm', title: 'Scenario の中の分類フォルダ（例：Scenario/_店）へ、実際のフォルダを動かします',
         onclick: async () => {
@@ -512,6 +517,13 @@ function viewSettings() {
       h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => { S.manageOpen = true; goTab('catalog'); } }, 'カタログの管理を開く'),
         h('span', { class: 'small muted' }, '共用カタログ・個人用カタログの追加、候補に含めるかどうか、DL一覧の読み込み・書き出しはここから'))),
 
+    h('h2', {}, 'タグ'),
+    h('div', { class: 'card stack' },
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.autoTag !== false, 'aria-label': 'Readmeから自動でタグを付ける', onchange: async (ev) => { S.autoTag = ev.target.checked; await store.set('autoTag', S.autoTag); } }),
+        'シナリオを入れるとき、Readmeや説明文からタグを自動で付ける'),
+      h('p', { class: 'small muted', style: 'margin:0' }, '「店シナ」「読み物」「1人用」「3人以上」「6人専用」「戦闘あり」「戦闘なし」「短編」「Lv3-5」などを、書いてあるときだけ付けます。入れる前に、付けるタグを選べます。もう入っている作品は、「自分のフォルダ一覧」で選んで「Readmeからタグを付ける」を押すと付けられます。'),
+      h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: manageTags }, 'タグの整理'))),
+
     h('h2', {}, '記録'),
     h('div', { class: 'card stack' },
       h('p', { class: 'small muted', style: 'margin:0' }, '自分のフォルダ一覧の記録（バージョン・タグ・メモなど）を、ファイルに書き出したり読み込んだりできます。形式は公開されているので、他のツールからも読めます。'),
@@ -579,6 +591,45 @@ async function reconnect(e) {
     S.dirs.set(e.id, r.picked.dir);
     toast('接続しました');
   });
+}
+
+/** 選んだ作品の Readme・説明文から、タグを見つけて付ける（入れたときの記録か、フォルダの中の .txt を読む） */
+async function retagFromReadme(sel) {
+  const recs = sel.filter((r) => r.type !== 'bookmark' && !r.missing);
+  if (!recs.length) return;
+  const res = await busy('Readmeからタグを探す', async () => {
+    let n = 0;
+    const found = new Map();
+    const d = await dirOf(recs[0].engineId, true);
+    for (const [i, r] of recs.entries()) {
+      busyText(`Readmeからタグを探す… ${i + 1}/${recs.length}`);
+      let tags = [];
+      try {
+        if (r.readmes?.length) tags = findTags([r.name, ...r.readmes.map((x) => x.text)].join('\n'));
+        else if (d && r.type === 'folder') {
+          const dir = await dirAt(d, r.path);
+          const texts = [r.name];
+          for (const e of (await dir?.entries()) || []) {
+            if (e.kind === 'file' && /\.txt$/i.test(e.name) && texts.length < 8) texts.push(decodeText(await dir.readFile(e.name)).text.slice(0, 50000));
+          }
+          tags = findTags(texts.join('\n'));
+        } else if (d && r.type === 'archive') {
+          const segs = r.path.split('/');
+          const name = segs.pop();
+          const dir = await dirAt(d, segs.join('/'));
+          const o = await openArchive(await dir.readFile(name), name);
+          const sc = o.scenarios.find((x) => x.name === r.name) || o.scenarios[0];
+          tags = await findTagsInOpened(o, sc);
+        }
+      } catch { /* 読めなければ飛ばす */ }
+      const add = tags.filter((t) => !(r.tags || []).includes(t));
+      if (add.length) { await applyTags([r], add, []); for (const t of add) await addTagName(t); n++; found.set(r.name, add); }
+    }
+    return { n, found };
+  });
+  if (!res) return;
+  toast(res.n ? `${res.n}件にタグを付けました（${[...res.found].slice(0, 3).map(([k, v]) => `${k}：${v.join('・')}`).join('／')}${res.found.size > 3 ? ' …' : ''}）` : 'Readmeから、付けられるタグは見つかりませんでした', { ms: 9000 });
+  render();
 }
 
 /** 自分のフォルダにあるシナリオから、個人用カタログの作品の下書きを作る */

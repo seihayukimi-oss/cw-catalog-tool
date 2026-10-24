@@ -16,6 +16,8 @@ import { editEntry } from './catalog-view.js';
 import { openLocalFiles, pickFiles, pickDownloads } from './localfiles.js';
 import { viewMaterialInstall, openBtn } from './materials.js';
 import { catPicker } from './catpick.js';
+import { findTagsInOpened } from '../core/autotag.js';
+import { addTagName } from './tags.js';
 import { backupOpts, backupFull } from './backup.js';
 import { existsAt } from '../core/fs.js';
 
@@ -217,6 +219,7 @@ export function viewAdd() {
     planInfo?.warnings?.map((w) => h('p', { class: 'note warn small' }, w)),
     play && !play.ok ? h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: !!S.force, onchange: (ev) => { S.force = ev.target.checked; render(); } }), 'それでも入れる') : null,
     !S.readmeAck ? h('p', { class: 'small muted' }, '※ Readme（利用規約）を読んでからインストールできます') : null,
+    autoTagBox(o),
     archiveNote(o),
     S.progress ? h('div', { class: 'stack' },
       h('progress', { id: 'inst-prog', max: S.progress.total || 1, value: S.progress.done }),
@@ -248,6 +251,22 @@ export function destFields(engineId, { state, name, onName, idPrefix = 'dest' })
     name: nameIn ? h('label', { class: 'field' }, 'フォルダ名', nameIn) : null,
     value: p.value,
   };
+}
+
+/** Readme・説明文から見つけたタグ（入れるときに付ける。チェックを外せば付けない） */
+function autoTagBox(o) {
+  if (S.autoTag === false) return null;
+  const key = `${S.pick}`;
+  if (o.autoTagsFor !== key) {
+    o.autoTagsFor = key;
+    o.autoTags = null;
+    findTagsInOpened(o, o.scenarios[S.pick]).then((t) => { if (o.autoTagsFor === key) { o.autoTags = t; o.autoOn = new Set(t); render(); } }).catch(() => {});
+  }
+  if (!o.autoTags?.length) return null;
+  return h('div', { class: 'row small', id: 'auto-tags' },
+    h('span', { class: 'muted' }, 'Readmeから見つけたタグ（入れるときに付けます）：'),
+    o.autoTags.map((t) => h('label', { class: `chip${o.autoOn.has(t) ? ' on' : ''}` },
+      h('input', { type: 'checkbox', checked: o.autoOn.has(t), 'aria-label': `タグ「${t}」を付ける`, onchange: (ev) => { if (ev.target.checked) o.autoOn.add(t); else o.autoOn.delete(t); ev.target.parentElement.classList.toggle('on', ev.target.checked); } }), t)));
 }
 
 function archiveNote(o) {
@@ -351,7 +370,7 @@ export async function saveArchive(opened, { force = false, subdir = '' } = {}) {
  * 1本インストールして、記録を残す（ひとつずつ・まとめて の両方で使う）。
  * @returns {{plan, res, rec, archived: string|null}}
  */
-export async function installOpened({ opened, pick, eng, dir, cat, folderName, version, versionSource, work, onProgress }) {
+export async function installOpened({ opened, pick, eng, dir, cat, folderName, version, versionSource, work, onProgress, tags = [] }) {
   const sc = opened.scenarios[pick];
   const plan = planInstall(opened, pick, eng, cat, { folderName });
   onProgress?.(0, plan.files.length, 'write', '');
@@ -368,12 +387,13 @@ export async function installOpened({ opened, pick, eng, dir, cat, folderName, v
     id: rid, engineId: eng.id, path: plan.dest, inner: '', type: plan.passthrough ? 'archive' : 'folder',
     name: sc.name, author: sc.author, format: sc.format, dataVersion: sc.dataVersion, wsnVersion: sc.wsnVersion, encrypted: sc.encrypted,
     version, versionSource: version ? versionSource || 'user' : '',
-    versionGuess: sc.versionGuess || '', tags: (await store.getRecord(rid))?.tags || [],
+    versionGuess: sc.versionGuess || '', tags: [...new Set([...((await store.getRecord(rid))?.tags || []), ...tags])],
     workKey: work?.key || '', sha256: opened.source.sha256 || '', sourceName: opened.source.name,
     installedAt: new Date().toISOString(), seenAt: new Date().toISOString(), missing: false, readmes,
   };
   Object.assign(rec, applyCatalog(rec));
   await store.putRecord(rec);
+  for (const t of tags) await addTagName(t);
   if (cat && !(S.categories[eng.id] || []).includes(cat)) {
     S.categories[eng.id] = [...(S.categories[eng.id] || []), cat].sort();
     await store.set('categories', S.categories);
@@ -435,7 +455,7 @@ async function doInstall() {
   S.progress = { done: 0, total: 0, phase: 'write' };
   await busy('インストール中', async () => {
     const { plan, res, archived } = await installOpened({
-      opened: o, pick: S.pick, eng, dir: d, cat, folderName, version,
+      opened: o, pick: S.pick, eng, dir: d, cat, folderName, version, tags: S.autoTag === false ? [] : [...(o.autoOn || [])],
       versionSource: version && version === dv.version ? dv.source || 'user' : 'user', work: S.openedWork, onProgress: setProgress,
     });
     S.records = await store.records();

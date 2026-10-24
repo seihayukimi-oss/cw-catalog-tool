@@ -528,7 +528,7 @@ async function run(colorScheme, width) {
   const mcards = page.locator('#mine-list > .card');
   await mcards.filter({ hasText: 'Scenario/既存' }).locator('input[type=checkbox]').first().check();
   await mcards.filter({ hasText: 'Scenario/鳥籠2' }).locator('input[type=checkbox]').first().check();
-  await page.locator('#mine-bar .sel-actions').getByRole('button', { name: 'タグを付ける' }).click();
+  await page.locator('#mine-bar .sel-actions').getByRole('button', { name: 'タグを付ける', exact: true }).click();
   await page.locator('dialog .chip', { hasText: '積み' }).click();
   await page.locator('dialog').getByRole('button', { name: '付ける' }).click();
   await page.getByText('2件に「積み」を付けました').waitFor();
@@ -576,6 +576,24 @@ async function run(colorScheme, width) {
   await page.locator('dialog', { hasText: '分類フォルダへ移しました（1件）' }).getByRole('button', { name: '閉じる' }).click();
   ok('シナリオを分類フォルダへ移す', await page.locator('#mine-list > .card', { hasText: 'Scenario/_集/鳥籠2' }).isVisible());
 
+  // 14. Readmeからタグを自動で付ける
+  await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
+  const base15 = '/mnt/user-data/uploads/CardWirth (1.5)/Scenario/開けられた鳥籠ver1_01/';
+  const shop = Buffer.from(zipSync({ '店テスト/Summary.wsm': new Uint8Array(readFileSync(base15 + 'Summary.wsm')), '店テスト/Package3.wid': new Uint8Array(readFileSync(base15 + 'Package3.wid')), 'Readme.txt': strToU8('これは店シナです。男性１人専用。戦闘はありません。') }));
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: '店テスト.zip', mimeType: 'application/zip', buffer: shop });
+  await page.locator('#auto-tags').waitFor();
+  const autoChips = await page.locator('#auto-tags .chip').allTextContents();
+  ok('Readmeからタグを見つける（店シナ・1人専用・戦闘なし）', ['店シナ', '1人専用', '戦闘なし'].every((t) => autoChips.includes(t)), (await page.locator('#auto-tags .chip').allTextContents()).join(','));
+  await page.getByLabel('タグ「戦闘なし」を付ける').uncheck();
+  await page.getByLabel('Readme（利用規約）を読みました').check();
+  await page.locator('#dest-name').fill('店テスト');
+  await page.getByRole('button', { name: 'インストール' }).click();
+  await page.getByText(/Scenario\/店テスト に入れました/).waitFor();
+  const shopCard = page.locator('#mine-list > .card', { hasText: 'Scenario/店テスト' });
+  await shopCard.waitFor();
+  const shopTags = await shopCard.locator('.tag').allTextContents();
+  ok('入れるときに、選んだ自動タグだけ付く', shopTags.some((t) => t.startsWith('店シナ')) && shopTags.some((t) => t.startsWith('1人専用')) && !shopTags.some((t) => t.startsWith('戦闘なし')), shopTags.join(','));
+
   // OPFSの中身を確認
   const tree = await page.evaluate(async () => {
     const out = [];
@@ -593,7 +611,7 @@ async function run(colorScheme, width) {
   const mats = await treeOf('test-materials');
   const bk = await treeOf('test-backup');
   const skins = await treeOf('test-skins');
-  ok('元のzipを保存場所に保存し、重なりは整理でバックアップ先へ', archived.filter((p) => !p.includes('/')).length === 1 && archived.some((p) => p.endsWith('鳥籠.zip')) && bk.some((p) => /^zipの保存場所\/\d{8}_\d{6}_.+\.zip$/.test(p)), `${archived.join(', ')} / ${bk.join(', ')}`);
+  ok('元のzipを保存場所に保存し、重なりは整理でバックアップ先へ', archived.filter((p) => !p.includes('/') && p !== '店テスト.zip').length === 1 && archived.some((p) => p.endsWith('鳥籠.zip')) && bk.some((p) => /^zipの保存場所\/\d{8}_\d{6}_.+\.zip$/.test(p)), `${archived.join(', ')} / ${bk.join(', ')}`);
   ok('素材・スキンの元のzipは、保存場所の「素材」「スキン」に分けて残す', archived.includes('素材/skin.zip') && archived.includes('スキン/wafu_skin.zip'), archived.join(', '));
   ok('スキンは Skin.xml のフォルダの中身を、種類の分類フォルダに入れる', skins.includes('MedievalFantasy/和風テスト/Skin.xml') && skins.includes('MedievalFantasy/和風テスト/Resource/Image/b.png'), skins.join(', '));
   ok('素材は分類フォルダに、1つ上のフォルダを省いて、選んだファイルだけ入る', mats.includes('お気に入りスキン/skin/Resource/Image/a.png') && !mats.some((p) => p.startsWith('スキン/skin') || p.endsWith('readme.txt')), mats.join(', '));

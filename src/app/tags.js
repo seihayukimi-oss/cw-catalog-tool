@@ -16,6 +16,7 @@ export async function loadTags() {
   // 前から付いているタグも一覧に入れる
   for (const r of S.records) for (const t of r.tags || []) if (!S.tagList.includes(t)) S.tagList.push(t);
   S.favs = { works: [], folders: [], ...((await store.get('favs')) || {}) };
+  S.autoTag = (await store.get('autoTag', true)) !== false;
 }
 async function saveTags() { await store.set('tagList', S.tagList); }
 export async function addTagName(t) {

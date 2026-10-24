@@ -211,3 +211,24 @@ export function extractDriveFolder(html) {
   const rank = (l) => (l.type === 'folder' ? 0 : l.kind === 'file' ? 1 : 2);
   return [...out.values()].sort((a, b) => rank(a) - rank(b)).slice(0, 300);
 }
+
+/**
+ * ワンタイムURLのサイト（firestorage など）で、次に進むページ・ファイルのURLを探す。
+ * firestorage：/download/<ID> → クッションページ（10分有効）→ ダウンロードページ（ファイル名のリンク）→ ファイル
+ * @returns {string|null}
+ */
+export function oneTimeNext(html, pageUrl) {
+  let host = '';
+  try { host = new URL(pageUrl).hostname.toLowerCase(); } catch { return null; }
+  if (!/(^|\.)firestorage\.jp$/.test(host)) return null;
+  const hrefs = [];
+  for (const m of html.matchAll(/<a\b[^>]*?\bhref\s*=\s*(["'])(.*?)\1/gi)) {
+    try { hrefs.push(new URL(unescapeHtml(m[2]), pageUrl).href); } catch { /* 飛ばす */ }
+  }
+  // ファイルそのもの（proxyN.firestorage.jp/download○○.mcgi?act=download_file…）
+  const file = hrefs.find((u) => /^https:\/\/[\w-]+\.firestorage\.jp\/download\w*\.mcgi\?[^#]*act=download_file/i.test(u));
+  if (file) return file;
+  // 次のページ（ワンタイムURL）
+  const cur = pageUrl.replace(/[?#].*$/, '');
+  return hrefs.find((u) => /^https:\/\/firestorage\.jp\/download\/[0-9a-z]{20,}$/i.test(u) && u !== cur) || null;
+}

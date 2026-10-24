@@ -70,9 +70,12 @@ function keepCookies(host, list) {
   jar.set(host, m);
 }
 function cookieHeader(host) {
-  const m = jar.get(host);
-  return m ? [...m].map(([k, v]) => `${k}=${v}`).join('; ') : '';
+  // 同じサイトの別のサーバー（例：firestorage.jp → proxy7.firestorage.jp）にも送る
+  const all = new Map();
+  for (const [h, m] of jar) if (h === host || host.endsWith(`.${h}`) || h.endsWith(`.${host}`) || sameSite(h, host)) for (const [k, v] of m) all.set(k, v);
+  return [...all].map(([k, v]) => `${k}=${v}`).join('; ');
 }
+const sameSite = (a, b) => a.split('.').slice(-2).join('.') === b.split('.').slice(-2).join('.') && !/\.(co|ne|or|ac|go)\.jp$/.test(a);
 
 /**
  * 配布元から取ってくる（アプリ側で通信して、中身は一時ファイル経由で受け取る）。
