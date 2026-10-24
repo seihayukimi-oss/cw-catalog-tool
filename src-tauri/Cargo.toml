@@ -12,7 +12,7 @@ rust-version = "1.77.2"
 tauri-build = { version = "=2.7.1", features = [] }
 
 [dependencies]
-tauri = { version = "=2.12.1", features = [] }
+tauri = { version = "=2.12.2", features = [] }
 tauri-plugin-fs = "=2.6.0"
 tauri-plugin-dialog = "=2.8.1"
 # unsafe-headers：同意ページの送信で Cookie・Referer を付けるため
