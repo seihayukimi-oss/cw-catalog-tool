@@ -48,11 +48,25 @@ jobs:
 
       - name: Rust 側の試験
         working-directory: src-tauri
-        run: cargo test --release
+        shell: bash
+        # 失敗したときは、エラーの行を画面（Annotations）に出す
+        run: |
+          set -o pipefail
+          cargo test --release --color never 2>&1 | tee ../cargo-test.log || {
+            msg=$(grep -E "^error|^\s+-->|panicked|FAILED|assertion|left:|right:" ../cargo-test.log | head -40 | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Rust::$msg"
+            exit 1
+          }
 
       - name: ポータブル版をビルド
         shell: bash
-        run: npx tauri build --ci
+        run: |
+          set -o pipefail
+          npx tauri build --ci 2>&1 | tee build.log || {
+            msg=$(grep -E "^error|^Error|^\s+-->|failed" build.log | head -40 | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Build::$msg"
+            exit 1
+          }
 
       - name: 配布物の形に並べて、署名する
         shell: bash
