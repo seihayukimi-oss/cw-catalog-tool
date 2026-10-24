@@ -86,7 +86,7 @@ async function run(colorScheme, width) {
   const errors = [];
   // 別サイトを読みに行って断られるのは想定どおりなので除く（試験環境は外部に出られないので、その失敗も除く）
   page.on('console', (m) => { if (m.type() === 'error' && !/CORS|ERR_FAILED|ERR_TUNNEL_CONNECTION_FAILED|localhost:8768/.test(m.text()) && !/missing\.zip/.test(m.location()?.url || '')) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('pageerror', (e) => { errors.push(e.message); console.log('PAGEERR', e.message); });
   await page.goto('http://localhost:8767/#dev-opfs');
 
   // OPFS にエンジンのフォルダを用意（Next・既存シナリオ1本・分類フォルダ）
@@ -123,7 +123,7 @@ async function run(colorScheme, width) {
   ok('名前から版を推測（既存フォルダには版表記なし）', !(await page.getByText(/推測「/).count()));
 
   // 2. 入れる：Next（二重フォルダ）を _店 に
-  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+  await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'next_nested.zip'));
   await page.getByText('うつろい森のあなた', { exact: true }).first().waitFor();
   ok('Next仕様と判定', await page.locator('.badge.next').first().isVisible());
@@ -135,7 +135,7 @@ async function run(colorScheme, width) {
   ok('Nextをインストール', true);
 
   // 3. 入れる：クラシック（CP932のReadme）→ Readme確認が必要
-  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+  await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'classic_cp932.zip'));
   await page.locator('#readme-view').waitFor();
   await page.waitForFunction(() => document.getElementById('readme-view')?.textContent.includes('髙﨑'));
@@ -147,7 +147,7 @@ async function run(colorScheme, width) {
   await page.getByText(/開けられた鳥籠ver1_01 に入れました/).waitFor();
 
   // 4. 同じものをもう一度 → バックアップ
-  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+  await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'classic_cp932.zip'));
   await page.getByLabel('Readme（利用規約）を読みました').check();
   await page.getByRole('button', { name: 'インストール' }).click();
@@ -155,7 +155,7 @@ async function run(colorScheme, width) {
   ok('再インストールでバックアップ', true);
 
   // 5. Py仕様（.wsn）をNextへ → 遊べない警告
-  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+  await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'alice.wsn'));
   await page.getByText('アリスの洞窟', { exact: true }).first().waitFor();
   ok('Py仕様をNextに入れようとすると警告', await page.getByText(/CardWirthPyでしか遊べません/).isVisible());
@@ -195,7 +195,7 @@ async function run(colorScheme, width) {
   ok('同意画面にページの文章を表示', await page.getByText(/利用規約に同意したものとみなします/).isVisible());
   const agreeBtn = page.getByRole('button', { name: '同意してダウンロード' });
   ok('同意のチェックまで押せない', await agreeBtn.isDisabled());
-  if (width > 600) await page.locator('#url-in').locator('xpath=ancestor::div[contains(@class,"card")][1]').screenshot({ path: join(OUT, `agree-box-${colorScheme}.png`) });
+  if (width > 600) await page.locator('#url-in').locator('xpath=ancestor::div[contains(@class,"card")][1]').screenshot({ path: join(OUT, `agree-box-${colorScheme}.png`) }).catch(() => {});
   await page.getByLabel('ページの内容・規約を読んで、同意します').check();
   await agreeBtn.click();
   await page.locator('.item-title', { hasText: '鳥籠.zip' }).waitFor();
@@ -231,7 +231,7 @@ async function run(colorScheme, width) {
     await page.getByRole('button', { name: 'インストール' }).click();
     await page.getByText(/アナタ迷子ノコナノネ！？ に入れました/).waitFor();
     ok('CABのシナリオをインストール', true);
-    await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+    await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
   }
 
   // 6b5. 複数のファイルを選ぶと、まとめて入れる
@@ -245,7 +245,7 @@ async function run(colorScheme, width) {
   await page.locator('#url-in').fill('http://localhost:8767/multi.html');
   await page.locator('#url-in').press('Enter');
   await page.getByText('ダウンロードらしいリンクが', { exact: false }).waitFor();
-  if (width > 600) await page.locator('.link-list').locator('..').screenshot({ path: join(OUT, `links-${colorScheme}.png`) });
+  if (width > 600) await page.locator('.link-list').locator('..').screenshot({ path: join(OUT, `links-${colorScheme}.png`) }).catch(() => {});
   ok('ファイルとページを見分けて表示', await page.locator('.link-list li.is-file').count() === 2 && await page.locator('.link-list .badge', { hasText: 'ファイル（zipなど）' }).count() === 2);
   await page.getByRole('button', { name: 'ファイルをすべて選ぶ' }).click();
   await page.getByRole('button', { name: '選んだ2件を取ってくる' }).click();
@@ -418,7 +418,7 @@ async function run(colorScheme, width) {
   await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).getByLabel(/を候補に含める/).uncheck();
   await page.waitForTimeout(300);
   ok('候補に含めるを外せる', !(await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).getByLabel(/を候補に含める/).isChecked()));
-  if (width > 600) await page.locator('#manage').screenshot({ path: join(OUT, `manage-${colorScheme}.png`) });
+  if (width > 600) await page.locator('#manage').screenshot({ path: join(OUT, `manage-${colorScheme}.png`) }).catch(() => {});
 
   // 11. 自分のフォルダ一覧：バージョン・タグ・更新ありをまとめてDL
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
@@ -462,25 +462,33 @@ async function run(colorScheme, width) {
   await page.locator('#backup-now', { hasText: 'test-backup' }).waitFor();
   ok('バックアップ先を選べる', true);
   ok('クレジット', await page.locator('#credits').getByText('清葉雪見').isVisible() && await page.locator('#credits').getByText('seiha.yukimi.ilst@gmail.com').isVisible() && await page.locator('#credits').getByText(/group Ask制作の RPG「Card Wirth」/).isVisible());
-  if (width > 600) { await page.locator('#credits').screenshot({ path: join(OUT, `credits-${colorScheme}.png`) }); await page.locator('#backup-now').locator('..').locator('..').screenshot({ path: join(OUT, `backup-${colorScheme}.png`) }); }
+  if (width > 600) { await page.locator('#credits').screenshot({ path: join(OUT, `credits-${colorScheme}.png`) }).catch(() => {}); await page.locator('#backup-now').locator('..').locator('..').screenshot({ path: join(OUT, `backup-${colorScheme}.png`) }).catch(() => {}); }
   await page.locator('#dev-opfs-materials-set').click();
   await page.getByText(/素材は「.+」に入れるようにしました/).waitFor();
   await page.getByText(/ブラウザ内：test-materials/).first().waitFor();
-  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+  await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
   const skin = Buffer.from(zipSync({ 'スキン素材/Resource/Image/a.png': new Uint8Array([137, 80, 78, 71]), 'スキン素材/readme.txt': strToU8('見本のスキンです。改変・再配布はご遠慮ください。') }));
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: 'skin.zip', mimeType: 'application/zip', buffer: skin });
   await page.getByText('シナリオではないようです（スキン・素材・効果音など）').waitFor();
   if (width > 600) await page.screenshot({ path: join(OUT, `material-add-${colorScheme}.png`), fullPage: true });
   ok('シナリオではないものは素材として入れられる', await page.getByRole('button', { name: '素材の置き場所に入れる' }).isVisible());
   await page.getByLabel('スキン素材/readme.txtを入れる').uncheck();
-  if (width > 600) await page.locator('.file-pick').locator('..').locator('..').screenshot({ path: join(OUT, `filepick-${colorScheme}.png`) });
+  if (width > 600) { await page.waitForTimeout(300); await page.locator('.file-pick').locator('..').locator('..').screenshot({ path: join(OUT, `filepick-${colorScheme}.png`) }).catch(() => {}); }
   ok('素材は入れるファイルを選べる', await page.getByText('1 / 2 ファイルを入れます').isVisible());
   await page.locator('#mat-isnew').check();
   await page.locator('#mat-newcat').fill('スキン');
   await page.getByRole('button', { name: '素材の置き場所に入れる' }).click();
   await page.locator('dialog').getByRole('button', { name: 'Readme（利用規約）を読みました', exact: true }).click();
-  await page.getByText(/スキン\/skin に入れました/).waitFor();
+  await page.locator('#mat-done', { hasText: /スキン\/skin に入れました/ }).waitFor();
   ok('素材を分類フォルダに入れる（Readmeを確認してから）', true);
+  ok('入れたあと、入れた場所を開くボタンの欄が出る', await page.locator('#mat-done').isVisible());
+  // もう一度開くと、入れ先の様子（別の分類にある・もう入っている）を出す
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: 'skin.zip', mimeType: 'application/zip', buffer: skin });
+  await page.locator('#mat-dest').waitFor();
+  ok('入れ先の様子：別の分類フォルダに同じ名前がある', /別の分類フォルダにも同じ名前のものがあります：スキン\/skin/.test(await page.locator('#mat-dest').textContent()));
+  await page.locator('#mat-cat').selectOption('スキン');
+  ok('入れ先の様子：もう入っている（入れると前のものをバックアップしてから置き換える）', /もう入っています/.test(await page.locator('#mat-dest').textContent()));
+  await page.locator('.card', { hasText: 'skin.zip' }).getByRole('button', { name: '閉じる' }).first().click();
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
   await page.getByLabel('エンジン').selectOption({ label: '素材の置き場所' });
   const mat = page.locator('#mine-list .card', { hasText: 'スキン/skin' });
@@ -502,13 +510,13 @@ async function run(colorScheme, width) {
   await page.getByRole('tab', { name: '設定' }).click();
   await page.locator('#dev-opfs-skins-set').click();
   await page.getByText(/スキンは「.+」に入れるようにしました/).waitFor();
-  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+  await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
   const skinZip = Buffer.from(zipSync({ '和風テスト/Skin.xml': strToU8('<Skin dataVersion="12"><Property><Name>和風テスト</Name><Type>MedievalFantasy</Type><Author>見本</Author></Property></Skin>'), '和風テスト/Resource/Image/b.png': new Uint8Array([137, 80, 78, 71]) }));
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: 'wafu_skin.zip', mimeType: 'application/zip', buffer: skinZip });
   await page.getByText(/スキンのようです（和風テスト・種類：MedievalFantasy/).waitFor();
   ok('スキン（Skin.xml）を見分ける', await page.locator('#mat-cat option', { hasText: '自動（スキンの種類で分ける：MedievalFantasy）' }).count() === 1);
   await page.locator('#mat-install').click();
-  await page.getByText(/MedievalFantasy\/和風テスト に入れました/).waitFor();
+  await page.locator('#mat-done', { hasText: /MedievalFantasy\/和風テスト に入れました/ }).waitFor();
   ok('スキンを種類の分類フォルダに自動で入れる', true);
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
   await page.getByLabel('エンジン').selectOption({ label: 'スキンの置き場所' });
@@ -536,7 +544,7 @@ async function run(colorScheme, width) {
   ok('保存場所の重なりを見つける', (await page.locator('#tidy-zipdup li li').count()) === 2);
   ok('バックアップを用意するは最初からオン', await page.getByLabel('整理するときバックアップを用意する').isChecked());
   ok('移す先を表示する（選んだバックアップ先）', await page.locator('#tidy').getByText(/test-backup」フォルダの中の CardWirthNext/).first().isVisible());
-  if (width > 600) await page.locator('#tidy').screenshot({ path: join(OUT, `tidy-${colorScheme}.png`) });
+  if (width > 600) await page.locator('#tidy').screenshot({ path: join(OUT, `tidy-${colorScheme}.png`) }).catch(() => {});
   // 1件だけ移す（確認の一覧 → 結果の記録）
   await dupSec.locator('li li', { hasText: 'Scenario/_店/開けられた鳥籠ver1_01' }).getByRole('button', { name: 'CWCatalog_backup に移す' }).click();
   ok('確認の一覧に、移す先を書く', await page.locator('dialog').getByText(/test-backup」フォルダの中の CardWirthNext/).isVisible());

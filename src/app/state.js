@@ -49,7 +49,7 @@ export const S = {
   busy: '',
 };
 
-export const TAB_LABEL = { mine: '自分のフォルダ一覧', add: 'シナリオをDLする', catalog: 'カタログ', settings: '設定' };
+export const TAB_LABEL = { mine: '自分のフォルダ一覧', add: 'シナリオ・素材・スキンをDLする', catalog: 'カタログ', settings: '設定' };
 
 /** 各タブの画面（app.js で登録する） */
 export const views = {};

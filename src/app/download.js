@@ -84,7 +84,7 @@ function classify(r, url) {
  * @typedef {{got: Function, page: Function, blocked: Function, error: Function, inapp?: Function}} Handler
  */
 
-/** ひとつずつDLするときの受け取り方：「シナリオをDLする」タブに出す */
+/** ひとつずつDLするときの受け取り方：「シナリオ・素材・スキンをDLする」タブに出す */
 export function singleHandler(work = null) {
   return {
     got: (bytes, fileName, url) => { S.urlState = null; S.lastUrl = url || S.lastUrl; return openSource(async () => openArchive(bytes, fileName), work); },

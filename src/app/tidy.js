@@ -313,7 +313,7 @@ export function viewTidy() {
         });
         if (files?.length) await openLocalFiles(files);
       },
-    }, '選んだものを入れる（シナリオをDLするタブへ）')) : null);
+    }, '選んだものを入れる（DLするタブへ）')) : null);
 
   const noZipList = t.noZip.filter((r) => !isEx(recKey(r)));
   const noZipBody = h('div', { class: 'stack' },

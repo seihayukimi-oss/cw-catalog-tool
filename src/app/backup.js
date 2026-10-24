@@ -18,11 +18,16 @@ export async function loadBackup() {
 }
 
 /** 選んだバックアップ先の中の、どのフォルダに置くか */
-const prefixOf = (kind, engineId) => `${kind === 'zip' ? 'zipの保存場所' : safe(engine(engineId)?.name)}/`;
+const STASH_NAME = { zip: 'zipの保存場所', material: '素材の置き場所', skin: 'スキンの置き場所' };
+const prefixOf = (kind, engineId) => `${STASH_NAME[kind] || safe(engine(engineId)?.name)}/`;
+/** 選んでいないときのバックアップの土台（エンジン・zipの保存場所・素材やスキンの置き場所） */
+const baseOf = (kind, engineId) => (kind === 'zip' ? { ref: S.archive.ref, label: S.archive.label }
+  : kind === 'material' || kind === 'skin' ? { ref: S.stash?.[kind]?.ref, label: S.stash?.[kind]?.label }
+    : { ref: engine(engineId)?.ref, label: engine(engineId)?.label });
 
 /**
  * performInstall・moveToBackup に渡す設定。選んでいなければ {}（いつもの CWCatalog_backup）
- * @param {'engine'|'zip'} kind
+ * @param {'engine'|'zip'|'material'|'skin'} kind
  */
 export async function backupOpts(kind, engineId) {
   if (!S.backupFolder?.ref) return {};
@@ -38,16 +43,16 @@ export function backupPlace(kind, engineId) {
     const pre = prefixOf(kind, engineId).replace(/\/$/, '');
     return isApp() ? join(S.backupFolder.ref, pre) : `「${S.backupFolder.label}」フォルダの中の ${pre}`;
   }
-  if (kind === 'zip') return isApp() ? join(S.archive.ref, BACKUP_DIR) : `「${S.archive.label}」フォルダの中の ${BACKUP_DIR}`;
-  const e = engine(engineId);
-  if (!e) return BACKUP_DIR;
-  return isApp() ? join(e.ref, BACKUP_DIR) : `「${e.label}」フォルダの中の ${BACKUP_DIR}`;
+  const b = baseOf(kind, engineId);
+  if (!b.ref) return BACKUP_DIR;
+  return isApp() ? join(b.ref, BACKUP_DIR) : `「${b.label}」フォルダの中の ${BACKUP_DIR}`;
 }
 
 /** 移した先の場所（moveToBackup の返り値から、表示用の場所を作る） */
 export function backupFull(kind, engineId, dest) {
-  const base = S.backupFolder?.ref ? S.backupFolder.ref : kind === 'zip' ? S.archive.ref : engine(engineId)?.ref;
-  const label = S.backupFolder?.ref ? S.backupFolder.label : kind === 'zip' ? S.archive.label : engine(engineId)?.label;
+  const b = baseOf(kind, engineId);
+  const base = S.backupFolder?.ref ? S.backupFolder.ref : b.ref;
+  const label = S.backupFolder?.ref ? S.backupFolder.label : b.label;
   return isApp() ? join(base, dest.replace(/\//g, '\\')) : `「${label}」の中の ${dest}`;
 }
 

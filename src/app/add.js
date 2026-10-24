@@ -1,4 +1,4 @@
-// 「シナリオをDLする」タブ：取ってきた（またはドロップした）zip・wsn・フォルダの中身を見て、エンジンに入れる。
+// 「シナリオ・素材・スキンをDLする」タブ：取ってきた（またはドロップした）zip・wsn・フォルダの中身を見て、エンジンに入れる。
 
 import { openArchive, openFolder } from '../core/archive.js';
 import { planInstall, performInstall, exportForWeb } from '../core/install.js';
@@ -14,7 +14,7 @@ import { viewUrlBox } from './download.js';
 import { viewBatch } from './batch.js';
 import { editEntry } from './catalog-view.js';
 import { openLocalFiles, pickFiles, pickDownloads } from './localfiles.js';
-import { viewMaterialInstall } from './materials.js';
+import { viewMaterialInstall, openBtn } from './materials.js';
 import { catPicker } from './catpick.js';
 import { backupOpts, backupFull } from './backup.js';
 import { existsAt } from '../core/fs.js';
@@ -110,12 +110,17 @@ export function viewAdd() {
     fileInput);
   const batch = S.batch ? viewBatch() : null;
   const urlBox = viewUrlBox();
+  const done = S.lastMatDone ? h('div', { class: 'card note ok row', id: 'mat-done' },
+    h('span', { class: 'grow' }, `${S.lastMatDone.where} の ${S.lastMatDone.dest} に入れました`),
+    openBtn(S.lastMatDone.full, '入れた場所を開く'),
+    h('button', { class: 'btn ghost sm', 'aria-label': '閉じる', onclick: () => { S.lastMatDone = null; render(); } }, '×')) : null;
   if (!S.opened) {
-    return h('div', {}, batch, drop, urlBox,
+    return h('div', {}, batch, done, drop, urlBox,
       h('div', { class: 'card soft small' },
         h('h3', {}, 'できること'),
         h('ul', { style: 'margin:0;padding-left:1.2em' },
           h('li', {}, '「カタログ」タブで作品を選ぶと、まとめてDLしてまとめて入れられます'),
+          h('li', {}, '素材・スキン（Skin.xml）は、それぞれの置き場所に分類フォルダを分けて入れます'),
           h('li', {}, '文字化けしたファイル名を正しく読み直します（UTF-8・Shift_JISを自動判定）'),
           h('li', {}, 'シナリオの範囲・形式（クラシック／Next／Py）・暗号化の有無を判定します'),
           h('li', {}, 'Readmeを表示してから、エンジンのScenarioフォルダに入れます（同じものがあればバックアップしてから置き換え）'),
@@ -436,6 +441,7 @@ async function doInstall() {
     S.records = await store.records();
     toast(`「${sc.name}」を ${plan.dest} に入れました${res.backup ? `（前のものは ${res.backupShown} にバックアップ）` : ''}${archived ? `。zipは「${S.archive.label}」に保存しました` : ''}`, { ms: 9000 });
     S.opened = null;
+    S.lastMatDone = null;
     S.destName = S.destVer = undefined;
     S.force = false;
     S.tab = 'mine';

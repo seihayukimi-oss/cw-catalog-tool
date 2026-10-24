@@ -249,3 +249,4 @@ pre.log { max-height: 40vh; white-space: pre-wrap; word-break: break-all; }
 #busy-prog { width: 160px; height: 10px; accent-color: var(--accent); }
 .cat-pick { display: flex; flex-direction: column; gap: 6px; }
 .cat-pick .cat-new input { width: 100%; }
+.dest-status { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; word-break: break-all; }

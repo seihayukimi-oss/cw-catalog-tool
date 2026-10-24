@@ -5,7 +5,10 @@
 //  ・自分のフォルダ一覧で置き場所を選ぶと、入っているものを一覧にして、タグ付け・分類フォルダへの移動ができる
 // シナリオも、選んで「分類フォルダへ移す」で、Scenario の中の分類フォルダ（例：Scenario/_店）へ動かせる。
 
-import { installMaterial, moveWithin, BACKUP_DIR } from '../core/install.js';
+import { installMaterial, moveWithin, moveToBackup, BACKUP_DIR } from '../core/install.js';
+import { safeRelativePath } from '../core/zip.js';
+import { existsAt } from '../core/fs.js';
+import { backupOpts, backupFull, backupPlace } from './backup.js';
 import { readSkin } from '../core/skin.js';
 import { S, render, busy, dirOf, engine, rerenderList } from './state.js';
 import { store, recordId } from './store.js';
@@ -127,34 +130,75 @@ export async function installNonScenario(o, m) {
     files = files.filter((f) => f.path.startsWith(m.skin.root)).map((f) => ({ ...f, path: f.path.slice(m.skin.root.length) }));
   }
   const src = m.asArc ? o : { ...o, files };
-  let root, where, category = m.cat;
-  if (m.kind === 'skin' && m.to && m.to !== 'stash') {
-    const e = engine(m.to);
-    root = await dirOf(m.to, true);
-    if (!root) throw new Error(`${e?.name || 'エンジン'}のフォルダに接続できませんでした`);
-    category = 'Data/Skin';
-    where = `${e.name} の Data/Skin`;
+  const d = destOf(o, m);
+  let root;
+  if (d.engineId) {
+    root = await dirOf(d.engineId, true);
+    if (!root) throw new Error(`${engine(d.engineId)?.name || 'エンジン'}のフォルダに接続できませんでした`);
   } else {
-    const k = KINDS[m.kind];
     root = await stashDirOf(m.kind, true);
-    if (!root) throw new Error(`${k.place}を使う許可がありませんでした。「設定」で選び直してください`);
-    where = `${k.place}（${stash(m.kind).label}）`;
+    if (!root) throw new Error(`${KINDS[m.kind].place}を使う許可がありませんでした。「設定」で選び直してください`);
   }
-  const r = await installMaterial(root, src, { category, folderName: m.name.trim(), asArchive: !!m.asArc });
+  // もう同じ名前のものがあれば、バックアップに移してから置き換える
+  let backup = null;
+  if (d.dest && (await existsAt(root, d.dest))) {
+    const bk = d.engineId ? ['engine', d.engineId] : [m.kind, ''];
+    const moved = await moveToBackup(root, d.dest, { anywhere: true, ...(await backupOpts(...bk)) });
+    backup = backupFull(bk[0], bk[1], moved);
+  }
+  const r = await installMaterial(root, src, { category: d.category, folderName: m.name.trim(), asArchive: !!m.asArc });
   // 元のzipも残す（設定でオン・オフ）
   let zip = null;
   if (!m.asArc && stash(m.kind)?.keepZip && S.archive.ref) {
     const { saveArchive } = await import('./add.js');
     zip = await saveArchive(o, { force: true, subdir: KINDS[m.kind].zipSub }).catch(() => null);
   }
-  if (!(m.kind === 'skin' && m.to && m.to !== 'stash')) await scanStash(m.kind, true).catch(() => {});
-  return { ...r, where, zip };
+  if (!d.engineId) await scanStash(m.kind, true).catch(() => {});
+  // 入れた場所（エクスプローラーで開く用。zipのまま置いたときは、そのフォルダ）
+  const full = d.baseRef ? joinPath(d.baseRef, m.asArc ? r.dest.split('/').slice(0, -1).join('/') : r.dest) : '';  // アプリ版だけ
+  return { ...r, where: d.where, zip, backup, full };
+}
+
+const joinPath = (base, rel) => [base.replace(/[\\/]+$/, ''), ...rel.split('/').filter(Boolean)].join(isApp() ? '\\' : '/');
+
+/**
+ * 入れ先を決める（まだ書き込まない）
+ * @returns {{dest: string, category: string, engineId: string|null, baseRef: string, where: string, full: string}}
+ */
+export function destOf(o, m) {
+  const toEngine = m.kind === 'skin' && m.to && m.to !== 'stash' ? m.to : null;
+  const category = toEngine ? 'Data/Skin' : (m.cat || '');
+  const leaf = m.asArc ? safeRelativePath(o.archiveName || o.source.name) : safeRelativePath(m.name.trim() || '');
+  const cat = category ? safeRelativePath(category) : '';
+  const dest = leaf && !leaf.includes('/') && (category ? cat : true) ? [cat, leaf].filter(Boolean).join('/') : '';
+  const e = toEngine ? engine(toEngine) : null;
+  const baseRef = e ? e.ref : stash(m.kind)?.ref || '';
+  const where = e ? `${e.name} の Data/Skin` : `${KINDS[m.kind].place}（${stash(m.kind)?.label || '未設定'}）`;
+  // HTML版では、置き場所はブラウザの「フォルダの許可」なので、場所の文字はない
+  const label = e ? e.label : stash(m.kind)?.label || '';
+  const full = dest ? (typeof baseRef === 'string' && baseRef ? joinPath(baseRef, dest) : `「${label}」の中の ${dest}`) : '';
+  return { dest, category, engineId: toEngine, baseRef: typeof baseRef === 'string' ? baseRef : '', where, full };
+}
+
+/** 入れ先の様子（もう入っているか・別の分類に同じ名前があるか）。置き場所は、最後に読み取った記録で見る */
+export function destStatus(o, m) {
+  const d = destOf(o, m);
+  if (!d.dest) return { ...d, text: 'フォルダ名を入れてください', level: 'bad' };
+  if (d.engineId) return { ...d, text: `入れ先：${d.full || d.dest}（同じ名前のものがあれば、前のものはバックアップに移してから置き換えます）`, level: 'muted' };
+  const id = KINDS[m.kind].id;
+  const recs = S.records.filter((r) => r.engineId === id && !r.missing);
+  const here = recs.some((r) => r.path === d.dest);
+  const leaf = d.dest.split('/').pop();
+  const elsewhere = recs.filter((r) => r.path !== d.dest && r.path.split('/').pop() === leaf).map((r) => r.path);
+  if (here) return { ...d, exists: true, level: 'warn', text: `もう入っています：${d.full || d.dest}。このまま入れると、前のものは ${backupPlace(m.kind)} に移してから置き換えます` };
+  if (elsewhere.length) return { ...d, level: 'warn', text: `入れ先：${d.full || d.dest}（新しく入れます）。別の分類フォルダにも同じ名前のものがあります：${elsewhere.slice(0, 3).join('、')}` };
+  return { ...d, level: 'ok', text: `入れ先：${d.full || d.dest}（まだ入っていないので、新しく入れます）` };
 }
 
 /** スキンの分類フォルダを自動で決める（Skin.xml の種類） */
 export const autoSkinCat = (skin) => (skin?.type || 'その他').replace(/[\\/:*?"<>|]/g, '_');
 
-/** 「シナリオをDLする」タブで、シナリオではないものを開いたときの欄 */
+/** 「シナリオ・素材・スキンをDLする」タブで、シナリオではないものを開いたときの欄 */
 export function viewMaterialInstall(o) {
   if (o.skinInfo === undefined) {
     o.skinInfo = null;
@@ -179,13 +223,22 @@ export function viewMaterialInstall(o) {
       location.hash.includes('dev-opfs') && S.platform.opfsFolder ? h('button', { class: 'btn', id: `dev-opfs-${m.kind === 'skin' ? 'skins' : 'materials'}`, onclick: () => pickStashFolder(m.kind, true).then(render) }, `テスト用（${k.label}）`) : null));
     return card;
   }
-  const nameIn = h('input', { type: 'text', id: 'mat-name', value: m.name, 'aria-label': 'フォルダ名', oninput: (ev) => { m.name = ev.target.value; } });
-  const asArc = h('input', { type: 'checkbox', checked: m.asArc, 'aria-label': 'zipのまま置く', onchange: (ev) => { m.asArc = ev.target.checked; pick.hidden = m.asArc; } });
+  // 入れ先の様子（もう入っているか・新しく入れるか）。入力を変えるたびに書き直す
+  const statusEl = h('div', { class: 'small dest-status', id: 'mat-dest' });
+  const curCat = () => { let c = cp ? cp.value() : ''; if (c === '__auto') c = autoSkinCat(skin); return c; };
+  const upd = () => {
+    const ds = destStatus(o, { ...m, cat: curCat(), skin });
+    statusEl.className = `small dest-status note ${ds.level === 'ok' ? 'ok' : ds.level === 'warn' ? 'warn' : ds.level === 'bad' ? 'bad' : ''}`;
+    statusEl.replaceChildren(...[h('span', {}, ds.text), openBtn(ds.baseRef, '置き場所を開く')].filter(Boolean));
+  };
+  const nameIn = h('input', { type: 'text', id: 'mat-name', value: m.name, 'aria-label': 'フォルダ名', oninput: (ev) => { m.name = ev.target.value; upd(); } });
+  const asArc = h('input', { type: 'checkbox', checked: m.asArc, 'aria-label': 'zipのまま置く', onchange: (ev) => { m.asArc = ev.target.checked; pick.hidden = m.asArc; upd(); } });
   const pick = filePicker(o, m);
   pick.hidden = m.asArc;
   const cp = toEngine ? null : catPicker({
     cats: S.categories[k.id] || [], rootLabel: `（${k.place}の直下）`, state: m.catState, idPrefix: 'mat',
     autoLabel: m.kind === 'skin' ? `自動（スキンの種類で分ける：${autoSkinCat(skin)}）` : '', placeholder: `新しい分類フォルダの名前（${k.example}）`,
+    onChange: () => upd(),
   });
   const dests = m.kind === 'skin' ? h('label', { class: 'field' }, '入れ先',
     h('select', { id: 'skin-to', onchange: (ev) => { m.to = ev.target.value; render(); } },
@@ -196,6 +249,7 @@ export function viewMaterialInstall(o) {
     h('div', { class: 'grid2' }, cp?.el, h('label', { class: 'field' }, 'フォルダ名', nameIn)),
     o.source.kind === 'archive' && m.kind === 'material' ? h('label', { class: 'check small' }, asArc, '展開せずに、zipなどのまま置く') : null,
     pick,
+    statusEl,
     h('div', { class: 'row' },
       h('button', {
         class: 'btn primary', id: 'mat-install', onclick: async () => {
@@ -209,17 +263,18 @@ export function viewMaterialInstall(o) {
           }
           await busy(`${k.label}を入れる`, async () => {
             const r = await installNonScenario(o, { ...m, cat, skin });
-            toast(`${r.where} の ${r.dest} に入れました（${m.asArc ? 'zipのまま' : `${r.written}ファイル`}）${r.zip ? `。元のzipは「${r.zip}」に残しました` : ''}`, { ms: 9000 });
+            toast(`${r.where} の ${r.dest} に入れました（${m.asArc ? 'zipのまま' : `${r.written}ファイル`}）${r.backup ? `。前のものは ${r.backup} に移しました` : ''}${r.zip ? `。元のzipは「${r.zip}」に残しました` : ''}`, { ms: 9000 });
+            S.lastMatDone = { full: r.full, where: r.where, dest: r.dest };
             S.opened = null;
           });
         },
       }, toEngine ? `${engine(m.to)?.name} に入れる` : `${k.place}に入れる`),
       h('span', { class: 'small muted' }, [
-        toEngine ? `入れ先：${engine(m.to)?.name} の Data/Skin` : `入れ先：${st.label}`,
         st?.keepZip && S.archive.ref && !m.asArc ? `元のzipも「${S.archive.label}」の「${k.zipSub}」に残します` : '',
         o.readmes?.length ? '入れる前に Readme（利用規約）を確認します' : '',
       ].filter(Boolean).join('／'))),
   ].filter(Boolean));
+  upd();
   return card;
 }
 
@@ -372,7 +427,7 @@ export function viewStashMine(kind, makeSel) {
     h('div', { class: 'row', style: 'margin-top:10px' },
       h('input', { type: 'search', class: 'grow', placeholder: '名前・分類・タグで絞り込み', value: S.filter.mine, oninput: (ev) => { S.filter.mine = ev.target.value; rerenderList('mine-body', () => viewStashMine(kind, makeSel)); } })),
     h('p', { class: 'small muted', style: 'margin:8px 0 0;word-break:break-all' },
-      st?.ref ? `${k.place}：${st.label}${st.lastScan ? `／最後に読み取った日時：${fmtDate(st.lastScan)}／${mine.length}件` : ''}` : `${k.label}は「シナリオをDLする」タブで開くと、ここ（${k.place}）に分類して入れられます。`),
+      st?.ref ? `${k.place}：${st.label}${st.lastScan ? `／最後に読み取った日時：${fmtDate(st.lastScan)}／${mine.length}件` : ''}` : `${k.label}は「シナリオ・素材・スキンをDLする」タブで開くと、ここ（${k.place}）に分類して入れられます。`),
     tagChips(allRecs));
 
   const selBar = recs.length ? h('div', { class: 'card batch-bar', id: 'mine-bar' },

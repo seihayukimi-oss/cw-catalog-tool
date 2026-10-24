@@ -11,7 +11,7 @@ import { h, toast, modal, fmtSize, formatBadge, sleep } from './ui.js';
 import { tryDownloads, dlLabel, pagePanel, inAppDownload, deliver, tryAutoAgree } from './download.js';
 import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { readmeModal, installOpened, ensureDir, destFields, engineSelect, watchdog } from './add.js';
-import { KINDS, stashDirOf, installNonScenario, autoSkinCat } from './materials.js';
+import { KINDS, stashDirOf, installNonScenario, autoSkinCat, destStatus, openBtn } from './materials.js';
 import { readSkin } from '../core/skin.js';
 import { backupOpts } from './backup.js';
 
@@ -222,7 +222,11 @@ export function viewBatch() {
   const needRead = b.items.filter((i) => i.include && i.status === 'ready' && !i.ack);
   const ready = b.items.filter(installable);
   const fetchedAll = !b.running && !b.items.some((i) => i.status === 'wait' || i.status === 'fetch');
-  const hasNew = b.items.some((i) => !i.target);
+  // シナリオとして新しく入れるもの（まだ中身が分からないものも含む）。素材・スキンだけなら、エンジンの欄は出さない
+  const live = (i) => !['error', 'failed', 'done'].includes(i.status);
+  const hasNew = b.items.some((i) => !i.target && !i.material && live(i));
+  const hasScenario = b.items.some((i) => !i.material && live(i));
+  const mats = b.items.filter((i) => i.material && live(i));
   b.catState ||= {};
   const dest = destFields(b.engineId, { state: b.catState, name: null, idPrefix: 'batch' });
   b.catValue = dest.value;
@@ -239,15 +243,24 @@ export function viewBatch() {
     h('div', { class: 'list' }, b.items.map(itemCard)),
     !b.done ? h('div', { class: 'card soft stack', style: 'margin:0' },
       h('h3', {}, '入れ先'),
-      S.engines.length ? h('div', { class: 'grid2' },
-        hasNew ? h('label', { class: 'field' }, 'エンジン', engineSelect((v) => { b.engineId = v; b.catState = {}; }, true, b.engineId, 'batch-engine')) : null,
-        hasNew ? dest.cat : null,
-      ) : h('p', { class: 'small muted' }, 'エンジンが未登録です。「設定」タブで登録してください。'),
+      hasNew ? (S.engines.length ? h('div', { class: 'grid2' },
+        h('label', { class: 'field' }, 'エンジン', engineSelect((v) => { b.engineId = v; b.catState = {}; }, true, b.engineId, 'batch-engine')),
+        dest.cat,
+      ) : h('p', { class: 'small muted' }, 'エンジンが未登録です。「設定」タブで登録してください。')) : null,
+      mats.length ? h('div', { class: 'small stack', style: 'gap:4px' },
+        [...new Set(mats.map((i) => i.matKind))].map((kind) => h('div', { class: 'row' },
+          h('span', {}, `${KINDS[kind].label}（${mats.filter((i) => i.matKind === kind).length}件）は、${KINDS[kind].place}「${S.stash?.[kind]?.label || '未設定'}」に入れます（作品ごとの欄で、分類フォルダとフォルダ名を決められます）`),
+          openBtn(S.stash?.[kind]?.ref, '置き場所を開く')))) : null,
       hasNew && S.engines.length > 1 ? h('div', { class: 'row' },
         h('button', { class: 'btn sm', id: 'batch-assign', disabled: b.installing, onclick: () => { const n = assignEngines(b); toast(n ? `${n}件のエンジンを、形式に合わせて振り分けました` : '振り分けが変わる作品はありませんでした'); render(); } }, '形式に合わせてエンジンに振り分ける'),
         h('span', { class: 'small muted' }, 'Py仕様（WSN）→ CardWirthPy、Next仕様 → CardWirthNext、クラシック → 上で選んだエンジン。作品ごとに「エンジン」で変えることもできます（分類フォルダは同じ名前で作ります）')) : null,
       b.items.some((i) => i.target) ? h('p', { class: 'small muted', style: 'margin:0' }, '「更新」の作品は、今入っている場所に置き換えます（前のものはバックアップします）。') : null,
-      S.archive.on && S.archive.ref ? h('p', { class: 'small muted', style: 'margin:0' }, `元のzip・wsnは「${S.archive.label}」にも保存します。`) : null,
+      S.archive.ref && ((hasScenario && S.archive.on) || mats.some((i) => S.stash?.[i.matKind]?.keepZip)) ? h('div', { class: 'row small muted' },
+        h('span', {}, [
+          hasScenario && S.archive.on ? `シナリオの元のzip・wsnは「${S.archive.label}」にも保存します` : '',
+          ...[...new Set(mats.map((i) => i.matKind))].filter((k) => S.stash?.[k]?.keepZip).map((k) => `${KINDS[k].label}の元のzipは、その中の「${KINDS[k].zipSub}」に残します`),
+        ].filter(Boolean).join('。') + '。'),
+        openBtn(S.archive.ref, '保存場所を開く')) : null,
       b.installing ? h('div', { class: 'stack' },
         h('progress', { id: 'batch-prog', max: 1, value: 0 }),
         h('div', { id: 'batch-prog-text', class: 'small muted' }, '準備中…')) : null,
@@ -256,7 +269,13 @@ export function viewBatch() {
         h('button', { class: 'btn primary', disabled: !ready.length || b.installing || (!S.engines.length && !ready.every((i) => i.material)) || !S.platform.canWriteFolders, onclick: installAll }, `まとめてインストール（${ready.length}件）`),
         !fetchedAll ? h('span', { class: 'small muted' }, '取得が終わっていないものは、あとから入れられます') : null,
         needRead.length ? h('span', { class: 'small muted' }, 'Readme（利用規約）を読んでいないものは入りません') : null))
-      : h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { S.batch = null; goTab('mine'); } }, '自分のフォルダ一覧を見る')));
+      : h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => {
+        // 素材・スキンだけなら、その置き場所の一覧を開く
+        const done = b.items.filter((i) => i.status === 'done');
+        S.mineView = done.length && done.every((i) => i.material) ? (done[0].matKind === 'skin' ? 'skin' : 'mat') : '';
+        S.batch = null;
+        goTab('mine');
+      } }, '自分のフォルダ一覧を見る')));
 }
 
 function itemCard(it) {
@@ -286,17 +305,27 @@ function itemCard(it) {
         ['wait', 'error', 'action', 'ready'].includes(it.status) && !S.batch.installing ? h('button', { class: 'btn ghost sm', onclick: () => { S.batch.items = S.batch.items.filter((x) => x !== it); if (!S.batch.items.length) S.batch = null; render(); } }, '外す') : null)),
     h('div', { class: 'meta' }, [it.work?.author, it.work ? `ver ${it.work.version}` : '', it.zone?.referrerUrl || it.zone?.hostUrl ? `DL元：${(it.zone.referrerUrl || it.zone.hostUrl).replace(/^https?:\/\//, '').slice(0, 60)}` : '', it.used ? `取得元：${dlLabel(it.used)}` : '', it.opened ? `${it.opened.source.name}・${fmtSize(it.opened.source.size)}` : ''].filter(Boolean).join('・')),
     it.message ? h('div', { class: `small ${it.status === 'error' || it.status === 'failed' ? 'note bad' : 'muted'}`, id: `bi-msg-${it.id}` }, it.message) : null,
+    it.status === 'done' && it.donePath ? h('div', { class: 'row' }, openBtn(it.donePath, '入れた場所を開く')) : null,
     it.fellBack && it.status !== 'done' ? h('div', { class: 'small muted' }, `デフォルトの「${dlLabel(it.fellBack.from)}」から取れなかったので、「${dlLabel(it.fellBack.to)}」から取りました。`) : null,
   );
+  // 素材・スキン：入れ先の様子（もう入っているか・新しく入れるか）
+  const destEl = h('div', { class: 'small dest-status', id: `bi-dest-${it.id}` });
+  const updDest = () => {
+    const ds = destStatus(it.opened, matOpts(it));
+    destEl.className = `small dest-status note ${ds.level === 'ok' ? 'ok' : ds.level === 'warn' ? 'warn' : ds.level === 'bad' ? 'bad' : ''}`;
+    destEl.replaceChildren(...[h('span', {}, ds.text), openBtn(ds.baseRef, '置き場所を開く')].filter(Boolean));
+  };
   if (it.status === 'ready' && it.material) {
     const k = KINDS[it.matKind];
     const cats = S.categories[k.id] || [];
     card.append(h('div', { class: 'row small', style: 'margin-top:6px' },
       h('label', { class: 'row' }, '入れ方', h('select', { disabled: !editable, 'aria-label': `${it.name}の入れ方`, onchange: (ev) => { it.matKind = ev.target.value; render(); } },
         Object.values(KINDS).map((x) => h('option', { value: x.key, selected: x.key === it.matKind ? 'selected' : null }, `${x.label}として（${x.place}）`)))),
-      h('label', { class: 'row' }, '分類フォルダ', h('input', { type: 'text', list: `cats-${k.key}`, value: it.matCat, placeholder: it.matKind === 'skin' ? `空なら自動（${autoSkinCat(it.skin)}）` : '空なら直下', style: 'width:11em', disabled: !editable, oninput: (ev) => { it.matCat = ev.target.value; } }),
+      h('label', { class: 'row' }, '分類フォルダ', h('input', { type: 'text', list: `cats-${k.key}`, value: it.matCat, placeholder: it.matKind === 'skin' ? `空なら自動（${autoSkinCat(it.skin)}）` : '空なら直下', style: 'width:11em', disabled: !editable, oninput: (ev) => { it.matCat = ev.target.value; updDest(); } }),
         h('datalist', { id: `cats-${k.key}` }, cats.map((c) => h('option', { value: c })))),
-      h('label', { class: 'row' }, 'フォルダ名', h('input', { type: 'text', value: it.folderName, disabled: !editable, oninput: (ev) => { it.folderName = ev.target.value; } }))));
+      h('label', { class: 'row' }, 'フォルダ名', h('input', { type: 'text', value: it.folderName, disabled: !editable, oninput: (ev) => { it.folderName = ev.target.value; updDest(); } }))),
+      destEl);
+    updDest();
   } else if (it.status === 'ready') {
     if (it.opened.scenarios.length > 1) {
       card.append(h('label', { class: 'field small' }, `${it.opened.scenarios.length}本のシナリオが入っています。入れるもの`,
@@ -340,6 +369,11 @@ function itemCard(it) {
     });
   }
   return card;
+}
+
+/** 素材・スキンの入れ方（作品の欄の値から） */
+function matOpts(it) {
+  return { kind: it.matKind, to: 'stash', cat: (it.matCat || '').trim() || (it.matKind === 'skin' ? autoSkinCat(it.skin) : ''), name: it.folderName || '', skin: it.matKind === 'skin' ? it.skin : null };
 }
 
 /** 形式に合わせてエンジンを決める（Py仕様→Py、Next仕様→Next、それ以外は全体で選んだエンジン） */
@@ -406,10 +440,10 @@ async function installAll() {
     };
     if (it.material) {
       try {
-        const cat = (it.matCat || '').trim() || (it.matKind === 'skin' ? autoSkinCat(it.skin) : '');
-        const r = await installNonScenario(it.opened, { kind: it.matKind, to: 'stash', cat, name: it.folderName, skin: it.matKind === 'skin' ? it.skin : null });
+        const r = await installNonScenario(it.opened, matOpts(it));
         it.status = 'done';
-        it.message = `${r.where} の ${r.dest} に入れました${r.zip ? `（元のzipは ${r.zip} に）` : ''}`;
+        it.donePath = r.full;
+        it.message = `${r.where} の ${r.dest} に入れました${r.backup ? `（前のものは ${r.backup} に移しました）` : ''}${r.zip ? `（元のzipは ${r.zip} に）` : ''}`;
         okN++;
       } catch (e) {
         it.status = 'failed';
@@ -426,6 +460,7 @@ async function installAll() {
         version: it.work ? it.work.version : it.opened.scenarios[it.pick].versionGuess || '', versionSource: it.work ? (it.exact ? 'catalog' : 'dl') : 'guess', work: it.work, onProgress: prog,
       });
       it.status = 'done';
+      it.donePath = eng?.ref && S.platform.kind === 'app' ? [eng.ref.replace(/[\\/]+$/, ''), ...plan.dest.split('/')].join('\\') : '';
       it.message = `${plan.dest} に入れました${res.backup ? `（前のものは ${res.backupShown} にバックアップ）` : ''}${archived ? `・zipも保存しました` : ''}`;
       it.opened = it.opened; // Readme表示用に残す
       okN++;
