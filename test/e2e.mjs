@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { zipSync, strToU8 } from 'fflate';
 
 const FX = process.env.CW_FIXTURES;
 const OUT = process.argv[2] || '.';
@@ -97,6 +98,7 @@ async function run(colorScheme, width) {
     const root = await navigator.storage.getDirectory();
     await root.removeEntry('test-engine', { recursive: true }).catch(() => {});
     await root.removeEntry('test-archive', { recursive: true }).catch(() => {});
+    await root.removeEntry('test-materials', { recursive: true }).catch(() => {});
     const eng = await root.getDirectoryHandle('test-engine', { create: true });
     for (const [path, bytes] of Object.entries(seed)) {
       const parts = path.split('/');
@@ -136,14 +138,14 @@ async function run(colorScheme, width) {
   ok('CP932のりどみ（①・髙﨑）', true, await page.locator('#readme-enc').textContent());
   ok('りどみを読むまでインストール不可', await page.getByRole('button', { name: 'インストール' }).isDisabled());
   if (width > 600) await page.screenshot({ path: join(OUT, `add-${colorScheme}.png`), fullPage: true });
-  await page.getByLabel('りどみを読みました').check();
+  await page.getByLabel('Readme（利用規約）を読みました').check();
   await page.getByRole('button', { name: 'インストール' }).click();
   await page.getByText(/開けられた鳥籠ver1_01 に入れました/).waitFor();
 
   // 4. 同じものをもう一度 → バックアップ
   await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'classic_cp932.zip'));
-  await page.getByLabel('りどみを読みました').check();
+  await page.getByLabel('Readme（利用規約）を読みました').check();
   await page.getByRole('button', { name: 'インストール' }).click();
   await page.getByText(/にバックアップ/).waitFor();
   ok('再インストールでバックアップ', true);
@@ -154,7 +156,7 @@ async function run(colorScheme, width) {
   await page.getByText('アリスの洞窟', { exact: true }).first().waitFor();
   ok('Py仕様をNextに入れようとすると警告', await page.getByText(/CardWirthPyでしか遊べません/).isVisible());
   ok('警告時はインストール不可', await page.getByRole('button', { name: 'インストール' }).isDisabled());
-  const rdAck = page.getByLabel('りどみを読みました');
+  const rdAck = page.getByLabel('Readme（利用規約）を読みました');
   if (await rdAck.count()) await rdAck.check();
   const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'WebCardWirth用に書き出す' }).click()]);
   ok('WebCardWirth用の書き出し', dl.suggestedFilename() === 'alice.wsn', dl.suggestedFilename());
@@ -214,12 +216,12 @@ async function run(colorScheme, width) {
   // 6b4. LZH・CAB を開く（CABは CardWirth のエディタで作った実物）
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(process.cwd(), 'test/fixtures/sample.lzh'));
   await page.locator('.item-title', { hasText: 'sample.lzh' }).waitFor();
-  ok('LZHを開ける（日本語の名前）', await page.getByText(/シナリオが見つかりませんでした/).isVisible());
+  ok('LZHを開ける（日本語の名前）', await page.getByText(/シナリオではないようです/).isVisible());
   if (existsSync(join(FX, 'maigo.cab'))) {
     await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: 'アナタ迷子ノコナノネ！？.CAB', mimeType: 'application/octet-stream', buffer: readFileSync(join(FX, 'maigo.cab')) });
     await page.getByText('アナタ迷子ノコナノネ！？', { exact: true }).first().waitFor();
     ok('CAB（LZX）のシナリオを開ける', await page.locator('.badge.classic').first().isVisible());
-    const ack = page.getByLabel('りどみを読みました');
+    const ack = page.getByLabel('Readme（利用規約）を読みました');
     if (await ack.count()) await ack.check();
     await page.locator('#dest-cat').selectOption('');
     await page.getByRole('button', { name: 'インストール' }).click();
@@ -324,10 +326,10 @@ async function run(colorScheme, width) {
   await axe.getByText('準備OK').waitFor();
   ok('操作待ちで同意→準備OK', true);
   await axe.locator('input[type=text]').fill('鳥籠2');
-  ok('りどみを読むまで入らない', await page.getByRole('button', { name: 'まとめてインストール（0件）' }).isDisabled());
-  await page.getByRole('button', { name: /りどみを順に確認（あと2件）/ }).click();
-  await page.getByRole('button', { name: '読みました・次へ' }).click();
-  await page.getByRole('button', { name: '読みました・次へ' }).click();
+  ok('Readmeを読むまで入らない', await page.getByRole('button', { name: 'まとめてインストール（0件）' }).isDisabled());
+  await page.getByRole('button', { name: /Readme（利用規約）を順に確認（あと2件）/ }).click();
+  await page.getByRole('button', { name: 'Readme（利用規約）を読みました・次へ' }).click();
+  await page.getByRole('button', { name: 'Readme（利用規約）を読みました・次へ' }).click();
   await page.getByRole('button', { name: 'まとめてインストール（2件）' }).click();
   await page.getByText('2件を入れました').waitFor();
   ok('まとめてインストール', await axe.getByText('Scenario/鳥籠2 に入れました').isVisible());
@@ -417,8 +419,8 @@ async function run(colorScheme, width) {
   const up = page.locator('#batch .batch-item');
   await up.getByText('準備OK').waitFor();
   ok('更新は今の場所に置き換える', await up.getByText('置き換える場所：Scenario/既存').isVisible());
-  await up.getByRole('button', { name: 'りどみを読む' }).click();
-  await page.locator('dialog').getByRole('button', { name: '読みました' }).click();
+  await up.getByRole('button', { name: 'Readme（利用規約）を読む' }).click();
+  await page.locator('dialog').getByRole('button', { name: 'Readme（利用規約）を読みました', exact: true }).click();
   await page.getByRole('button', { name: 'まとめてインストール（1件）' }).click();
   await page.getByText('1件を入れました').waitFor();
   ok('更新を同じ場所に入れ直す（バックアップあり）', await up.getByText(/Scenario\/既存 に入れました（前のものは CWCatalog_backup/).isVisible());
@@ -430,8 +432,40 @@ async function run(colorScheme, width) {
   const rec = JSON.parse(readFileSync(recPath, 'utf8'));
   ok('記録の書き出し（公開形式）', rec.kind === 'cw-catalog-tool/records' && rec.records.length === (existsSync(join(FX, 'maigo.cab')) ? 6 : 5), `${rec.records.length}件`);
 
-  // 13. 選んでタグをまとめて付ける・整理と二重チェック
+  // 12b. 素材・スキン：置き場所を決めて、分類フォルダに入れる → 自分のフォルダ一覧で見る → 分類フォルダを移す
+  await page.locator('#dev-opfs-materials-set').click();
+  await page.getByText(/素材は「.+」に入れるようにしました/).waitFor();
+  await page.getByText(/素材の置き場所：ブラウザ内/).waitFor();
+  await page.getByRole('tab', { name: /シナリオをDLする/ }).click();
+  const skin = Buffer.from(zipSync({ 'スキン素材/Resource/Image/a.png': new Uint8Array([137, 80, 78, 71]), 'スキン素材/readme.txt': strToU8('見本のスキンです。改変・再配布はご遠慮ください。') }));
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: 'skin.zip', mimeType: 'application/zip', buffer: skin });
+  await page.getByText('シナリオではないようです（スキン・素材・効果音など）').waitFor();
+  if (width > 600) await page.screenshot({ path: join(OUT, `material-add-${colorScheme}.png`), fullPage: true });
+  ok('シナリオではないものは素材として入れられる', await page.getByRole('button', { name: '素材の置き場所に入れる' }).isVisible());
+  await page.locator('#mat-cat').selectOption('__new');
+  await page.locator('#mat-newcat').fill('スキン');
+  await page.getByRole('button', { name: '素材の置き場所に入れる' }).click();
+  await page.locator('dialog').getByRole('button', { name: 'Readme（利用規約）を読みました', exact: true }).click();
+  await page.getByText(/スキン\/skin に入れました/).waitFor();
+  ok('素材を分類フォルダに入れる（Readmeを確認してから）', true);
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
+  await page.getByLabel('エンジン').selectOption({ label: '素材・スキンの置き場所' });
+  const mat = page.locator('#mine-list .card', { hasText: 'スキン/skin' });
+  await mat.waitFor();
+  ok('素材の置き場所を一覧で見る（分類フォルダごと）', await page.locator('#mine-list details.group summary', { hasText: 'スキン' }).isVisible());
+  await mat.getByRole('button', { name: 'skinをお気に入りにする' }).click();
+  await page.locator('#mine-list .card', { hasText: 'スキン/skin' }).locator('button.star.on[aria-pressed="true"]', { hasText: '★' }).waitFor();
+  ok('☆を押すとお気に入り（★・色つき）', true);
+  await page.screenshot({ path: join(OUT, `material-mine-${colorScheme}-${width}.png`), fullPage: true });
+  await page.locator('#mine-list .card', { hasText: 'スキン/skin' }).getByLabel('skinを選ぶ').check();
+  await page.locator('#mine-bar .sel-actions').getByRole('button', { name: '分類フォルダへ移す' }).click();
+  await page.locator('dialog input[type=text]').fill('お気に入りスキン');
+  await page.locator('dialog').getByRole('button', { name: '新しく作って移す' }).click();
+  await page.locator('dialog', { hasText: '分類フォルダへ移しました（1件）' }).getByRole('button', { name: '閉じる' }).click();
+  ok('素材を別の分類フォルダへ移す（実際のフォルダも）', await page.locator('#mine-list .card', { hasText: 'お気に入りスキン/skin' }).isVisible());
+  await page.getByLabel('エンジン').selectOption({ index: 0 });
+
+  // 13. 選んでタグをまとめて付ける・整理と二重チェック
   const mcards = page.locator('#mine-list > .card');
   await mcards.filter({ hasText: 'Scenario/既存' }).locator('input[type=checkbox]').first().check();
   await mcards.filter({ hasText: 'Scenario/鳥籠2' }).locator('input[type=checkbox]').first().check();
@@ -443,16 +477,44 @@ async function run(colorScheme, width) {
   await page.locator('.folder-chips .chip', { hasText: '積み' }).click();
   ok('タグで絞り込む', (await mcards.count()) === 2);
   await page.locator('.folder-chips .chip', { hasText: 'すべて' }).click();
+  await page.locator('#mine-bar').getByRole('button', { name: '選択を解除' }).click();
   await page.getByRole('button', { name: '整理・二重チェック' }).click();
   await page.locator('#tidy summary', { hasText: '同じ作品が2つ以上入っている' }).waitFor();
-  const dupSec = page.locator('#tidy details', { hasText: '同じ作品が2つ以上入っている' });
+  const dupSec = page.locator('#tidy-dup');
   ok('Scenarioの二重を見つける', await dupSec.getByText('開けられた鳥籠').first().isVisible() && (await dupSec.locator('li li').count()) >= 3);
-  ok('保存場所の重なりを見つける', await page.locator('#tidy details', { hasText: '同じファイルが重なっている' }).getByRole('button', { name: 'こちらを消す' }).isVisible());
+  ok('保存場所の重なりを見つける', (await page.locator('#tidy-zipdup li li').count()) === 2);
+  ok('バックアップを用意するは最初からオン', await page.getByLabel('整理するときバックアップを用意する').isChecked());
+  ok('移す先を表示する', await page.locator('#tidy').getByText(/フォルダの中の CWCatalog_backup/).first().isVisible());
   if (width > 600) await page.locator('#tidy').screenshot({ path: join(OUT, `tidy-${colorScheme}.png`) });
+  // 1件だけ移す（確認の一覧 → 結果の記録）
   await dupSec.locator('li li', { hasText: 'Scenario/_店/開けられた鳥籠ver1_01' }).getByRole('button', { name: 'CWCatalog_backup に移す' }).click();
-  await page.locator('dialog').getByRole('button', { name: 'はい' }).click();
-  await page.getByText(/Scenario\/_店\/開けられた鳥籠ver1_01 を CWCatalog_backup/).waitFor();
-  ok('二重のものを消さずにバックアップへ移す', true);
+  ok('確認の一覧に、移す先を書く', await page.locator('dialog').getByText(/フォルダの中の CWCatalog_backup/).isVisible());
+  await page.locator('dialog').getByRole('button', { name: 'この内容で整理する' }).click();
+  const log1 = page.locator('dialog', { hasText: '整理しました（1件）' });
+  await log1.waitFor();
+  ok('結果の記録に移した先を書く', /移した　.*Scenario\/_店\/開けられた鳥籠ver1_01[\s\S]*→ .*CWCatalog_backup\/\d{8}_\d{6}_開けられた鳥籠ver1_01/.test(await log1.locator('pre').textContent()));
+  await log1.getByRole('button', { name: '閉じる' }).click();
+  // 鳥籠2は除外して、最新版のみ残して整理
+  await page.locator('#tidy-dup li li', { hasText: 'Scenario/鳥籠2' }).getByRole('button', { name: 'これを除外' }).click();
+  await page.locator('#tidy-dup li li', { hasText: 'Scenario/鳥籠2' }).getByRole('button', { name: /除外中/ }).waitFor();
+  ok('除外をオンにできる', true);
+  await page.locator('#tidy-latest').click();
+  const plan = await page.locator('#tidy-plan').textContent();
+  ok('最新版のみ残す：確認の一覧（除外したものは入らない）', !plan.includes('鳥籠2') && /保存場所：/.test(plan), plan.replace(/\n/g, ' / '));
+  await page.locator('dialog').getByRole('button', { name: 'この内容で整理する' }).click();
+  const log2 = page.locator('dialog', { hasText: /整理しました/ });
+  await log2.waitFor();
+  await log2.getByRole('button', { name: '閉じる' }).click();
+  await page.locator('#tidy-zipdup summary', { hasText: 'なし' }).waitFor();
+  ok('整理したあとは重なりがなくなる', true);
+  await page.locator('#tidy').getByRole('button', { name: '閉じる' }).click();
+  // シナリオを分類フォルダへ移す（複数選んで）
+  await page.locator('#mine-list > .card', { hasText: 'Scenario/鳥籠2' }).locator('input[type=checkbox]').first().check();
+  await page.locator('#mine-bar .sel-actions').getByRole('button', { name: '分類フォルダへ移す' }).click();
+  await page.locator('dialog input[type=text]').fill('_集');
+  await page.locator('dialog').getByRole('button', { name: '新しく作って移す' }).click();
+  await page.locator('dialog', { hasText: '分類フォルダへ移しました（1件）' }).getByRole('button', { name: '閉じる' }).click();
+  ok('シナリオを分類フォルダへ移す', await page.locator('#mine-list > .card', { hasText: 'Scenario/_集/鳥籠2' }).isVisible());
 
   // OPFSの中身を確認
   const tree = await page.evaluate(async () => {
@@ -461,13 +523,17 @@ async function run(colorScheme, width) {
     await walk(await (await navigator.storage.getDirectory()).getDirectoryHandle('test-engine'), '');
     return out.sort();
   });
-  const archived = await page.evaluate(async () => {
+  const treeOf = (name) => page.evaluate(async (name) => {
     const out = [];
-    for await (const [n] of (await (await navigator.storage.getDirectory()).getDirectoryHandle('test-archive')).entries()) out.push(n);
+    async function walk(d, p) { for await (const [n, h] of d.entries()) { const q = p ? `${p}/${n}` : n; if (h.kind === 'directory') await walk(h, q); else out.push(q); } }
+    await walk(await (await navigator.storage.getDirectory()).getDirectoryHandle(name), '');
     return out.sort();
-  });
-  ok('元のzipを保存場所に保存（同じものは重ねない）', archived.length === 2 && archived.includes('鳥籠.zip'), archived.join(', '));
-  ok('鳥籠2 に入った', tree.includes('Scenario/鳥籠2/Summary.wsm'));
+  }, name);
+  const archived = await treeOf('test-archive');
+  const mats = await treeOf('test-materials');
+  ok('元のzipを保存場所に保存し、重なりは整理でバックアップへ', archived.filter((p) => !p.includes('/')).length === 1 && archived.filter((p) => p.startsWith('CWCatalog_backup/')).length === 1 && archived.some((p) => p.endsWith('鳥籠.zip')), archived.join(', '));
+  ok('素材は分類フォルダに、1つ上のフォルダを省いて入る', mats.includes('お気に入りスキン/skin/Resource/Image/a.png') && !mats.some((p) => p.startsWith('スキン/skin')), mats.join(', '));
+  ok('鳥籠2 は除外したので残り、分類フォルダへ移った', tree.includes('Scenario/_集/鳥籠2/Summary.wsm') && !tree.includes('Scenario/鳥籠2/Summary.wsm'));
   ok('書き込み先は Scenario と CWCatalog_backup だけ', tree.every((p) => p === 'CardWirthNext.exe' || p.startsWith('Scenario/') || p.startsWith('CWCatalog_backup/')));
   ok('Next版が _店 に入った', tree.includes('Scenario/_店/うつろい森のあなた/Summary.wsm'));
   ok('移したものはバックアップにある', !tree.includes('Scenario/_店/開けられた鳥籠ver1_01/Summary.wsm') && tree.some((p) => /^CWCatalog_backup\/[^/]+_開けられた鳥籠ver1_01\/Summary\.wsm$/.test(p)));

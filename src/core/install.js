@@ -162,12 +162,14 @@ export async function exportForWeb(opened, index) {
  * 二重に入っているものなどを、消さずに CWCatalog_backup に移す（エンジンのフォルダの中だけ）
  * @returns {Promise<string>} 移した先
  */
-export async function moveToBackup(engineRoot, relPath) {
+export async function moveToBackup(engineRoot, relPath, { anywhere = false } = {}) {
   const kind = await existsAt(engineRoot, relPath);
   if (!kind) throw new Error(`見つかりません：${relPath}`);
-  if (!relPath.startsWith('Scenario/')) throw new Error('Scenario の中のものだけ移せます');
+  if (!anywhere && !relPath.startsWith('Scenario/')) throw new Error('Scenario の中のものだけ移せます');
+  if (relPath.startsWith(`${BACKUP_DIR}/`)) throw new Error('すでにバックアップの中にあります');
   const name = relPath.split('/').pop();
-  const dest = `${BACKUP_DIR}/${stamp()}_${name}`;
+  let dest = `${BACKUP_DIR}/${stamp()}_${name}`;
+  for (let i = 2; await existsAt(engineRoot, dest); i++) dest = `${BACKUP_DIR}/${stamp()}_${i}_${name}`;
   if (kind === 'dir') {
     const src = await dirAt(engineRoot, relPath);
     for (const f of await listTree(src)) await writeAt(engineRoot, `${dest}/${f.rel}`, await f.dir.readFile(f.name));
@@ -176,4 +178,60 @@ export async function moveToBackup(engineRoot, relPath) {
   }
   await removeAt(engineRoot, relPath);
   return dest;
+}
+
+/**
+ * フォルダ（またはファイル）を、同じ入れ物の中の別の分類フォルダへ動かす（実際のファイルを動かす）
+ * @param {string} from 例 'Scenario/森'
+ * @param {string} toDir 例 'Scenario/_店'
+ * @returns {Promise<string>} 動かした先
+ */
+export async function moveWithin(root, from, toDir) {
+  const kind = await existsAt(root, from);
+  if (!kind) throw new Error(`見つかりません：${from}`);
+  const name = from.split('/').pop();
+  const dest = [toDir, name].filter(Boolean).join('/');
+  if (dest === from) return from;
+  if (dest.startsWith(`${from}/`)) throw new Error('自分の中には動かせません');
+  if (await existsAt(root, dest)) throw new Error(`動かす先に同じ名前のものがあります：${dest}`);
+  if (kind === 'dir') {
+    const src = await dirAt(root, from);
+    const files = await listTree(src);
+    if (!files.length) await dirAt(root, dest, { create: true });
+    for (const f of files) await writeAt(root, `${dest}/${f.rel}`, await f.dir.readFile(f.name));
+  } else {
+    await writeAt(root, dest, await readAt(root, from));
+  }
+  await removeAt(root, from);
+  return dest;
+}
+
+/**
+ * シナリオではないもの（スキン・素材など）を、素材の置き場所に入れる
+ * @returns {{dest: string, written: number}}
+ */
+export async function installMaterial(root, opened, { category = '', folderName = '', asArchive = false } = {}) {
+  const cat = category ? safeRelativePath(category) : '';
+  if (category && !cat) throw new Error('分類フォルダの名前が正しくありません');
+  if (asArchive) {
+    if (!opened.bytes && !opened.archiveBytes) throw new Error('zipのまま置けるのは、zipなどのファイルだけです');
+    const name = safeRelativePath(opened.archiveName || opened.source.name);
+    const dest = [cat, name].filter(Boolean).join('/');
+    if (await existsAt(root, dest)) throw new Error(`同じ名前のものがあります：${dest}`);
+    await writeAt(root, dest, opened.archiveBytes || opened.bytes);
+    return { dest, written: 1 };
+  }
+  const name = safeRelativePath(folderName || opened.source.name.replace(/\.[^.]+$/, ''));
+  if (!name || name.includes('/')) throw new Error('フォルダ名が正しくありません');
+  // 中身が1つのフォルダにまとまっていれば、その中身だけを入れる（フォルダが二重にならないように）
+  const tops = new Set(opened.files.map((f) => f.path.split('/')[0]));
+  const strip = tops.size === 1 && opened.files.every((f) => f.path.includes('/')) ? `${[...tops][0]}/` : '';
+  const dest = [cat, name].filter(Boolean).join('/');
+  if (await existsAt(root, dest)) throw new Error(`同じ名前のフォルダがあります：${dest}`);
+  let n = 0;
+  for (const f of opened.files) {
+    await writeAt(root, `${dest}/${f.path.slice(strip.length)}`, await f.read());
+    n++;
+  }
+  return { dest, written: n };
 }

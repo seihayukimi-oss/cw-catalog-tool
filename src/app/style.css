@@ -188,6 +188,11 @@ dialog > .stack > .row:last-child, dialog > form > .row:last-child {
 .badge.folder { color: var(--classic); border-style: dotted; }
 details.group { margin-bottom: 10px; }
 details.group > summary { display: flex; gap: 8px; align-items: center; cursor: pointer; padding: 6px 2px; font-family: var(--serif); font-weight: 600; }
+/* 折りたためるところには、いつも ▶（閉じている）／▼（開いている）を出す */
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before { content: '▶'; display: inline-block; width: 1.2em; font-size: .8em; color: var(--accent); flex: none; }
+details[open] > summary::before { content: '▼'; }
 details.group > summary .group-name { font-size: 1.02rem; }
 .card.work.compact { padding: 8px 12px; margin-bottom: 6px; }
 .sel-actions { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
@@ -203,11 +208,18 @@ details.group > summary .group-name { font-size: 1.02rem; }
 .mono { font-family: ui-monospace, "BIZ UDGothic", monospace; font-size: .8rem; }
 .link-maker textarea { flex: 1 1 300px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); }
 
-.btn.star { color: var(--sub); font-size: 1rem; padding: 0 4px; }
-.btn.star.on { color: #d19a1d; }
+/* お気に入り：☆ を押すと ★ になって色が付く */
+.btn.star { color: var(--sub); font-size: 1.25rem; line-height: 1; padding: 0 4px; border: 0; background: none; }
+.btn.star:hover { color: #d19a1d; }
+.btn.star.on { color: #e0a412; text-shadow: 0 0 1px rgba(160, 100, 0, .5); }
 .tag-pick { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag-pick .chip input { margin: 0; }
-.tag-editor { gap: 4px; }
+.tag-editor { gap: 6px; }
+/* タグは入力欄と同じくらいの大きさで */
+.tag-editor .tag, .tag-editor input, .tag-editor .btn { font-size: .92rem; min-height: 32px; }
+.tag-editor .tag { padding: 3px 10px; border-radius: 8px; border: 1px solid var(--line); }
+.tag-editor .tag button { font-size: 1rem; padding: 0 2px; }
+.tag-editor input { width: 9em !important; padding: 4px 10px; }
 .tidy h3 { margin: 10px 0 4px; }
 .tidy .dl li { border-bottom: 1px dashed var(--line); padding: 4px 0; }
 .tidy .dl li.stack { display: block; }
@@ -219,3 +231,7 @@ details.group > summary .group-name { font-size: 1.02rem; }
   .batch-bar { top: 84px; }
   .ogp img { width: 80px; }
 }
+.tidy .excluded > span, .tidy .excluded > b, .tidy li.excluded .grow { opacity: .55; text-decoration: line-through; }
+.tidy .btn.on { background: var(--soft, #eef); }
+.tidy-selbar { padding-top: 4px; border-top: 1px dashed var(--line); }
+pre.log { max-height: 40vh; white-space: pre-wrap; word-break: break-all; }

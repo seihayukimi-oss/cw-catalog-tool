@@ -11,6 +11,8 @@ import { h, toast, modal, fmtSize, formatBadge, sleep } from './ui.js';
 import { tryDownloads, dlLabel, pagePanel, inAppDownload, deliver, tryAutoAgree } from './download.js';
 import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { readmeModal, installOpened, ensureDir, destFields, engineSelect, watchdog } from './add.js';
+import { installMaterial } from '../core/install.js';
+import { MAT, materialsDirOf, scanMaterials } from './materials.js';
 
 const STATUS = {
   wait: ['待機中', 'plain'], fetch: ['取得中', 'plain'], ready: ['準備OK', 'ok'], action: ['操作待ち', 'warn'],
@@ -132,7 +134,21 @@ async function receive(it, res) {
 async function analyze(it, bytes, fileName) {
   try {
     const o = await openArchive(bytes, fileName);
-    if (!o.scenarios.length) { it.status = 'error'; it.message = `${fileName} にシナリオが見つかりませんでした`; return; }
+    it.material = false;
+    if (!o.scenarios.length) {
+      // シナリオではないもの（スキン・素材など）：素材の置き場所に入れる
+      if (!S.materials?.ref) { it.status = 'error'; it.message = `${fileName} はシナリオではないようです（スキン・素材など）。「設定」の「素材・スキンの置き場所」を決めると、まとめて入れられます`; return; }
+      it.opened = o;
+      it.material = true;
+      it.pick = 0;
+      it.ack = !o.readmes.length;
+      it.folderName = (o.archiveName || o.source.name).replace(/\.[^.]+$/, '');
+      it.matCat = it.matCat || '';
+      it.status = 'ready';
+      it.message = '';
+      it.page = null; it.blocked = ''; it.inapp = null;
+      return;
+    }
     it.opened = o;
     it.pick = 0;
     it.ack = !o.readmes.length;
@@ -180,11 +196,12 @@ async function askSwitches(items) {
 // ------------------------------------------------------------ 画面
 const engOf = (it) => engine(it.engineId || S.batch.engineId);
 const playOf = (it) => {
+  if (it.material) return null;
   const eng = engOf(it);
   return eng && it.opened ? playability(it.opened.scenarios[it.pick], eng.kind) : null;
 };
 /** インストールに進めるもの */
-const installable = (it) => it.include && it.status === 'ready' && it.ack && (playOf(it)?.ok || it.force);
+const installable = (it) => it.include && it.status === 'ready' && it.ack && (it.material || playOf(it)?.ok || it.force);
 
 export function viewBatch() {
   const b = S.batch;
@@ -221,10 +238,10 @@ export function viewBatch() {
         h('progress', { id: 'batch-prog', max: 1, value: 0 }),
         h('div', { id: 'batch-prog-text', class: 'small muted' }, '準備中…')) : null,
       h('div', { class: 'row' },
-        needRead.length ? h('button', { class: 'btn', disabled: b.installing, onclick: readAll }, `りどみを順に確認（あと${needRead.length}件）`) : null,
-        h('button', { class: 'btn primary', disabled: !ready.length || b.installing || !S.engines.length || !S.platform.canWriteFolders, onclick: installAll }, `まとめてインストール（${ready.length}件）`),
+        needRead.length ? h('button', { class: 'btn', disabled: b.installing, onclick: readAll }, `Readme（利用規約）を順に確認（あと${needRead.length}件）`) : null,
+        h('button', { class: 'btn primary', disabled: !ready.length || b.installing || (!S.engines.length && !ready.every((i) => i.material)) || !S.platform.canWriteFolders, onclick: installAll }, `まとめてインストール（${ready.length}件）`),
         !fetchedAll ? h('span', { class: 'small muted' }, '取得が終わっていないものは、あとから入れられます') : null,
-        needRead.length ? h('span', { class: 'small muted' }, 'りどみを読んでいないものは入りません') : null))
+        needRead.length ? h('span', { class: 'small muted' }, 'Readme（利用規約）を読んでいないものは入りません') : null))
       : h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { S.batch = null; goTab('mine'); } }, '自分のフォルダ一覧を見る')));
 }
 
@@ -245,18 +262,26 @@ function itemCard(it) {
         h('span', { class: 'item-title' }, it.name),
         h('span', { class: `badge ${cls}` }, label),
         it.target ? h('span', { class: 'badge update' }, '更新') : null,
-        sc ? formatBadge(sc) : null),
+        it.material ? h('span', { class: 'badge plain' }, '素材・スキン') : null,
+        sc && !it.material ? formatBadge(sc) : null),
       h('div', { class: 'row' },
         it.status === 'ready' && it.opened.readmes.length ? h('button', {
           class: 'btn sm', onclick: async () => { const r = await readmeModal(it.opened, it.name); if (r) { it.ack = true; render(); } },
-        }, it.ack ? 'りどみ ✓' : 'りどみを読む') : null,
+        }, it.ack ? 'Readme ✓' : 'Readme（利用規約）を読む') : null,
         it.status === 'error' && it.work ? h('button', { class: 'btn sm', onclick: () => { it.status = 'wait'; if (!S.batch.running) runFetch(); else render(); } }, 'もう一度') : null,
         ['wait', 'error', 'action', 'ready'].includes(it.status) && !S.batch.installing ? h('button', { class: 'btn ghost sm', onclick: () => { S.batch.items = S.batch.items.filter((x) => x !== it); if (!S.batch.items.length) S.batch = null; render(); } }, '外す') : null)),
     h('div', { class: 'meta' }, [it.work?.author, it.work ? `ver ${it.work.version}` : '', it.zone?.referrerUrl || it.zone?.hostUrl ? `DL元：${(it.zone.referrerUrl || it.zone.hostUrl).replace(/^https?:\/\//, '').slice(0, 60)}` : '', it.used ? `取得元：${dlLabel(it.used)}` : '', it.opened ? `${it.opened.source.name}・${fmtSize(it.opened.source.size)}` : ''].filter(Boolean).join('・')),
     it.message ? h('div', { class: `small ${it.status === 'error' || it.status === 'failed' ? 'note bad' : 'muted'}` }, it.message) : null,
     it.fellBack && it.status !== 'done' ? h('div', { class: 'small muted' }, `デフォルトの「${dlLabel(it.fellBack.from)}」から取れなかったので、「${dlLabel(it.fellBack.to)}」から取りました。`) : null,
   );
-  if (it.status === 'ready') {
+  if (it.status === 'ready' && it.material) {
+    const cats = S.categories[MAT] || [];
+    card.append(h('div', { class: 'row small', style: 'margin-top:6px' },
+      h('span', { class: 'muted' }, `素材の置き場所（${S.materials.label}）に入れます`),
+      h('label', { class: 'row' }, '分類フォルダ', h('input', { type: 'text', list: 'mat-cats', value: it.matCat, placeholder: '例：スキン', style: 'width:9em', disabled: !editable, oninput: (ev) => { it.matCat = ev.target.value; } }),
+        h('datalist', { id: 'mat-cats' }, cats.map((c) => h('option', { value: c })))),
+      h('label', { class: 'row' }, 'フォルダ名', h('input', { type: 'text', value: it.folderName, disabled: !editable, oninput: (ev) => { it.folderName = ev.target.value; } }))));
+  } else if (it.status === 'ready') {
     if (it.opened.scenarios.length > 1) {
       card.append(h('label', { class: 'field small' }, `${it.opened.scenarios.length}本のシナリオが入っています。入れるもの`,
         h('select', { disabled: !editable, onchange: (ev) => { it.pick = Number(ev.target.value); it.folderName = it.target?.folderName || it.opened.scenarios[it.pick].folderName; render(); } },
@@ -314,7 +339,12 @@ async function installAll() {
   b.cat = cat;
   // フォルダの許可は、ボタンを押した直後にまとめて聞く
   const dirs = new Map();
-  for (const id of new Set(items.map((i) => i.engineId || b.engineId))) {
+  let matDir = null;
+  if (items.some((i) => i.material)) {
+    matDir = await materialsDirOf(true);
+    if (!matDir) { toast('素材の置き場所を使う許可がありませんでした', { bad: true }); return; }
+  }
+  for (const id of new Set(items.filter((i) => !i.material).map((i) => i.engineId || b.engineId))) {
     const eng = engine(id);
     if (!eng) continue;
     const d = await ensureDir(eng);
@@ -338,6 +368,20 @@ async function installAll() {
       if (t) t.textContent = `${n + 1} / ${items.length} 本目「${it.name}」　${phase === 'backup' ? 'バックアップ中' : '書き込み中'} ${done}/${total}　${(name || '').split('/').pop()}`;
       busyText(`まとめてインストール中… ${n + 1}/${items.length}`);
     };
+    if (it.material) {
+      try {
+        const r = await installMaterial(matDir, it.opened, { category: (it.matCat || '').trim(), folderName: it.folderName.trim() });
+        it.status = 'done';
+        it.message = `素材の置き場所（${S.materials.label}）の ${r.dest} に入れました`;
+        okN++;
+      } catch (e) {
+        it.status = 'failed';
+        it.message = e.message;
+        ngN++;
+      }
+      render();
+      continue;
+    }
     try {
       const { plan, res, archived } = await installOpened({
         opened: it.opened, pick: it.pick, eng, dir: dirs.get(it.engineId || b.engineId),
@@ -356,6 +400,7 @@ async function installAll() {
     render();
   }
   wd.stop();
+  if (items.some((i) => i.material && i.status === 'done')) await scanMaterials(true).catch(() => {});
   S.records = await store.records();
   b.installing = false;
   b.done = !b.items.some((i) => ['ready', 'action', 'wait', 'fetch', 'error'].includes(i.status));

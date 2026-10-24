@@ -19,8 +19,9 @@ import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
 import { startBatch } from './batch.js';
 import { setupShell, startShell, viewAppSettings } from './appshell.js';
 import { ownSources, saveOwnEntry } from './catalog-data.js';
-import { loadTags, tagEditor, tagChips, pickTags, applyTags } from './tags.js';
+import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName } from './tags.js';
 import { openTidy, viewTidy } from './tidy.js';
+import { MAT, loadMaterials, viewMaterialsMine, viewMaterialsSettings, moveToCategory } from './materials.js';
 
 const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
 
@@ -43,6 +44,7 @@ export async function startApp(platform) {
     if (d) S.dirs.set(e.id, d);
   }
   if (S.archive.ref) S.archiveDir = await platform.openFolder(S.archive.ref).catch(() => null);
+  await loadMaterials();
   Object.assign(views, { mine: viewMine, add: viewAdd, catalog: viewCatalog, settings: viewSettings });
   setRenderer(draw);
   setupDrop();
@@ -85,6 +87,7 @@ function viewMine() {
         : h('p', { class: 'note warn' }, `このブラウザはフォルダの読み書きに対応していません。パソコンのChrome・Edgeか、アプリ版を使ってください。zipの中身の確認と、WebCardWirth用の書き出しは「${TAB_LABEL.add}」タブでできます。`),
     );
   }
+  if (S.mineView === 'mat') return viewMaterialsMine(mineSelect);
   if (!engine()) S.engineId = S.engines[0].id;
   const e = engine();
   const connected = e && S.dirs.has(e.id);
@@ -107,14 +110,22 @@ function viewMine() {
     sel.length ? h('div', { class: 'row sel-actions' },
       h('b', { class: 'small' }, `選んだ${sel.length}件に：`),
       h('button', { class: 'btn primary sm', onclick: async () => { const t = await pickTags(`${sel.length}件にタグを付ける`); if (t?.length) { await applyTags(sel, t, []); toast(`${sel.length}件に「${t.join('・')}」を付けました`); render(); } } }, 'タグを付ける'),
-      h('button', { class: 'btn sm', onclick: async () => { const present = [...new Set(sel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${sel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(sel, [], t); toast(`${sel.length}件から「${t.join('・')}」を外しました`); render(); } } }, 'タグを外す')) : null) : null;
+      h('button', { class: 'btn sm', onclick: async () => { const present = [...new Set(sel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${sel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(sel, [], t); toast(`${sel.length}件から「${t.join('・')}」を外しました`); render(); } } }, 'タグを外す'),
+      h('button', {
+        class: 'btn sm', title: 'Scenario の中の分類フォルダ（例：Scenario/_店）へ、実際のフォルダを動かします',
+        onclick: async () => {
+          const ok = sel.filter((r) => r.type !== 'bookmark' && !r.missing && r.path?.startsWith('Scenario/'));
+          if (!ok.length) { toast('動かせるものがありません（ブックマーク・見つからないものは動かせません）', { bad: true }); return; }
+          await moveToCategory(ok);
+          render();
+        },
+      }, '分類フォルダへ移す')) : null) : null;
   const list = h('div', { class: 'list', id: 'mine-list' }, recs.length ? recs.map(recordCard) : h('p', { class: 'empty' }, recordsOf().length ? '見つかりませんでした' : 'まだ記録がありません。「読み取る」を押してください'));
 
   return h('div', {},
     h('div', { class: 'card' },
       h('div', { class: 'row' },
-        h('select', { 'aria-label': 'エンジン', onchange: async (ev) => { S.engineId = ev.target.value; await store.set('engineId', S.engineId); render(); } },
-          S.engines.map((x) => h('option', { value: x.id, selected: x.id === S.engineId ? 'selected' : null }, `${x.name}（${ENGINE_KINDS[x.kind]?.short || x.kind}）`))),
+        mineSelect(),
         connected
           ? h('button', { class: 'btn', onclick: () => scanEngine(e.id) }, '読み取る')
           : h('button', { class: 'btn primary', onclick: () => connectEngine(e.id) }, 'フォルダに接続'),
@@ -140,6 +151,22 @@ function viewMine() {
   );
 }
 
+/** 自分のフォルダ一覧の「どこを見るか」（エンジン、または素材の置き場所） */
+function mineSelect() {
+  return h('select', {
+    'aria-label': 'エンジン', onchange: async (ev) => {
+      S.mineSel.clear();
+      if (ev.target.value === MAT) { S.mineView = 'mat'; render(); return; }
+      S.mineView = '';
+      S.engineId = ev.target.value;
+      await store.set('engineId', S.engineId);
+      render();
+    },
+  },
+  S.engines.map((x) => h('option', { value: x.id, selected: S.mineView !== 'mat' && x.id === S.engineId ? 'selected' : null }, `${x.name}（${ENGINE_KINDS[x.kind]?.short || x.kind}）`)),
+  h('option', { value: MAT, selected: S.mineView === 'mat' ? 'selected' : null }, '素材・スキンの置き場所'));
+}
+
 function recordCard(r) {
   const work = workOf(r);
   const st = r.state || (S.combined ? 'none' : null);
@@ -157,6 +184,11 @@ function recordCard(r) {
     h('div', { class: 'row between' },
       h('div', { class: 'row' },
         pick,
+        h('button', {
+          class: `btn star${(r.tags || []).includes('お気に入り') ? ' on' : ''}`, 'aria-label': `${r.name}をお気に入りにする`, 'aria-pressed': (r.tags || []).includes('お気に入り') ? 'true' : 'false',
+          title: '「お気に入り」タグを付ける・外す',
+          onclick: async () => { await addTagName('お気に入り'); const on = (r.tags || []).includes('お気に入り'); await save({ tags: on ? r.tags.filter((t) => t !== 'お気に入り') : [...(r.tags || []), 'お気に入り'] }); },
+        }, (r.tags || []).includes('お気に入り') ? '★' : '☆'),
         h('span', { class: 'item-title' }, r.name || '(名前なし)'),
         r.type === 'bookmark' ? h('span', { class: 'badge plain' }, 'ブックマーク') : formatBadge(r),
         r.encrypted ? h('span', { class: 'badge enc', title: 'NextのWirthBuilderで暗号化（WDP）されたデータです' }, '暗号化') : null,
@@ -447,6 +479,9 @@ function viewSettings() {
     h('h2', {}, 'zip・wsnの保存場所'),
     viewArchiveSettings(dev),
 
+    h('h2', {}, '素材・スキンの置き場所'),
+    viewMaterialsSettings(dev),
+
     h('h2', {}, 'カタログ'),
     h('div', { class: 'card stack' },
       prefsBlock(),
@@ -472,7 +507,7 @@ function viewSettings() {
     h('div', { class: 'card small stack' },
       h('p', { style: 'margin:0' }, `CWカタログ ${APP_VERSION}（${S.platform.label}）`),
       h('ul', { style: 'margin:0;padding-left:1.2em' },
-        h('li', {}, 'ツールが書き込むのは、登録したエンジンの「Scenario」と「CWCatalog_backup」フォルダ、それと指定したzip・wsnの保存場所だけです。宿（Yado）には触りません。'),
+        h('li', {}, 'ツールが書き込むのは、登録したエンジンの「Scenario」と「CWCatalog_backup」フォルダ、それと指定したzip・wsnの保存場所・素材の置き場所だけです。宿（Yado）には触りません。'),
         h('li', {}, 'zipの中のファイルを実行することはありません。'),
         h('li', {}, 'ネットにつなぐのは、カタログの読み込み・更新チェック・ダウンロード・紹介を見るボタンを押したときだけです。'),
         S.platform.kind === 'web' ? h('li', {}, 'HTML版では、作者さんのサイトから直接ダウンロードできないことが多いです（ブラウザの制限）。その場合は配布ページを開いて、落としたファイルをドロップしてください。') : null)),

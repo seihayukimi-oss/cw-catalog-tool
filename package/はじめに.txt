@@ -34,8 +34,8 @@ CardWirth（1.50・Next・Py）のシナリオを、まとめてDLして、正�
   https://github.com/seihayukimi-oss/cw-catalog-tool/releases
 
 
-■ やめるとき（アンインストール）
-  1. 「設定」→「Windowsとのつなぎこみ」を登録していたら、「登録を外す」を押す
+■ アプリを削除するとき（アンインストール）
+  1. 「設定」→「Windows設定との連携」を登録していたら、「登録を外す」を押す
   2. CWCatalog.exe と CWCatalog-data フォルダを、フォルダごと消す
   これで全部です。
 

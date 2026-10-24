@@ -40,6 +40,9 @@ export const S = {
   batch: null,
   filter: { mine: '', mineState: '', mineTag: '', cat: '', catEngine: '', catSource: '', catFolder: '', showHidden: false },
   mineSel: new Set(), // 自分のフォルダ一覧で選んだ記録
+  mineView: '', // 'mat'＝素材の置き場所を見ている
+  materials: null, // 素材の置き場所 {ref,label,lastScan}
+  materialsDir: null,
   tagList: [],
   favs: { works: [], folders: [] },
   tidy: null, // 整理・二重チェックの結果

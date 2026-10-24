@@ -70,9 +70,20 @@ fn build_browser_window(
     let _ = std::fs::create_dir_all(&dir);
     let app_dl = app.clone();
     let app_new = app.clone();
+    // 画面からはみ出さないよう、今のPCの画面（メインの窓がある画面）の大きさに合わせる
+    let (w, h) = app
+        .get_webview_window("main")
+        .and_then(|m| m.current_monitor().ok().flatten())
+        .map(|mon| {
+            let a = mon.work_area();
+            let sf = mon.scale_factor();
+            ((a.size.width as f64 / sf * 0.9).clamp(400.0, 1200.0), (a.size.height as f64 / sf * 0.86).clamp(360.0, 900.0))
+        })
+        .unwrap_or((1000.0, 680.0));
     let mut b = WebviewWindowBuilder::new(app, label, url)
         .title(BROWSER_TITLE)
-        .inner_size(1000.0, 760.0)
+        .inner_size(w, h)
+        .center()
         .data_directory(portable().webview_dir())
         .on_new_window(move |url, features| {
             if url.scheme() != "https" && url.scheme() != "http" && url.as_str() != "about:blank" {

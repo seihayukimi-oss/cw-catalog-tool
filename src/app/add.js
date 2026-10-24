@@ -14,6 +14,7 @@ import { viewUrlBox } from './download.js';
 import { viewBatch } from './batch.js';
 import { editEntry } from './catalog-view.js';
 import { openLocalFiles, pickFiles, pickDownloads } from './localfiles.js';
+import { viewMaterialInstall } from './materials.js';
 
 export const VERSION_SOURCE = { catalog: '（カタログで確定）', dl: '（カタログからDLした版）', user: '（手入力）', guess: '（名前から推測）' };
 
@@ -137,7 +138,7 @@ export function viewAdd() {
   ));
 
   if (!sc) {
-    parts.push(h('div', { class: 'card note bad' }, 'シナリオが見つかりませんでした（Summary.wsm・Summary.xml がありません）。スキンや素材のzipは、この版ではまだ扱えません。'));
+    parts.push(viewMaterialInstall(o));
     return h('div', {}, parts);
   }
 
@@ -174,7 +175,7 @@ export function viewAdd() {
       }, r.path.split('/').pop()))),
       pre,
       authorReadme(work),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.readmeAck, onchange: (ev) => { S.readmeAck = ev.target.checked; render(); } }), 'りどみを読みました'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.readmeAck, onchange: (ev) => { S.readmeAck = ev.target.checked; render(); } }), 'Readme（利用規約）を読みました'),
     ));
   }
 
@@ -208,7 +209,7 @@ export function viewAdd() {
       play.level === 'convert' ? '（Next→Pyの変換は、今後のアプリ版で「自己責任」で使える機能として追加予定です）' : null) : null,
     planInfo?.warnings?.map((w) => h('p', { class: 'note warn small' }, w)),
     play && !play.ok ? h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: !!S.force, onchange: (ev) => { S.force = ev.target.checked; render(); } }), 'それでも入れる') : null,
-    !S.readmeAck ? h('p', { class: 'small muted' }, '※ りどみを読んでからインストールできます') : null,
+    !S.readmeAck ? h('p', { class: 'small muted' }, '※ Readme（利用規約）を読んでからインストールできます') : null,
     archiveNote(o),
     S.progress ? h('div', { class: 'stack' },
       h('progress', { id: 'inst-prog', max: S.progress.total || 1, value: S.progress.done }),
@@ -302,7 +303,7 @@ export function readmeModal(opened, title, { next = false } = {}) {
       tabs, pre,
       h('div', { class: 'row', style: 'justify-content:flex-end' },
         h('button', { class: 'btn', onclick: () => close(null) }, next ? 'ここでやめる' : '閉じる'),
-        h('button', { class: 'btn primary', onclick: () => close(true) }, next ? '読みました・次へ' : '読みました')));
+        h('button', { class: 'btn primary', onclick: () => close(true) }, next ? 'Readme（利用規約）を読みました・次へ' : 'Readme（利用規約）を読みました')));
   });
 }
 

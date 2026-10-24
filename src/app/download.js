@@ -408,7 +408,7 @@ export async function askInstallLink({ url, entryId, name }) {
     work ? h('div', { class: 'meta' }, `${work.author}・ver ${work.version}・カタログの作品 ${entryId}`) : null,
     h('div', { class: 'note' }, h('div', { class: 'small muted' }, '取得先'), h('b', {}, host), h('div', { class: 'small', style: 'word-break:break-all' }, target)),
     h('p', { class: 'small muted', style: 'margin:0' }, 'リンクを押したサイトから、取り込みを頼まれました。取ってきたあとに中身とりどみを表示するので、入れるかどうかはそこで決められます。知らないサイトからの場合は「やめる」を押してください。'),
-    S.platform.kind === 'web' && !entryId ? h('p', { class: 'small muted', style: 'margin:0' }, 'アプリ版（ポータブル版）を持っていて「Windowsとのつなぎこみ」を登録していれば、「アプリで開く」でアプリから取れます（同意ページなども取れます）。') : null,
+    S.platform.kind === 'web' && !entryId ? h('p', { class: 'small muted', style: 'margin:0' }, 'アプリ版（ポータブル版）を持っていて「Windows設定との連携」を登録していれば、「アプリで開く」でアプリから取れます（同意ページなども取れます）。') : null,
     h('div', { class: 'row', style: 'justify-content:flex-end' },
       h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
       S.platform.kind === 'web' && !entryId ? h('button', { class: 'btn', onclick: () => { location.href = appLink; close(false); } }, 'アプリで開く') : null,
@@ -471,7 +471,7 @@ export function viewLinkMaker() {
     h('label', { class: 'field' }, 'X・Misskey・掲示板などに貼るURL', h('div', { class: 'row' }, linkOut, copy(linkOut, 'URL'))),
     h('label', { class: 'field' }, 'ホームページ（HTML）に貼るボタン', h('div', { class: 'row' }, htmlOut, copy(htmlOut, 'HTML'))),
     h('div', { class: 'row' }, tryBtn, h('span', { class: 'small muted' }, '遊ぶ人から見た確認画面を、ここで見られます（「やめる」を押せば何もしません）')),
-    h('p', { class: 'small muted', style: 'margin:0' }, '※ リンクを押すと、まずHTML版が開きます。アプリ版（ポータブル版）を持っていて「Windowsとのつなぎこみ」を登録している人は、確認画面の「アプリで開く」からアプリで取れます。HTML版だけで直接取ってこられるのは、読み込みを許可しているサイト（GitHub Pages など）に置いたファイルだけです。'));
+    h('p', { class: 'small muted', style: 'margin:0' }, '※ リンクを押すと、まずHTML版が開きます。アプリ版（ポータブル版）を持っていて「Windows設定との連携」を登録している人は、確認画面の「アプリで開く」からアプリで取れます。HTML版だけで直接取ってこられるのは、読み込みを許可しているサイト（GitHub Pages など）に置いたファイルだけです。'));
 }
 
 // ------------------------------------------------------------ 設定：同意を覚えているサイト

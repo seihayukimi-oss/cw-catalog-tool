@@ -203,7 +203,7 @@ export function descBlock(text) {
   const long = t.split('\n').length > 5 || t.length > 180;
   const box = h('div', { class: 'desc' + (long ? '' : ' full') }, t);
   if (!long) return box;
-  const btn = h('button', { class: 'btn ghost sm', onclick: () => { const open = box.classList.toggle('full'); btn.textContent = open ? 'たたむ' : 'すべて表示'; } }, 'すべて表示');
+  const btn = h('button', { class: 'btn ghost sm', onclick: () => { const open = box.classList.toggle('full'); btn.textContent = open ? '▲ たたむ' : '▼ すべて表示'; } }, '▼ すべて表示');
   return h('div', {}, box, btn);
 }
 
@@ -220,7 +220,7 @@ function workCard(w, mine) {
   const head = h('div', { class: 'row between' },
     h('div', { class: 'row' }, sel,
       h('button', { class: `btn ghost sm star${isFavWork(w.key) ? ' on' : ''}`, 'aria-label': `${w.name}をお気に入りにする`, 'aria-pressed': isFavWork(w.key) ? 'true' : 'false', title: isFavWork(w.key) ? 'お気に入りから外す' : 'お気に入りにする', onclick: async () => { await setFavWorks([w.key], !isFavWork(w.key)); render(); } }, isFavWork(w.key) ? '★' : '☆'),
-      h('span', { class: 'item-title' }, w.name), formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
+      h('span', { class: 'item-title' }, w.name), w.type && w.type !== 'scenario' ? h('span', { class: 'badge plain' }, '素材・スキン') : formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
       mine ? h('span', { class: `badge ${mine.state === 'update' ? 'update' : 'ok'}` }, mine.state === 'update' ? `入っている版 ${mine.version}→${w.version}` : 'フォルダにあり') : null,
       hiddenHere ? h('span', { class: 'badge plain' }, '候補から外しています') : null,
       foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name))),
@@ -228,7 +228,7 @@ function workCard(w, mine) {
       h('button', { class: 'btn primary sm', disabled: !def, onclick: () => downloadWork(w) }, 'ダウンロード'),
       open ? h('button', { class: 'btn sm', onclick: () => editEntry({ work: w }) }, inOwn ? '編集' : '個人用カタログへ') : null,
       open ? h('button', { class: 'btn ghost sm', onclick: () => toggleHidden(w, !hiddenHere) }, hiddenHere ? '候補に戻す' : '候補から外す') : null,
-      compactView() ? h('button', { class: 'btn ghost sm', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) S.expanded.delete(w.key); else S.expanded.add(w.key); render(); } }, open ? 'たたむ' : 'くわしく') : null));
+      compactView() ? h('button', { class: 'btn ghost sm', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) S.expanded.delete(w.key); else S.expanded.add(w.key); render(); } }, open ? '▲ たたむ' : '▼ くわしく') : null));
   const meta = h('div', { class: 'meta' }, [w.author, `ver ${w.version}`, w.updated].filter(Boolean).join('・'),
     h('span', { class: 'row', style: 'display:inline-flex;margin-left:8px;gap:4px' }, w.refs.map((r) => h('span', { class: `badge src ${r.kind}` }, r.sourceName))));
   if (!open) return h('div', { class: `card work compact${hiddenHere ? ' hidden-work' : ''}` }, head, meta);
@@ -335,7 +335,7 @@ export function viewManage(open) {
     const n = S.sources.length;
     return h('div', { class: 'card row between manage-closed' },
       h('span', { class: 'small' }, `カタログ ${n}件（共用 ${S.sources.filter((s) => s.kind === 'shared').length}・個人用 ${S.sources.filter((s) => s.kind !== 'shared').length}）・候補に含めているもの ${S.sources.filter((s) => s.enabled).length}件`),
-      h('button', { class: 'btn sm', onclick: () => { S.manageOpen = true; render(); } }, 'カタログの管理'));
+      h('button', { class: 'btn sm', onclick: () => { S.manageOpen = true; render(); } }, '▼ カタログの管理'));
   }
   const shared = S.sources.filter((s) => s.kind === 'shared');
   const personal = S.sources.filter((s) => s.kind !== 'shared');
@@ -348,7 +348,7 @@ export function viewManage(open) {
     h('div', { class: 'row between' }, h('h2', { style: 'margin:0' }, 'カタログの管理'),
       h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: addCatalogDialog }, '＋ カタログを追加'),
-        S.combined ? h('button', { class: 'btn ghost sm', onclick: () => { S.manageOpen = false; render(); } }, 'たたむ') : null)),
+        S.combined ? h('button', { class: 'btn ghost sm', onclick: () => { S.manageOpen = false; render(); } }, '▲ たたむ') : null)),
     h('p', { class: 'small muted', style: 'margin:0' }, 'チェックを外したカタログの作品は、一覧・更新チェック・まとめてDLに出なくなります。'),
     section('共用カタログ', '作者さんが登録フォームから登録した作品のカタログです。', shared),
     section('個人用カタログ', '自分で作るカタログと、有志の方のDL一覧です。いくつでも持てます。', personal),
@@ -506,6 +506,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       author: h('input', { type: 'text', value: base.author || '' }),
       version: h('input', { type: 'text', class: 'ver', value: base.version || '' }),
       updated: h('input', { type: 'date', value: base.updated || '' }),
+      type: h('select', { 'aria-label': '種類' }, [['scenario', 'シナリオ'], ['material', '素材・スキン（シナリオではないもの）']].map(([k, l]) => h('option', { value: k, selected: ((base.type || 'scenario') === 'scenario' ? 'scenario' : 'material') === k ? 'selected' : null }, l))),
       format: h('select', {}, [['classic', 'クラシック（1.50・Next・Py）'], ['next', 'Next仕様'], ['wsn', 'Py仕様（WSN）']].map(([k, l]) => h('option', { value: k, selected: (base.format || 'classic') === k ? 'selected' : null }, l))),
       tags: h('input', { type: 'text', value: (base.tags || []).join('、'), placeholder: '探索、短編（「、」か「,」で区切る）' }),
       description: h('textarea', { rows: 4, style: 'width:100%' }),
@@ -560,7 +561,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       const format = f.format.value;
       const entry = {
         id: base.id && /^p\d+$/.test(base.id) ? base.id : 'p00000',
-        owner: base.owner || '', type: base.type || 'scenario', name, author: f.author.value.trim(), version: f.version.value.trim(),
+        owner: base.owner || '', type: f.type.value === 'scenario' ? 'scenario' : (base.type && base.type !== 'scenario' ? base.type : 'material'), name, author: f.author.value.trim(), version: f.version.value.trim(),
         updated: f.updated.value || '', format, wsn_version: format === 'wsn' ? base.wsn_version ?? null : null,
         compat: base.format === format && base.compat ? base.compat : COMPAT_BY_FORMAT[format], convert: base.convert || 'self',
         downloads: dls.filter((d) => d.url).map((d) => ({ label: d.label.trim(), url: d.url, kind: d.kind, status: statusOf(d.age, d.role), until: d.until, note: d.note.trim(), ...(d.dlkey ? { dlkey: d.dlkey } : {}) })),
@@ -580,7 +581,8 @@ export async function editEntry({ work = null, prefill = null } = {}) {
         h('label', { class: 'field' }, '作者', f.author),
         h('label', { class: 'field' }, 'バージョン', f.version),
         h('label', { class: 'field' }, '更新日', f.updated),
-        h('label', { class: 'field' }, '形式', f.format),
+        h('label', { class: 'field' }, '種類', f.type),
+        h('label', { class: 'field' }, '形式（シナリオのとき）', f.format),
         h('label', { class: 'field' }, 'タグ', f.tags)),
       h('label', { class: 'field' }, '紹介文', f.description),
       h('div', {}, h('div', { class: 'small muted' }, '紹介ページ（DLの前に見てもらう、作者さんのサイト・X・Misskeyなど）'), introBox),

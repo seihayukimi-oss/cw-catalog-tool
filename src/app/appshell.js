@@ -1,7 +1,7 @@
 // アプリ版（ポータブル版）だけの機能：
 //  ・文字の大きさ（Ctrl＋＋／Ctrl＋－／Ctrl＋0・Ctrl＋ホイール）と、F11で全画面
 //  ・起動したとき：前の版からの引き継ぎのお知らせ・更新の確認（設定でオン・オフ）・渡されたファイルやリンクを開く
-//  ・設定タブの「アプリの更新」「Windowsとのつなぎこみ」「ポータブル版について」
+//  ・設定タブの「アプリの更新」「Windows設定との連携」「ポータブル版について」
 
 import { S, render, busy, goTab, APP_VERSION, confirmBox } from './state.js';
 import { store } from './store.js';
@@ -139,7 +139,7 @@ export function viewAppSettings() {
         h('button', { class: 'btn sm', onclick: () => S.platform.toggleFullscreen() }, '全画面（F11）')),
       h('p', { class: 'small muted', style: 'margin:0' }, 'Ctrl＋＋／Ctrl＋－／Ctrl＋マウスホイールでも変えられます（Ctrl＋0で元の大きさ）。窓の大きさと位置は、次に起動したときも同じになります。')),
 
-    h('h2', {}, 'Windowsとのつなぎこみ'),
+    h('h2', {}, 'Windows設定との連携'),
     viewAssoc(),
 
     h('h2', {}, 'ポータブル版について'),
@@ -147,7 +147,7 @@ export function viewAppSettings() {
       S.portable ? h('p', { style: 'margin:0' }, `記録の置き場所：${S.portable.dataDir}`) : null,
       h('ul', { style: 'margin:0;padding-left:1.2em' },
         h('li', {}, 'インストールは要りません。CWCatalog.exe と、横にできる「CWCatalog-data」フォルダ（設定・記録・アプリ内ブラウザのログイン状態）で全部です。'),
-        h('li', {}, 'やめるときは、上の「Windowsとのつなぎこみ」を登録していたら「登録を外す」を押してから、フォルダごと消してください。'),
+        h('li', {}, 'アプリを削除するときは、上の「Windows設定との連携」を登録していたら「登録を外す」を押してから、フォルダごと消してください。'),
         h('li', {}, '人に渡すときは、CWCatalog.exe だけを渡してください（CWCatalog-data にはログインの状態も入っています）。'),
         h('li', {}, '「C:\\Program Files」の中には置かないでください（Windowsの決まりで、記録の保存や更新ができません）。'))));
 }
