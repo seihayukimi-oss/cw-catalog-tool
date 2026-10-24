@@ -29,6 +29,9 @@ jobs:
       - run: npm ci
       - run: npm test
 
+      # Rust 側の試験の前に画面を作っておく（アプリに埋め込むため）
+      - run: npm run build
+
       - name: Rust 側の試験
         working-directory: src-tauri
         shell: bash
