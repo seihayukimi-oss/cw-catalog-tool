@@ -12,11 +12,11 @@ const OUT = process.argv[2] || '.';
 const exe = readdirSync('/opt/pw-browsers').filter((d) => d.startsWith('chromium-')).flatMap((d) => [`/opt/pw-browsers/${d}/chrome-linux64/chrome`, `/opt/pw-browsers/${d}/chrome-linux/chrome`]).find(existsSync);
 
 const html = readFileSync('dist/web/cw-catalog.html');
-// 配布ページの見本（Shift_JISの個人サイトを想定）。zipへの相対リンクと、斧へのリンク、関係ないリンクを置く
+// 配布ページの見本（Shift_JISの個人サイトを想定）。zipへの相対リンクと、uploader.jp へのリンク、関係ないリンクを置く
 const sjis = new TextDecoder('shift_jis');
 const pageHtml = Buffer.from(`<html><head><meta charset="Shift_JIS"><title>開けられた鳥籠 - 見本サイト</title></head><body>
   <a href="files/dl.zip">開けられた鳥籠ver1_01.zip</a>
-  <a href="https://ux.getuploader.com/seiha_yukimiCW/download/12">斧の配布ページ</a>
+  <a href="https://ux.getuploader.com/seiha_yukimiCW/download/12">uploader.jp の配布ページ</a>
   <a href="/about">作者について</a></body></html>`, 'utf8');
 const pageSjis = new Uint8Array(await (await import('node:child_process')).execFileSync('iconv', ['-f', 'utf-8', '-t', 'cp932'], { input: pageHtml }));
 const server = createServer((req, res) => {
@@ -28,7 +28,7 @@ const server = createServer((req, res) => {
   if (req.url === '/page.html') { res.setHeader('content-type', 'text/html'); return res.end(pageSjis); }
   if (req.url === '/multi.html') { res.setHeader('content-type', 'text/html; charset=utf-8'); return res.end('<html><head><title>まとめ置き場</title></head><body><a href="files/dl.zip">鳥籠.zip</a> <a href="files/alice.wsn">アリス.wsn</a> <a href="/about">作者について</a></body></html>'); }
   if (req.url === '/files/alice.wsn') { res.setHeader('content-type', 'application/octet-stream'); return res.end(readFileSync(join(FX, 'alice.wsn'))); }
-  // 斧アップローダーと同じ流れの見本：①同意ボタンのページ（Cookieと合言葉）→ ②本物のリンクと自動移動 → ③ファイル
+  // uploader.jpと同じ流れの見本：①同意ボタンのページ（Cookieと合言葉）→ ②本物のリンクと自動移動 → ③ファイル
   if (req.url === '/axe/download/12' && req.method === 'GET') {
     res.setHeader('set-cookie', 'uploader=sess123; Path=/');
     res.setHeader('content-type', 'text/html; charset=UTF-8');
@@ -44,7 +44,7 @@ const server = createServer((req, res) => {
       res.end(ok ? `<html><head><meta http-equiv="refresh" content="6;URL=/axe/g/tok-42/12/%E9%B3%A5%E7%B1%A0.zip"></head><body><a href="/axe/g/tok-42/12/%E9%B3%A5%E7%B1%A0.zip">Download Now</a></body></html>` : '<p>エラー</p>');
     });
   }
-  // DLキー → 同意 → ファイル の2段階（斧のDLキー付きと同じ流れの見本）
+  // DLキー → 同意 → ファイル の2段階（uploader.jp のDLキー付きと同じ流れの見本）
   if (req.url === '/keyup/6' && req.method === 'GET') {
     res.setHeader('set-cookie', 'ku=s1; Path=/');
     res.setHeader('content-type', 'text/html; charset=UTF-8');
@@ -179,16 +179,16 @@ async function run(colorScheme, width) {
   await page.locator('.item-title', { hasText: '開けられた鳥籠ver1_01.zip' }).waitFor();
   ok('URLから取ってきたzipを分析（ファイル名も取得）', true);
   if (width > 600) await page.screenshot({ path: join(OUT, `url-${colorScheme}.png`), fullPage: true });
-  // 斧のページは自動で取らずにページを開く
+  // uploader.jp のページは自動で取らずにページを開く
   const [pop1] = await Promise.all([page.waitForEvent('popup'), (async () => { await page.locator('#url-in').fill('https://ux.getuploader.com/seiha_yukimiCW/download/12'); await page.locator('#url-in').press('Enter'); })()]);
   await pop1.close();
-  ok('斧のページは注意を出してページを開く', await page.getByText(/2026年11月25日/).first().isVisible());
+  ok('uploader.jp のページは注意を出してページを開く', await page.getByText(/2026年11月25日/).first().isVisible());
   // 許可を出していない別サイト → ページを開く
   const [pop2] = await Promise.all([page.waitForEvent('popup'), (async () => { await page.locator('#url-in').fill('http://localhost:8768/x.zip'); await page.locator('#url-in').press('Enter'); })()]);
   await pop2.close();
   ok('読み込めないサイトは説明してページを開く', await page.getByText(/ブラウザから直接読み込めない設定/).isVisible());
 
-  // 6b2. 同意してダウンロード（斧と同じ流れの見本）
+  // 6b2. 同意してダウンロード（uploader.jp と同じ流れの見本）
   await page.locator('#url-in').fill('http://localhost:8767/axe/download/12');
   await page.locator('#url-in').press('Enter');
   await page.getByText('このページは、内容に同意してからダウンロードする形式です').waitFor();
@@ -275,7 +275,7 @@ async function run(colorScheme, width) {
   await page.getByRole('button', { name: '＋ カタログを追加' }).click();
   await page.getByRole('button', { name: 'サンプルを入れる' }).click();
   await page.getByText('サンプルの森').first().waitFor();
-  ok('サンプルカタログ表示（旧・終了の配布元）', await page.getByText('斧アップローダー（移転前）').isVisible());
+  ok('サンプルカタログ表示（旧・終了の配布元）', await page.getByText('uploader.jp（移転前）').isVisible());
   ok('DL先に新旧・通常予備・デフォルトの印', (await page.locator('.dl li', { hasText: 'GitHub Releases' }).getByText('★デフォルト').count()) === 1 && (await page.locator('.dl li', { hasText: '作者サイト' }).first().getByText('予備').count()) === 1);
 
   // 7b. 個人用カタログに作品を登録（デフォルトのDL先は取れないURL・紹介ページつき）
@@ -290,7 +290,7 @@ async function run(colorScheme, width) {
       await dlg.getByRole('button', { name: '＋DL先' }).click();
       const row = dlg.locator('.edit-dl').nth(i);
       await row.getByLabel('DL先のURL').fill(d.url);
-      await row.getByPlaceholder('名前（例：作者サイト、斧）').fill(d.label);
+      await row.getByPlaceholder('名前（例：作者サイト、uploader.jp）').fill(d.label);
       await row.getByLabel('種類').selectOption(d.kind);
       if (d.def) await row.getByLabel('デフォルト').check();
       if (d.dlkey) await row.getByLabel('DLキー').fill(d.dlkey);
@@ -304,7 +304,7 @@ async function run(colorScheme, width) {
     { url: 'http://localhost:8767/missing.zip', label: '旧サイト', kind: 'direct', def: true },
     { url: 'http://localhost:8767/files/dl.zip', label: '新サイト', kind: 'direct' },
   ], 'http://localhost:8767/intro.html');
-  await addWork('鳥籠の斧版', [{ url: 'http://localhost:8767/axe/download/12', label: '斧', kind: 'page' }]);
+  await addWork('鳥籠のuploader版', [{ url: 'http://localhost:8767/axe/download/12', label: 'uploader.jp', kind: 'page' }]);
   const birdCard = page.locator('.card.work', { has: page.locator('.item-title', { hasText: /^開けられた鳥籠$/ }) });
   ok('個人用の作品に★デフォルト（選んだDL先）', (await birdCard.locator('.dl li', { hasText: '旧サイト' }).getByText('★デフォルト').count()) === 1);
 
@@ -329,13 +329,13 @@ async function run(colorScheme, width) {
   // 8. 選んでまとめてDL：1つ目はデフォルトが取れず別の配布元から、2つ目は同意ページで操作待ち
   await page.getByRole('tab', { name: 'カタログ' }).click();
   await page.getByLabel('開けられた鳥籠を選ぶ').check();
-  await page.getByLabel('鳥籠の斧版を選ぶ').check();
+  await page.getByLabel('鳥籠のuploader版を選ぶ').check();
   await page.locator('.sel-actions').getByRole('button', { name: 'まとめてDL' }).click();
   await page.getByText('デフォルトのDL先を変えますか？').waitFor();
   ok('取れなかったら別の配布元から取り、デフォルトを変えるか聞く', await page.locator('dialog').getByText('旧サイト → 新サイト').isVisible());
   await page.getByRole('button', { name: '選んだものを変更する' }).click();
   const bItems = page.locator('#batch .batch-item');
-  const bird = bItems.filter({ hasText: /^開けられた鳥籠/ }), axe = bItems.filter({ hasText: '鳥籠の斧版' });
+  const bird = bItems.filter({ hasText: /^開けられた鳥籠/ }), axe = bItems.filter({ hasText: '鳥籠のuploader版' });
   ok('直接DLは自動で準備OK', await bird.getByText('準備OK').isVisible());
   ok('同意ページは操作待ち', await axe.getByText('操作待ち', { exact: true }).isVisible());
   if (width > 600) await page.screenshot({ path: join(OUT, `batch-${colorScheme}.png`), fullPage: true });
@@ -355,7 +355,7 @@ async function run(colorScheme, width) {
 
   // 8b. DLキーを登録した作品は、同意を覚えているサイトなら止まらずに取れる
   await page.getByRole('tab', { name: 'カタログ' }).click();
-  await addWork('水の都', [{ url: 'http://localhost:8767/keyup/6', label: 'おまけ斧', kind: 'page', dlkey: 'mizu' }]);
+  await addWork('水の都', [{ url: 'http://localhost:8767/keyup/6', label: 'おまけuploader', kind: 'page', dlkey: 'mizu' }]);
   ok('DLキーありの印', await page.locator('.card.work', { hasText: '水の都' }).getByText('DLキーあり').isVisible());
   await page.getByLabel('水の都を選ぶ').check();
   await page.locator('.sel-actions').getByRole('button', { name: 'まとめてDL' }).click();
@@ -375,7 +375,7 @@ async function run(colorScheme, width) {
   // 9b. 選んでフォルダに入れる・作者ごとにまとめる・選んで候補から外す
   await page.getByLabel('候補から外したものも表示').uncheck();
   await page.getByLabel('開けられた鳥籠を選ぶ').check();
-  await page.getByLabel('鳥籠の斧版を選ぶ').check();
+  await page.getByLabel('鳥籠のuploader版を選ぶ').check();
   await page.locator('.sel-actions').getByRole('button', { name: 'フォルダに入れる' }).click();
   await page.locator('dialog input[type=text]').fill('鳥籠シリーズ');
   await page.getByRole('button', { name: '新しく作って入れる' }).click();

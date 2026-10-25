@@ -79,7 +79,7 @@ const sameSite = (a, b) => a.split('.').slice(-2).join('.') === b.split('.').sli
 
 /**
  * 配布元から取ってくる（アプリ側で通信して、中身は一時ファイル経由で受け取る）。
- * 日本語のファイル名を見出しにそのまま入れてくるサイト（Googleドライブなど）でも止まらない。
+ * 日本語のファイル名を見出しにそのまま入れてくるサイト（Google ドライブなど）でも止まらない。
  */
 // 進み具合の知らせ（アプリ側から来る）を、頼んだ通信ごとに振り分ける
 let progSeq = 0;
@@ -247,7 +247,7 @@ export const platform = {
           } catch (e) { reject(e); }
         }),
         listen('cw-download-closed', () => { if (!done) { done = true; cleanup(); resolve(null); } }),
-        // Googleドライブの「ダウンロード」は、アプリ内ブラウザでは受け取らず、アドレスだけもらって直接取る
+        // Google ドライブの「ダウンロード」は、アプリ内ブラウザでは受け取らず、アドレスだけもらって直接取る
         listen('cw-download-url', (ev) => { if (!done) { done = true; cleanup(); resolve({ directUrl: ev.payload?.url || '' }); } }),
       ]).then(async (fns) => {
         off = fns;

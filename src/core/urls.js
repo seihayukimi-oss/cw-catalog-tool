@@ -1,12 +1,12 @@
 // 配布元のURLの見分け方：
 //  ・期限付きのURL（Notionの添付・Discordの添付・署名付きのS3など）→ しばらくすると使えなくなる
-//  ・Googleドライブ・OneDrive の共有リンク → 直接DLのURLに直して取る
+//  ・Google ドライブ・OneDrive の共有リンク → 直接DLのURLに直して取る
 //  ・ログインやページの操作が要るサイト（BOOTH・Privatter+・Notion・note）→ アプリ内ブラウザで本人が押す
 
 const host = (u) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ''; } };
 const is = (h, d) => h === d || h.endsWith(`.${d}`);
 
-/** Googleドライブのファイル・フォルダのID */
+/** Google ドライブのファイル・フォルダのID */
 export function driveId(url) {
   let u;
   try { u = new URL(url); } catch { return null; }
@@ -88,9 +88,9 @@ export function inAppSite(url) {
  */
 export function fetchUrlFor(url) {
   const d = driveId(url);
-  // confirm=t：大きいファイルで出る「ウイルススキャンできません」の確認を飛ばす（Googleドライブの仕様）
-  if (d?.kind === 'file') return { url: `https://drive.usercontent.google.com/download?id=${d.id}&export=download&confirm=t`, note: 'Googleドライブ' };
-  if (d?.kind === 'folder') return { url: `https://drive.google.com/embeddedfolderview?id=${d.id}`, note: 'Googleドライブのフォルダ' };
+  // confirm=t：大きいファイルで出る「ウイルススキャンできません」の確認を飛ばす（Google ドライブの仕様）
+  if (d?.kind === 'file') return { url: `https://drive.usercontent.google.com/download?id=${d.id}&export=download&confirm=t`, note: 'Google ドライブ' };
+  if (d?.kind === 'folder') return { url: `https://drive.google.com/embeddedfolderview?id=${d.id}`, note: 'Google ドライブのフォルダ' };
   if (oneDriveKind(url) === 'share') return { url: `https://api.onedrive.com/v1.0/shares/u!${b64url(url)}/root/content`, note: 'OneDrive' };
   return { url };
 }
@@ -114,8 +114,8 @@ export function urlAdvice(url, now = new Date()) {
   if (oneDriveKind(url) === 'private') return { level: 'warn', text: 'これは、OneDriveを持っている本人が見ているときのアドレスで、他の人は開けません。OneDriveの「共有」→「リンクのコピー」で出るリンクを登録してください。' };
   if (oneDriveKind(url) === 'share') return { level: 'info', text: 'OneDriveの共有リンクです。取れないときは、アプリ内ブラウザで開いて「ダウンロード」を押す形になります。' };
   const d = driveId(url);
-  if (d?.kind === 'file') return { level: 'info', text: 'Googleドライブのファイルです。直接DLのURLに直して取ります（「直接DL」にしておくと、サイトを開かずに取れます）。' };
-  if (d?.kind === 'folder') return { level: 'info', text: 'Googleドライブのフォルダです。DLのときは、中のファイルを一覧にして選びます。' };
+  if (d?.kind === 'file') return { level: 'info', text: 'Google ドライブのファイルです。直接DLのURLに直して取ります（「直接DL」にしておくと、サイトを開かずに取れます）。' };
+  if (d?.kind === 'folder') return { level: 'info', text: 'Google ドライブのフォルダです。DLのときは、中のファイルを一覧にして選びます。' };
   const ia = inAppSite(url);
   if (ia) return { level: 'info', text: `${ia.why}。DLのときは、アプリ内ブラウザで開いて本人が押す形になります（HTML版ではページを開くだけになります）。` };
   return null;

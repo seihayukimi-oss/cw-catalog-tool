@@ -278,7 +278,7 @@ test('ファイル名の取り出しと、終了するサイトの注意', () =>
 
 import { extractDownloadForms, metaRefreshUrl, pageText } from '../src/core/weblink.js';
 
-// 斧アップローダーと同じ形の見本（実際のページの構造を確かめて作ったもの。中身は架空）
+// uploader.jpと同じ形の見本（実際のページの構造を確かめて作ったもの。中身は架空）
 const AXE_1 = `<html><body><nav><a href="/x/ranking">ランキング</a></nav>
   <form><input class="form-control" value="https://uu.example-uploader.com/x/download/12" readonly></form>
   <p>ファイルをダウンロードするには「ダウンロード」ボタンを押下してください。利用規約に同意したものとみなします。</p>
@@ -291,7 +291,7 @@ const AXE_1 = `<html><body><nav><a href="/x/ranking">ランキング</a></nav>
 const AXE_2 = `<html><head><meta http-equiv="refresh" content="6;URL=https://downloadx.example-uploader.com/g/6adb7ba6/x/12/%E9%B3%A5.zip"></head>
   <body><a href="https://downloadx.example-uploader.com/g/6adb7ba6/x/12/%E9%B3%A5.zip">Download Now</a></body></html>`;
 
-test('同意ページのダウンロードフォームを読み取る（斧と同じ形）', () => {
+test('同意ページのダウンロードフォームを読み取る（uploader.jp と同じ形）', () => {
   const forms = extractDownloadForms(AXE_1, 'https://ux.example-uploader.com/x/download/12');
   assert.equal(forms.length, 1, '翻訳ボタンなど別サイト行きのフォームは除く');
   assert.deepEqual(forms[0], {

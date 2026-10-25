@@ -90,7 +90,7 @@ export function siteNotice(url) {
   let host = '';
   try { host = new URL(url).hostname; } catch { return ''; }
   if (/(^|\.)getuploader\.com$|(^|\.)uploader\.jp$/.test(host)) {
-    return '斧アップローダー（uploader.jp）は 2026年11月25日 23:59 で終了し、ファイルも削除されます。作者さんには、引っ越し先の案内をお願いしたいところです。';
+    return 'uploader.jpは 2026年11月25日 23:59 で終了し、ファイルも削除されます。作者さんには、引っ越し先の案内をお願いしたいところです。';
   }
   return '';
 }
@@ -103,7 +103,7 @@ const attr = (tag, name) => {
 };
 
 /**
- * ページの中の「ダウンロード」ボタン付きフォームを探す（斧アップローダーなどの同意ページ）。
+ * ページの中の「ダウンロード」ボタン付きフォームを探す（uploader.jpなどの同意ページ）。
  * 送信はしない。何を送るかを並べるだけ。
  * @returns {{action: string, method: 'GET'|'POST', fields: [string, string][], label: string, inputs: {name: string, type: string, label: string}[]}[]}
  */
@@ -193,7 +193,7 @@ export function parseOgp(html, baseUrl) {
 }
 
 /**
- * Googleドライブの「フォルダの中身だけの軽いページ」（embeddedfolderview）から、ファイルの一覧を取り出す
+ * Google ドライブの「フォルダの中身だけの軽いページ」（embeddedfolderview）から、ファイルの一覧を取り出す
  * @returns {{url: string, text: string, kind: 'file'|'page'}[]}
  */
 export function extractDriveFolder(html) {

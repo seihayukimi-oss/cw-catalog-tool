@@ -1,6 +1,6 @@
 // 作品を取ってくる：URLから／配布ページから（同意・DLキー・アプリ内ブラウザ）／カタログの配布元から。
 // 配布元が複数あるときは、デフォルトのDL先 → 現役 → 予備 → 旧 の順に試す。
-//  ・Googleドライブ・OneDrive の共有リンクは、直接DLのURLに直して取る
+//  ・Google ドライブ・OneDrive の共有リンクは、直接DLのURLに直して取る
 //  ・BOOTH・note・Notion・Privatter+ などは、アプリ内ブラウザで本人が押す
 //  ・同意やDLキーのページは、ツールの画面で同意してもらう（2段階のページにも対応）。サイトごとに「同意を覚える」こともできる
 
@@ -42,7 +42,7 @@ export async function fetchOnce(url, opts, ctx = {}) {
     try { r = await S.platform.fetchResource(next, { headers: { Referer: r.finalUrl || url }, ...(ctx.onProgress ? { onProgress: ctx.onProgress } : {}) }); } catch (e) { return { kind: 'error', url, message: `ワンタイムURLのページをたどれませんでした：${e.message}` }; }
     res = classify(r, url);
   }
-  // Googleドライブの「大きいのでウイルススキャンできません。それでもダウンロードしますか？」は、作者さんの規約ではないので、そのまま進む
+  // Google ドライブの「大きいのでウイルススキャンできません。それでもダウンロードしますか？」は、作者さんの規約ではないので、そのまま進む
   if (res.kind === 'page' && /(^|\.)drive\.usercontent\.google\.com$/.test(hostOf(r.finalUrl)) && res.st.forms.length) {
     const r2 = await submitForm(res.st.forms[0], {}, r.finalUrl).catch(() => null);
     const c2 = r2 && classify(r2, url);
@@ -50,11 +50,11 @@ export async function fetchOnce(url, opts, ctx = {}) {
   }
   if (res.kind === 'page') {
     res.st.dl = ctx.dl || null;
-    // Googleドライブのフォルダは、中のファイルを並べる
+    // Google ドライブのフォルダは、中のファイルを並べる
     if (driveId(url)?.kind === 'folder') {
       res.st.links = extractDriveFolder(res.st.html || '');
       res.st.forms = [];
-      res.st.title = res.st.title || 'Googleドライブのフォルダ';
+      res.st.title = res.st.title || 'Google ドライブのフォルダ';
       res.st.folder = true;
     }
     delete res.st.html;
@@ -290,8 +290,8 @@ export async function inAppDownload(url, hd, why = '') {
   const got = await busy('アプリ内ブラウザで待っています', () => S.platform.openInAppBrowser(url));
   if (!got) return;
   if (got.directUrl) {
-    // Googleドライブのダウンロードは、アプリ内ブラウザでは受け取らずに、ここから直接取る
-    toast('Googleドライブのファイルなので、アプリから直接取ってきます');
+    // Google ドライブのダウンロードは、アプリ内ブラウザでは受け取らずに、ここから直接取る
+    toast('Google ドライブのファイルなので、アプリから直接取ってきます');
     return fetchFromUrl(got.directUrl, null, hd);
   }
   if (!archiveKind(got.bytes)) { toast(`${got.fileName} はzip・wsn などのファイルではないようです`, { bad: true }); return; }
@@ -334,14 +334,14 @@ export function viewAgree(st, hd) {
       S.platform.kind === 'web' ? h('span', { class: 'small muted' }, '※ HTML版では、多くのサイトでブラウザの制限により送信できません（アプリ版なら取れます）') : null));
 }
 
-/** フォルダの中を移動する（Googleドライブのフォルダ）。戻る・進むができるように、たどった順を覚えておく */
+/** フォルダの中を移動する（Google ドライブのフォルダ）。戻る・進むができるように、たどった順を覚えておく */
 async function openSubFolder(st, link) {
   const res = await busy('フォルダを開いています', () => fetchOnce(link.url));
   if (!res) return;
   if (res.kind !== 'page' || !res.st.folder) { toast('フォルダを開けませんでした', { bad: true }); return; }
   const nav = st.nav || (st.nav = { list: [{ url: st.url, title: st.title, links: st.links }], at: 0 });
   nav.list = nav.list.slice(0, nav.at + 1);
-  nav.list.push({ url: link.url, title: res.st.title && res.st.title !== 'Googleドライブのフォルダ' ? res.st.title : link.text, links: res.st.links });
+  nav.list.push({ url: link.url, title: res.st.title && res.st.title !== 'Google ドライブのフォルダ' ? res.st.title : link.text, links: res.st.links });
   goNav(st, nav.list.length - 1);
 }
 function goNav(st, i) {
@@ -353,7 +353,7 @@ function goNav(st, i) {
   render();
 }
 
-/** 同時に何件かずつ処理する（Googleドライブなどで、たくさんのファイルを速く取るため） */
+/** 同時に何件かずつ処理する（Google ドライブなどで、たくさんのファイルを速く取るため） */
 async function eachParallel(list, n, fn) {
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => {
@@ -362,7 +362,7 @@ async function eachParallel(list, n, fn) {
 }
 const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 80) || '無題';
 
-/** Googleドライブのフォルダの中を、下のフォルダまでたどってファイルを並べる（path＝フォルダの中での場所） */
+/** Google ドライブのフォルダの中を、下のフォルダまでたどってファイルを並べる（path＝フォルダの中での場所） */
 async function listFolderTree(st, onStep) {
   const out = [];
   const seen = new Set();

@@ -601,7 +601,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
           h('button', { type: 'button', class: 'btn ghost sm', 'aria-label': '消す', onclick: () => { dls.splice(n, 1); drawDls(); } }, '×')),
         showAdvice(adv, d.url),
         h('div', { class: 'row small' },
-          h('input', { type: 'text', value: d.label, placeholder: '名前（例：作者サイト、斧）', style: 'width:11em', oninput: (ev) => { d.label = ev.target.value; } }),
+          h('input', { type: 'text', value: d.label, placeholder: '名前（例：作者サイト、uploader.jp）', style: 'width:11em', oninput: (ev) => { d.label = ev.target.value; } }),
           sel({ page: '配布ページ', direct: '直接DL（zipそのもの）', list: 'ファイル一覧（アップローダーなど）' }, d.kind, (x) => { d.kind = x; drawDls(); }, '種類'),
           d.kind === 'list' ? h('input', { type: 'text', value: d.match, placeholder: '一覧で探す名前（空なら作品名）', style: 'width:13em', 'aria-label': '一覧で探す名前', oninput: (ev) => { d.match = ev.target.value; } }) : null,
           sel({ new: '新（今の配布先）', old: '旧（移転済み）', closed: '終了' }, d.age, (x) => { d.age = x; }, '新旧'),
@@ -671,7 +671,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
   });
 }
 
-/** DL先のURLについての注意（期限付き・OneDrive・Googleドライブ・アプリ内で押すサイト） */
+/** DL先のURLについての注意（期限付き・OneDrive・Google ドライブ・アプリ内で押すサイト） */
 function showAdvice(box, url) {
   const a = urlAdvice(url);
   box.className = a ? `small note ${a.level === 'warn' ? 'warn' : ''}` : '';
