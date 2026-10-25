@@ -1,6 +1,6 @@
 [package]
 name = "cw-catalog"
-version = "0.3.0"
+version = "0.4.0"
 description = "CardWirth シナリオの一括DL・インストール・更新チェックツール"
 license = "MIT"
 edition = "2021"

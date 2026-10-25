@@ -391,3 +391,32 @@ function parseHeader(r, d) {
 export function read7z(d) {
   return readArchive(d);
 }
+
+/**
+ * 7zの目次だけを、ファイルの一部を読みながら取り出す（中身は展開しない）。
+ * @param {(start: number, end: number) => Promise<Uint8Array>} get ファイルの start〜end（end を含む）を読む
+ * @returns {Promise<{name: string, size: number}[]>}
+ */
+export async function list7zParts(get) {
+  const top = await get(0, 31);
+  if (!looksLike7z(new Uint8Array([...top, 0]))) throw new SevenZipError('7zファイルではないようです');
+  const nextOff = u64(top, 12), nextSize = u64(top, 20), nextCrc = u32(top, 28);
+  if (nextSize > 16 * 1024 * 1024) throw new SevenZipError('7zの目次が大きすぎます');
+  let header = await get(32 + nextOff, 32 + nextOff + nextSize - 1);
+  if (header.length !== nextSize || crc32(header) !== nextCrc) throw new SevenZipError('7zの目次が壊れています（CRC不一致）');
+  for (let guard = 0; guard < 4; guard++) {
+    const r = new Reader(header);
+    const id = r.num();
+    if (id === ID.Header) return parseHeader(r, null).entries.map((e) => ({ name: e.name, size: e.size }));
+    if (id !== ID.EncodedHeader) throw new SevenZipError('7zの目次が読めません');
+    const si = readStreamsInfo(r);
+    const f = si.folders[0];
+    if (!f || !si.pack) throw new SevenZipError('7zの目次が読めません');
+    const sizes = si.pack.sizes.slice(0, f.packed.length);
+    const sum = sizes.reduce((a, b) => a + b, 0);
+    if (sum > 16 * 1024 * 1024) throw new SevenZipError('7zの目次が大きすぎます');
+    const packed = await get(32 + si.pack.packPos, 32 + si.pack.packPos + sum - 1);
+    header = decodeFolder(packed, f, 0, sizes);
+  }
+  throw new SevenZipError('7zの目次が読めません');
+}

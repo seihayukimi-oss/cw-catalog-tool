@@ -3,7 +3,7 @@
 // UTF-8フラグを確実に取る。展開（DEFLATE）だけ fflate に任せる。
 // ネットから来たzipは信用しない前提で、サイズ・件数・パスを全部検査する。
 
-import { inflateSync, zipSync } from 'fflate';
+import { inflateSync, zipSync, Inflate } from 'fflate';
 import { decodeZipName } from './text.js';
 
 export const LIMITS = {
@@ -84,12 +84,18 @@ export function safeRelativePath(path) {
   return parts.length ? parts.join('/') : null;
 }
 
+/** 後ろの一部だけでは目次が足りないとき（どこから読めばよいかを持つ） */
+export class ZipNeedMore extends ZipError {
+  constructor(from) { super('zipの目次がもっと前から始まっています'); this.from = from; }
+}
+
 /**
  * zipを読み、エントリの一覧を返す（中身はまだ展開しない）。
  * @param {Uint8Array} d
+ * @param {number} base d がファイルのどこから始まるか（後ろの一部だけを読んだとき。中身は展開できない）
  * @returns {{entries: ZipEntry[], warnings: string[]}}
  */
-export function readZip(d, limits = LIMITS) {
+export function readZip(d, limits = LIMITS, base = 0) {
   const warnings = [];
   const eocd = findEocd(d);
   let count = u16(d, eocd + 10);
@@ -99,19 +105,22 @@ export function readZip(d, limits = LIMITS) {
   // ZIP64
   if (count === 0xffff || cdOffset === 0xffffffff || cdSize === 0xffffffff) {
     const loc = eocd - 20;
+    if (loc < 0 && base > 0) throw new ZipNeedMore(Math.max(0, base - 64 * 1024));
     if (loc < 0 || u32(d, loc) !== SIG_EOCD64_LOC) throw new ZipError('ZIP64の情報が壊れています');
     const e64 = u64(d, loc + 8);
-    if (e64 + 56 > d.length || u32(d, e64) !== SIG_EOCD64) throw new ZipError('ZIP64の情報が壊れています');
-    count = u64(d, e64 + 32);
-    cdSize = u64(d, e64 + 40);
-    cdOffset = u64(d, e64 + 48);
+    if (e64 < base) throw new ZipNeedMore(e64);
+    if (e64 - base + 56 > d.length || u32(d, e64 - base) !== SIG_EOCD64) throw new ZipError('ZIP64の情報が壊れています');
+    count = u64(d, e64 - base + 32);
+    cdSize = u64(d, e64 - base + 40);
+    cdOffset = u64(d, e64 - base + 48);
   }
   if (count > limits.maxEntries) throw new ZipError(`ファイル数が多すぎます（${count}件）`);
-  if (cdOffset + cdSize > d.length) throw new ZipError('zipの目次が壊れています');
+  if (cdOffset < base) throw new ZipNeedMore(cdOffset);
+  if (cdOffset - base + cdSize > d.length) throw new ZipError('zipの目次が壊れています');
 
   const entries = [];
   let total = 0;
-  let p = cdOffset;
+  let p = cdOffset - base;
   const seen = new Set();
   for (let i = 0; i < count; i++) {
     if (p + 46 > d.length || u32(d, p) !== SIG_CEN) throw new ZipError('zipの目次が壊れています');
@@ -168,7 +177,7 @@ export function readZip(d, limits = LIMITS) {
     total += usize;
     if (total > limits.maxTotalUncompressed) throw new ZipError('展開後のサイズが大きすぎます');
 
-    entries.push(new ZipEntry(d, { path: safe, originalName: name, utf8Flag, method, crc, csize, usize, localOffset }));
+    entries.push(new ZipEntry(base ? null : d, { path: safe, originalName: name, utf8Flag, method, crc, csize, usize, localOffset }));
   }
   return { entries, warnings };
 }
@@ -180,9 +189,37 @@ export class ZipEntry {
     this.size = info.usize;
   }
 
+  /** 圧縮されたままの中身 */
+  _comp() {
+    const d = this._d;
+    if (!d) throw new ZipError('目次だけを読んだので、中身はまだありません');
+    const o = this.localOffset;
+    if (o + 30 > d.length || u32(d, o) !== SIG_LOC) throw new ZipError(`zipの中身が壊れています（${this.path}）`);
+    const start = o + 30 + u16(d, o + 26) + u16(d, o + 28);
+    if (start + this.csize > d.length) throw new ZipError(`zipの中身が壊れています（${this.path}）`);
+    return d.subarray(start, start + this.csize);
+  }
+
+  /** 中身の頭だけを取り出す（全部は展開しない。実行ファイルかどうかを見るため） */
+  head(n = 16) {
+    const comp = this._comp();
+    if (this.method === 0) return comp.slice(0, n);
+    const parts = [];
+    let got = 0;
+    const inf = new Inflate((chunk) => { if (got < n) { parts.push(chunk); got += chunk.length; } });
+    try {
+      for (let o = 0; o < comp.length && got < n; o += 4096) inf.push(comp.subarray(o, o + 4096), o + 4096 >= comp.length);
+    } catch { return new Uint8Array(0); }
+    const out = new Uint8Array(Math.min(n, got));
+    let o = 0;
+    for (const c of parts) { if (o >= out.length) break; out.set(c.subarray(0, out.length - o), o); o += c.length; }
+    return out;
+  }
+
   /** 中身を展開して返す（CRCとサイズも検証する） */
   read() {
     const d = this._d;
+    if (!d) throw new ZipError('目次だけを読んだので、中身はまだありません');
     const o = this.localOffset;
     if (o + 30 > d.length || u32(d, o) !== SIG_LOC) throw new ZipError(`zipの中身が壊れています（${this.path}）`);
     const start = o + 30 + u16(d, o + 26) + u16(d, o + 28);

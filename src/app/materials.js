@@ -232,7 +232,8 @@ export function viewMaterialInstall(o) {
     statusEl.replaceChildren(...[h('span', {}, ds.text), openBtn(ds.baseRef, '置き場所を開く')].filter(Boolean));
   };
   const nameIn = h('input', { type: 'text', id: 'mat-name', value: m.name, 'aria-label': 'フォルダ名', oninput: (ev) => { m.name = ev.target.value; upd(); } });
-  const asArc = h('input', { type: 'checkbox', checked: m.asArc, 'aria-label': 'zipのまま置く', onchange: (ev) => { m.asArc = ev.target.checked; pick.hidden = m.asArc; upd(); } });
+  if (o.execExcluded) m.asArc = false; // 実行ファイル入りのzipは、そのままは置かない
+  const asArc = h('input', { type: 'checkbox', checked: m.asArc, disabled: !!o.execExcluded, title: o.execExcluded ? '実行ファイルが入っているので、zipのままは置けません' : null, 'aria-label': 'zipのまま置く', onchange: (ev) => { m.asArc = ev.target.checked; pick.hidden = m.asArc; upd(); } });
   const pick = filePicker(o, m);
   pick.hidden = m.asArc;
   const cp = toEngine ? null : catPicker({
@@ -270,7 +271,7 @@ export function viewMaterialInstall(o) {
         },
       }, toEngine ? `${engine(m.to)?.name} に入れる` : `${k.place}に入れる`),
       h('span', { class: 'small muted' }, [
-        st?.keepZip && S.archive.ref && !m.asArc ? `元のzipも「${S.archive.label}」の「${k.zipSub}」に残します` : '',
+        st?.keepZip && S.archive.ref && !m.asArc && !o.execExcluded ? `元のzipも「${S.archive.label}」の「${k.zipSub}」に残します` : '',
         o.readmes?.length ? '入れる前に Readme（利用規約）を確認します' : '',
       ].filter(Boolean).join('／'))),
   ].filter(Boolean));

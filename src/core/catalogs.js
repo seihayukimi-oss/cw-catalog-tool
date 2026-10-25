@@ -36,7 +36,7 @@ export function combine(sources) {
         };
         byKey.set(key, w);
       }
-      w.refs.push({ sourceId: src.id, sourceName: src.name, kind: src.kind, entry: e });
+      w.refs.push({ sourceId: src.id, sourceName: src.name, kind: src.kind, entry: e, attribution: src.catalog.attribution || null });
       if (hidden.has(key)) w.hiddenIn.add(src.id);
       if (compareVersions(e.version, w.version) > 0) { w.version = e.version; w.updated = e.updated || w.updated; }
       if (!w.description && e.description) w.description = e.description;
@@ -53,6 +53,18 @@ export function combine(sources) {
   for (const w of works) {
     // すべての掲載元で外されていれば、一覧から外す
     w.hidden = w.refs.every((r) => w.hiddenIn.has(r.sourceId));
+    // どの掲載元でも一時保留中なら、一時保留中（個人用カタログに自分で載せていれば、そちらが優先）
+    w.held = w.refs.every((r) => r.entry.state === 'held');
+    w.heldReason = w.held ? w.refs.map((r) => r.entry.held_reason).find(Boolean) || '' : '';
+    w.derivative = w.refs.map((r) => r.entry.derivative).find(Boolean) || null;
+    w.site = w.refs.map((r) => r.entry.site).find(Boolean) || '';
+    w.checked = w.refs.map((r) => r.entry.checked).find(Boolean) || '';
+    // 出典：作品に書かれた元のカタログ、なければ掲載元のカタログの出典
+    w.origins = [];
+    for (const r of w.refs) {
+      const o = r.entry.origin || r.attribution;
+      if (o && !w.origins.some((x) => x.name === o.name)) w.origins.push(o);
+    }
   }
   return { works, byKey, authors };
 }
@@ -135,3 +147,14 @@ export function exportPersonal(name, entries, { hidden = [], tool = '' } = {}) {
     entries: entries.filter((e) => !hid.has(workKey(e))),
   };
 }
+
+/**
+ * meta.json に書かれた、本体の写しのURL（https で、決まった配り先だけ）。
+ * 共用カタログは GitHub に置き、jsDelivr（版＝コミットを固定したURL）からも配る
+ */
+export function mirrorsOf(meta) {
+  if (!meta || !/^[0-9a-f]{64}$/.test(meta.sha256 || '')) return [];
+  const list = Array.isArray(meta.mirrors) ? meta.mirrors : [];
+  return list.filter((u) => typeof u === 'string' && /^https:\/\/(cdn\.jsdelivr\.net\/gh\/|fastly\.jsdelivr\.net\/gh\/|[a-z0-9-]+\.github\.io\/|raw\.githubusercontent\.com\/)/i.test(u)).slice(0, 3);
+}
+

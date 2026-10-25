@@ -78,7 +78,7 @@ function cookieHeader(host) {
 const sameSite = (a, b) => a.split('.').slice(-2).join('.') === b.split('.').slice(-2).join('.') && !/\.(co|ne|or|ac|go)\.jp$/.test(a);
 
 /**
- * 配布元から取ってくる（アプリ側で通信して、中身は一時ファイル経由で受け取る）。
+ * 配布元から取ってくる（アプリ側で通信して、中身はメモリの中だけで受け取る。パソコンには書き込まない）。
  * 日本語のファイル名を見出しにそのまま入れてくるサイト（Google ドライブなど）でも止まらない。
  */
 // 進み具合の知らせ（アプリ側から来る）を、頼んだ通信ごとに振り分ける
@@ -86,7 +86,7 @@ let progSeq = 0;
 const progCbs = new Map();
 let progListen = null;
 
-async function netFetch(url, { method = 'GET', body, headers = {}, timeout = null, onProgress = null } = {}) {
+async function netFetch(url, { method = 'GET', body, headers = {}, timeout = null, onProgress = null, max = null } = {}) {
   const cb = onProgress || platform.netProgress;
   let progress = null;
   if (cb) {
@@ -97,16 +97,17 @@ async function netFetch(url, { method = 'GET', body, headers = {}, timeout = nul
   }
   let r;
   try {
-    r = await invoke('net_fetch', { req: { url, method, body: body ?? null, headers: { 'User-Agent': UA, ...headers }, timeout, progress } });
+    r = await invoke('net_fetch', { req: { url, method, body: body ?? null, headers: { 'User-Agent': UA, ...headers }, timeout, progress, max } });
   } finally {
     if (progress) progCbs.delete(progress);
   }
   let bytes = new Uint8Array();
-  if (r.path) {
-    try { bytes = await readFile(r.path); } finally { await remove(r.path).catch(() => {}); }
-  }
+  if (r.id) bytes = new Uint8Array(await invoke('net_take', { id: r.id }));
   return { ...r, bytes, ok: r.status >= 200 && r.status < 300 };
 }
+
+/** 「bytes 0-99/1234」から全体の大きさを取る */
+const rangeTotal = (cr) => { const m = /\/(\d+)\s*$/.exec(cr || ''); return m ? Number(m[1]) : 0; };
 
 export const platform = {
   kind: 'app',
@@ -198,7 +199,7 @@ export const platform = {
 
   async fetchFile(url) {
     const r = await netFetch(url);
-    if (!r.ok) throw new Error(`ダウンロードできませんでした（${r.status}）`);
+    if (!r.ok) throw Object.assign(new Error(`ダウンロードできませんでした（${r.status}）`), { status: r.status });
     return r.bytes;
   },
 
@@ -215,7 +216,7 @@ export const platform = {
     let fin = host;
     try { fin = new URL(r.url).hostname; } catch { /* そのまま */ }
     if (fin !== host) keepCookies(fin, r.set_cookie);
-    if (!r.ok) throw new Error(`読み込めませんでした（${r.status}）`);
+    if (!r.ok) throw Object.assign(new Error(`読み込めませんでした（${r.status}）`), { status: r.status });
     return {
       bytes: r.bytes,
       contentType: r.content_type || '',
@@ -263,8 +264,37 @@ export const platform = {
   /** 配布ページを読む（更新チェック用）。相手に負担をかけないよう呼ぶ側で間隔をあける */
   async fetchText(url) {
     const r = await netFetch(url, { timeout: 15, onProgress: () => {} });
-    if (!r.ok) throw new Error(`ページを開けませんでした（${r.status}）`);
+    if (!r.ok) throw Object.assign(new Error(`ページを開けませんでした（${r.status}）`), { status: r.status });
     return decodeHtml(r.bytes, r.content_type || '');
+  },
+
+  /**
+   * ファイルの一部だけを読む（中身の目次を見るため）。ダウンロードはしない。
+   * @param {{suffix?: number, start?: number, end?: number}} r
+   * @returns {{bytes: Uint8Array, partial: boolean, total: number, complete: boolean, contentType: string, fileName: string, finalUrl: string}}
+   */
+  async fetchRange(url, { suffix, start = 0, end } = {}, { headers = {}, max = 4 * 1024 * 1024 } = {}) {
+    const range = suffix ? `bytes=-${suffix}` : `bytes=${start}-${end ?? ''}`;
+    const host = new URL(url).hostname;
+    const cookie = cookieHeader(host);
+    const r = await netFetch(url, { timeout: 30, onProgress: () => {}, max, headers: { Range: range, ...(cookie ? { Cookie: cookie } : {}), ...headers } });
+    if (!r.ok) throw Object.assign(new Error(`読み込めませんでした（${r.status}）`), { status: r.status });
+    const partial = r.status === 206;
+    const total = partial ? rangeTotal(r.content_range) : (r.content_length || 0);
+    return {
+      bytes: r.bytes, partial, total, complete: !partial && !r.truncated,
+      contentType: r.content_type || '', fileName: fileNameFrom(r.url || url, r.content_disposition || ''), finalUrl: r.url || url,
+    };
+  },
+
+  /** リンクが生きているかだけ確かめる（頭の少しだけ読む） */
+  async checkLink(url) {
+    try {
+      const r = await netFetch(url, { timeout: 20, onProgress: () => {}, max: 64 * 1024, headers: { Range: 'bytes=0-0' } });
+      return { status: r.status, contentType: r.content_type || '', finalUrl: r.url || url, bytes: r.bytes };
+    } catch (e) {
+      return { status: 0, error: String(e?.message || e) };
+    }
   },
 
   async openUrl(url) {

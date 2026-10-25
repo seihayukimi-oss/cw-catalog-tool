@@ -6,6 +6,7 @@ import { readCab, looksLikeCab } from './cab.js';
 import { read7z, looksLike7z } from './sevenzip.js';
 import { analyzeFiles } from './scenario.js';
 import { listFiles } from './fs.js';
+import { markExecutables } from './safety.js';
 
 export async function sha256Hex(bytes) {
   const h = await globalThis.crypto.subtle.digest('SHA-256', bytes);
@@ -63,7 +64,7 @@ export async function openArchive(bytes, fileName, depth = 0) {
   let files, warnings = [], renamed = 0;
   if (kind === 'zip') {
     const z = readZip(bytes);
-    files = z.entries.map((e) => ({ path: e.path, size: e.size, read: async () => e.read() }));
+    files = z.entries.map((e) => ({ path: e.path, size: e.size, read: async () => e.read(), head: (n) => e.head(n) }));
     warnings = z.warnings;
     renamed = z.entries.filter((e) => !e.utf8Flag && /[^\x00-\x7f]/.test(e.originalName)).length;
   } else {
@@ -82,8 +83,10 @@ export async function openArchive(bytes, fileName, depth = 0) {
     ...analysis,
     warnings: [...warnings, ...analysis.warnings],
   };
-  if (opened.scenarios.length || depth > 0) return opened;
-  return (await openInner(opened)) || opened;
+  if (opened.scenarios.length || depth > 0) return depth > 0 ? opened : markExecutables(opened);
+  const outerExec = (await markExecutables(opened)).executables;
+  const inner = await openInner(opened);
+  return inner ? markExecutables(inner, outerExec) : opened;
 }
 
 const INNER = /\.(wsn|zip|cab|lzh|lha|7z)$/i;
@@ -135,10 +138,10 @@ async function openInner(outer) {
 export async function openFolder(dir) {
   const files = await listFiles(dir);
   const analysis = await analyzeFiles(files, { sourceName: dir.name });
-  return {
+  return markExecutables({
     source: { kind: 'folder', name: dir.name, size: files.reduce((a, f) => a + f.size, 0), sha256: '' },
     files,
     nonUtf8Names: 0,
     ...analysis,
-  };
+  });
 }

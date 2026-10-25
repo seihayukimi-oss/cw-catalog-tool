@@ -228,6 +228,7 @@ export async function installMaterial(root, opened, { category = '', folderName 
   if (category && !cat) throw new Error('分類フォルダの名前が正しくありません');
   if (asArchive) {
     if (!opened.bytes && !opened.archiveBytes) throw new Error('zipのまま置けるのは、zipなどのファイルだけです');
+    if (opened.execExcluded) throw new Error('実行ファイルが入っているので、zipのままは置けません');
     const name = safeRelativePath(opened.archiveName || opened.source.name);
     const dest = [cat, name].filter(Boolean).join('/');
     if (await existsAt(root, dest)) throw new Error(`同じ名前のものがあります：${dest}`);

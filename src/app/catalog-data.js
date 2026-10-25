@@ -4,9 +4,9 @@
 //  個人用カタログ（sub）：有志の方などが作ったDL一覧を読み込んだもの。書き換えない（コピーすれば自分用にできる）
 
 import { parseCatalog } from '../core/catalog.js';
-import { combine, workKey, nextPersonalId, exportPersonal, matchWork } from '../core/catalogs.js';
+import { combine, workKey, nextPersonalId, exportPersonal, matchWork, mirrorsOf } from '../core/catalogs.js';
 import { sha256Hex } from '../core/archive.js';
-import { updateState, compareVersions } from '../core/catalog.js';
+import { updateState, compareVersions, normalizeName } from '../core/catalog.js';
 import { extractFileList, findNewest } from '../core/filelist.js';
 import { S, APP_VERSION } from './state.js';
 import { store } from './store.js';
@@ -17,7 +17,8 @@ const emptyCatalog = () => ({ format: 1, authors: {}, entries: [] });
 
 export async function loadCatalogs() {
   S.listFinds = (await store.get('listFinds')) || {};
-  S.catPrefs = { addTo: 'all', askDefault: true, ...((await store.get('catalogPrefs')) || {}) };
+  S.catPrefs = { addTo: 'all', askDefault: true, showHeld: false, ...((await store.get('catalogPrefs')) || {}) };
+  S.mutedAuthors = (await store.get('mutedAuthors')) || [];
   S.workPrefs = (await store.get('workPrefs')) || {};
   await loadFolders();
   S.catView = { group: '', compact: null, ...((await store.get('catView')) || {}) };
@@ -118,6 +119,16 @@ export async function checkFileLists({ onStep } = {}) {
 }
 
 export const sourceById = (id) => S.sources.find((s) => s.id === id) || null;
+
+// ------------------------------------------------------------ 入れない作者（この作者の作品は、カタログから拾わない）
+const authorKey = (a) => normalizeName(a || '');
+export const isMutedAuthor = (author) => !!author && (S.mutedAuthors || []).some((m) => authorKey(m) === authorKey(author));
+export async function setMutedAuthor(author, mute) {
+  const list = (S.mutedAuthors || []).filter((m) => authorKey(m) !== authorKey(author));
+  if (mute) list.push(author);
+  S.mutedAuthors = list.sort((a, b) => a.localeCompare(b, 'ja'));
+  await store.set('mutedAuthors', S.mutedAuthors);
+}
 export const ownSources = () => S.sources.filter((s) => s.kind === 'own');
 
 async function putCatalog(src, json) {
@@ -134,11 +145,18 @@ export async function refreshSource(src, { useMeta = false } = {}) {
   // meta.json（指紋）を先に見て、変わっていなければ本体は取らない。登録フォーム（Google Apps Script）なら ?file=meta
   const metaUrl = /\/index\.json(\?.*)?$/.test(src.url) ? src.url.replace(/index\.json(\?.*)?$/, 'meta.json')
     : /[?&]file=index(&|$)/.test(src.url) ? src.url.replace(/([?&]file=)index/, '$1meta') : '';
-  if (useMeta && src.url !== 'sample' && metaUrl && src.sha256) {
-    const meta = await S.platform.fetchJson(metaUrl).catch(() => null);
-    if (meta?.sha256 && meta.sha256 === src.sha256) { src.checkedAt = new Date().toISOString(); await saveSources(); return false; }
+  const meta = src.url !== 'sample' && metaUrl ? await S.platform.fetchJson(metaUrl).catch(() => null) : null;
+  if (useMeta && meta?.sha256 && src.sha256 && meta.sha256 === src.sha256) { src.checkedAt = new Date().toISOString(); await saveSources(); return false; }
+  // 本体は、meta.json に書かれた写し（jsDelivr など。版を固定したURL）から先に取る。中身の指紋が合わなければ使わない
+  let json = null;
+  src.via = '';
+  for (const m of mirrorsOf(meta)) {
+    try {
+      const j = await S.platform.fetchJson(m);
+      if (await sha256Hex(new TextEncoder().encode(JSON.stringify(j))) === meta.sha256) { json = j; src.via = m; break; }
+    } catch { /* 次へ */ }
   }
-  const json = src.url === 'sample' ? SAMPLE_CATALOG : await S.platform.fetchJson(src.url);
+  if (!json) json = src.url === 'sample' ? SAMPLE_CATALOG : await S.platform.fetchJson(src.url);
   await putCatalog(src, json);
   // meta.json の sha256 と比べられるよう、index.json と同じ書き方（区切りなしのJSON）で指紋を取る
   src.sha256 = src.url === 'sample' ? '' : await sha256Hex(new TextEncoder().encode(JSON.stringify(json)));

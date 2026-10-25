@@ -4,21 +4,25 @@ import { ENGINE_KINDS } from '../core/catalog.js';
 import { chooseDownloads, statusOf, ageRoleOf, introKind, INTRO_LABEL, workKey, KIND_LABEL } from '../core/catalogs.js';
 import { decodeHtml, parseOgp } from '../core/weblink.js';
 import { urlAdvice, inAppSite } from '../core/urls.js';
-import { S, render, busy, rerenderList, confirmBox, goTab } from './state.js';
+import { S, render, busy, busyText, rerenderList, confirmBox, goTab } from './state.js';
 import { h, toast, modal, fmtDate, formatBadge } from './ui.js';
 import {
   addShared, importList, createOwn, removeSource, setEnabled, setHidden, setHiddenMany, refreshSource, saveSources, exportSource,
   saveOwnEntry, ownSources, sourceById, setDefaultUrl, defaultUrlOf, setCatPrefs, refreshStates,
   foldersOf, createFolder, renameFolder, deleteFolder, moveFolder, putInFolder, takeOutOfFolder, labelsOf, importLabels,
+  isMutedAuthor, setMutedAuthor,
 } from './catalog-data.js';
 import { store } from './store.js';
 import { isFavWork, isFavFolder, inFavorites, setFavWorks, toggleFavFolder } from './tags.js';
 import { downloadWork, downloadFrom, dlLabel } from './download.js';
 import { startBatch } from './batch.js';
+import { linkBadge, workHasDead, checkLinks } from './linkcheck.js';
+import { peekModal } from './safety-view.js';
 
 const LV = { verified: ['確認済み', 'ok'], expected: ['動くはず', 'warn'], no: ['非対応', 'bad'], unknown: ['未確認', 'plain'] };
 const AGE = { new: '新', old: '旧（移転済み）', closed: '終了' };
 const ROLE = { normal: '通常', mirror: '予備' };
+const CHECKED = { readme: 'Readme', site: '作者さんのサイト・配布ページ', author: '作者さん本人から', other: 'その他' };
 
 // ------------------------------------------------------------ 一覧
 const GROUPS = [['', 'そのまま'], ['author', '作者ごと'], ['folder', 'フォルダごと'], ['name', '名前順'], ['updated', '新しい順']];
@@ -30,6 +34,8 @@ function filteredWorks() {
   const list = S.combined.works.filter((w) => {
     if (S.filter.catSource && !w.refs.some((r) => r.sourceId === S.filter.catSource)) return false;
     if (!S.filter.showHidden && (S.filter.catSource ? w.hiddenIn.has(S.filter.catSource) : w.hidden)) return false;
+    if (w.held && !showHeld()) return false;
+    if (!S.filter.showMuted && isMutedAuthor(w.author)) return false;
     if (S.filter.catEngine && !['verified', 'expected'].includes(w.compat?.[S.filter.catEngine])) return false;
     if (fid === '__none' && (S.folders.map[w.key] || []).length) return false;
     if (fid === '__fav' && !inFavorites(w)) return false;
@@ -42,6 +48,7 @@ function filteredWorks() {
   if (g === 'updated') list.sort((a, b) => (b.updated || '').localeCompare(a.updated || '') || byName(a, b));
   return list;
 }
+const showHeld = () => !!(S.filter.showHeld || S.catPrefs.showHeld);
 const filtering = () => !!(S.filter.cat.trim() || S.filter.catEngine || S.filter.catSource || S.filter.catFolder);
 const compactView = () => (S.catView.compact == null ? (S.combined?.works.length || 0) > 30 : S.catView.compact);
 async function saveView(patch) { Object.assign(S.catView, patch); await store.set('catView', S.catView); render(); }
@@ -75,10 +82,22 @@ export function viewCatalog() {
       h('select', { 'aria-label': '表示', onchange: (ev) => saveView({ compact: ev.target.value === 'compact' }) },
         h('option', { value: 'full', selected: !compactView() ? 'selected' : null }, '表示：くわしく'),
         h('option', { value: 'compact', selected: compactView() ? 'selected' : null }, '表示：コンパクト')),
-      h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: S.filter.showHidden, onchange: (ev) => { S.filter.showHidden = ev.target.checked; render(); } }), '候補から外したものも表示')),
+      h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: S.filter.showHidden, onchange: (ev) => { S.filter.showHidden = ev.target.checked; render(); } }), '候補から外したものも表示'),
+      heldCount() ? h('label', { class: 'check small', title: '通報が多かったなどで、共用カタログで一時保留中の作品です。中身を確かめてから入れてください' }, h('input', { type: 'checkbox', id: 'show-held', checked: showHeld(), disabled: !!S.catPrefs.showHeld, onchange: (ev) => { S.filter.showHeld = ev.target.checked; render(); } }), `一時保留中の作品（${heldCount()}件）を表示`) : null,
+      mutedCount() ? h('label', { class: 'check small' }, h('input', { type: 'checkbox', id: 'show-muted', checked: !!S.filter.showMuted, onchange: (ev) => { S.filter.showMuted = ev.target.checked; render(); } }), `入れない作者の作品（${mutedCount()}件）も表示`) : null),
     folderChips());
 
   return h('div', {}, manage, filters, h('div', { id: 'cat-body' }, batchBar(works), viewList(works)));
+}
+
+const heldCount = () => S.combined.works.filter((w) => w.held && !w.hidden).length;
+const mutedCount = () => S.combined.works.filter((w) => isMutedAuthor(w.author) && !w.hidden).length;
+
+/** 一時保留中の作品を取るときは、ひとこと確かめる */
+async function okToTake(works) {
+  const held = works.filter((w) => w.held);
+  if (!held.length) return true;
+  return confirmBox(`一時保留中の作品が含まれています：${held.slice(0, 5).map((w) => `「${w.name}」`).join('')}${held.length > 5 ? ` ほか${held.length - 5}件` : ''}。通報が多かったなどで、共用カタログで確かめているところです（${held.map((w) => w.heldReason).find(Boolean) || '理由は書かれていません'}）。入れる前に、中身の一覧と実行ファイルの注意、Readme（利用規約）をよく確かめてください。取りますか？`, { yes: '確かめながら取る', no: 'やめる', title: '一時保留中の作品' });
 }
 
 /** フォルダの切り替え（すべて・未分類・自分で作ったフォルダ） */
@@ -109,13 +128,14 @@ function batchBar(works) {
   return h('div', { class: 'card batch-bar', id: 'batch-bar' },
     h('div', { class: 'row' },
       h('span', { class: 'small' }, `${works.length}件${filtering() ? '（絞り込み中）' : ''}`),
-      filtering() && works.length ? h('button', { class: 'btn primary sm', onclick: () => startBatch(works.map((work) => ({ work })), '検索結果をまとめてDL') }, `検索結果${works.length}件をまとめてDL`) : null,
+      filtering() && works.length ? h('button', { class: 'btn primary sm', onclick: async () => { if (await okToTake(works)) startBatch(works.map((work) => ({ work })), '検索結果をまとめてDL'); } }, `検索結果${works.length}件をまとめてDL`) : null,
       h('button', { class: 'btn sm', disabled: !works.length || visibleSel === works.length, onclick: () => { works.forEach((w) => S.selected.add(w.key)); render(); } }, '表示中をすべて選ぶ'),
       sel.length ? h('button', { class: 'btn ghost sm', onclick: () => { S.selected.clear(); render(); } }, '選択を解除') : null),
     sel.length ? h('div', { class: 'row sel-actions' },
       h('b', { class: 'small' }, `選んだ${sel.length}件を：`),
-      h('button', { class: 'btn primary sm', onclick: () => { startBatch(sel.map((work) => ({ work })), '選んだ作品をまとめてDL'); S.selected.clear(); } }, 'まとめてDL'),
+      h('button', { class: 'btn primary sm', onclick: async () => { if (!(await okToTake(sel))) return; startBatch(sel.map((work) => ({ work })), '選んだ作品をまとめてDL'); S.selected.clear(); } }, 'まとめてDL'),
       h('button', { class: 'btn sm', onclick: () => putSelectedInFolder(sel) }, 'フォルダに入れる'),
+      S.platform.checkLink ? h('button', { class: 'btn sm', id: 'sel-linkcheck', onclick: () => checkWorksLinks(sel) }, 'リンク切れを確かめる') : null,
       sel.some((w) => !isFavWork(w.key)) ? h('button', { class: 'btn sm', onclick: async () => { await setFavWorks(sel.map((w) => w.key), true); toast(`${sel.length}件をお気に入りにしました`); S.selected.clear(); render(); } }, '★お気に入りにする') : null,
       sel.some((w) => isFavWork(w.key)) ? h('button', { class: 'btn sm', onclick: async () => { await setFavWorks(sel.map((w) => w.key), false); toast(`${sel.length}件をお気に入りから外しました`); S.selected.clear(); render(); } }, 'お気に入りから外す') : null,
       inFolder ? h('button', { class: 'btn sm', onclick: async () => { await takeOutOfFolder(sel.map((w) => w.key), inFolder.id); toast(`${sel.length}件を「${inFolder.name}」から外しました`); S.selected.clear(); render(); } }, `「${inFolder.name}」から外す`) : null,
@@ -223,16 +243,23 @@ function workCard(w, mine) {
       h('span', { class: 'item-title' }, w.name), w.type && w.type !== 'scenario' ? h('span', { class: 'badge plain' }, w.type === 'skin' ? 'スキン' : '素材') : formatBadge({ format: w.format, wsnVersion: w.wsn_version }),
       mine ? h('span', { class: `badge ${mine.state === 'update' ? 'update' : 'ok'}` }, mine.state === 'update' ? `入っている版 ${mine.version}→${w.version}` : 'フォルダにあり') : null,
       hiddenHere ? h('span', { class: 'badge plain' }, '候補から外しています') : null,
+      w.held ? h('span', { class: 'badge warn held', title: w.heldReason || '通報が多かったなどで、共用カタログで確かめているところです' }, '一時保留中の作品') : null,
+      isMutedAuthor(w.author) ? h('span', { class: 'badge plain' }, '入れない作者') : null,
+      w.derivative ? h('span', { class: 'badge plain', title: [w.derivative.of ? `もとの作品：${w.derivative.of}` : '', w.derivative.basis ? `改変してよいと分かるもの：${w.derivative.basis}` : ''].filter(Boolean).join('\n') }, '改変版') : null,
+      workHasDead(w) ? h('span', { class: 'badge bad link-dead', title: 'DL先のどれかで、ファイルが見つかりませんでした（くわしくはDL先の欄）' }, '✖ リンク切れ') : null,
       w.refs.some((r) => r.entry.claim === 'proxy') && !w.refs.some((r) => r.entry.claim === 'author') ? h('span', { class: 'badge plain', title: '作者さん以外の方が登録したものです（作者さんは、登録フォームの「サイト認証」で引き取れます）' }, '代理登録') : null,
       foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name)),
       w.listFound ? h('span', { class: 'badge update', title: `ファイル一覧（${w.listFound.list}）で見つけたファイル：${w.listFound.name}` }, `一覧の最新 ${w.listFound.version ? `ver ${w.listFound.version}` : w.listFound.name}`) : null),
     h('div', { class: 'row' },
-      h('button', { class: 'btn primary sm', disabled: !def, onclick: () => downloadWork(w) }, 'ダウンロード'),
+      h('button', { class: 'btn primary sm', disabled: !def, onclick: async () => { if (await okToTake([w])) downloadWork(w); } }, 'ダウンロード'),
       open ? h('button', { class: 'btn sm', onclick: () => editEntry({ work: w }) }, inOwn ? '編集' : '個人用カタログへ') : null,
       open ? h('button', { class: 'btn ghost sm', onclick: () => toggleHidden(w, !hiddenHere) }, hiddenHere ? '候補に戻す' : '候補から外す') : null,
+      open && w.author ? h('button', { class: 'btn ghost sm', title: 'この作者さんの作品を、カタログから拾わないようにします（自分のパソコンの中だけの設定です）', onclick: () => muteAuthor(w.author, !isMutedAuthor(w.author)) }, isMutedAuthor(w.author) ? '入れない作者から外す' : 'この作者は入れない') : null,
       compactView() ? h('button', { class: 'btn ghost sm', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) S.expanded.delete(w.key); else S.expanded.add(w.key); render(); } }, open ? '▲ たたむ' : '▼ くわしく') : null));
   const meta = h('div', { class: 'meta' }, [w.author, `ver ${w.version}`, w.updated].filter(Boolean).join('・'),
-    h('span', { class: 'row', style: 'display:inline-flex;margin-left:8px;gap:4px' }, w.refs.map((r) => h('span', { class: `badge src ${r.kind}` }, r.sourceName))));
+    h('span', { class: 'row', style: 'display:inline-flex;margin-left:8px;gap:4px' }, w.refs.map((r) => h('span', { class: `badge src ${r.kind}` }, r.sourceName))),
+    w.origins?.length ? h('span', { class: 'origin', style: 'margin-left:8px' }, '出典：', w.origins.map((o, i) => [i ? '・' : '', o.url ? h('a', { href: o.url, onclick: (ev) => { ev.preventDefault(); S.platform.openUrl(o.url); } }, o.name) : o.name])) : null,
+    w.checked ? h('span', { style: 'margin-left:8px' }, `確認：${CHECKED[w.checked]}`) : null);
   if (!open) return h('div', { class: `card work compact${hiddenHere ? ' hidden-work' : ''}` }, head, meta);
   return h('div', { class: `card work${hiddenHere ? ' hidden-work' : ''}` },
     head, meta,
@@ -258,10 +285,34 @@ function workCard(w, mine) {
         h('span', { class: 'badge plain' }, ROLE[role]),
         d.dlkey ? h('span', { class: 'badge plain', title: '個人用カタログに登録したDLキーを、同意画面に入れます' }, 'DLキーあり') : null,
         inAppSite(d.url) ? h('span', { class: 'badge plain', title: inAppSite(d.url).why }, 'アプリ内で開いて押す') : null,
+        d.status !== 'closed' ? linkBadge(d.url) : null,
         d.note ? h('span', { class: 'small muted' }, d.note) : null,
-        d.status !== 'closed' ? h('button', { class: 'btn sm', onclick: () => downloadFrom(w, d) }, 'ここから取る') : null,
+        d.status !== 'closed' ? h('button', { class: 'btn sm', onclick: async () => { if (await okToTake([w])) downloadFrom(w, d); } }, 'ここから取る') : null,
+        d.status !== 'closed' && S.platform.fetchRange && looksLikeFile(d) ? h('button', { class: 'btn ghost sm', title: 'ダウンロードせずに、中のファイルの名前と大きさだけを見ます', onclick: () => peekModal(d.url, w.name) }, '中身を見る') : null,
+        d.status !== 'closed' && S.platform.checkLink ? h('button', { class: 'btn ghost sm', title: 'ダウンロードはせずに、リンクが生きているかだけ確かめます', onclick: () => checkWorksLinks([w], d.url) }, 'リンクを確かめる') : null,
         d.status !== 'closed' && !isDef ? h('button', { class: 'btn ghost sm', onclick: async () => { await setDefaultUrl(w, d.url); toast(`「${dlLabel(d)}」をデフォルトのDL先にしました`); render(); } }, 'デフォルトにする') : null);
     })));
+}
+
+/** ファイルそのもののURLらしいか（「中身を見る」を出す） */
+const looksLikeFile = (d) => d.kind === 'direct' || /\.(zip|wsn|cab|7z)(\?|#|$)/i.test(d.url || '');
+
+/** リンク切れを確かめる（ダウンロードはしない） */
+async function checkWorksLinks(works, only = '') {
+  const urls = only ? [only] : works.flatMap((w) => w.downloads.filter((d) => d.status !== 'closed').map((d) => d.url));
+  if (!urls.length) { toast('確かめるDL先がありません'); return; }
+  const r = await busy('リンクを確かめています', () => checkLinks(urls, { onStep: (n) => busyText(`リンクを確かめています… ${n} / ${urls.length}`) }));
+  if (!r) return;
+  if (r.offline) toast('どのサイトにもつながりませんでした。ネットにつながっているか確かめてください', { bad: true, ms: 8000 });
+  else toast(`${r.checked}件を確かめました${r.dead ? `：✖ リンク切れ ${r.dead}件` : '：リンク切れはありませんでした'}${r.unreach ? `（つながらないサイト ${r.unreach}件）` : ''}`, { ms: 8000, bad: !!r.dead });
+  render();
+}
+
+async function muteAuthor(author, mute) {
+  if (mute && !(await confirmBox(`「${author}」さんの作品を、カタログから拾わないようにします（${S.combined.works.filter((x) => x.author === author).length}件）。自分のパソコンの中だけの設定で、カタログそのものは変わりません。「設定」→「カタログ」でいつでも戻せます。`, { yes: '入れない', no: 'やめる' }))) return;
+  await setMutedAuthor(author, mute);
+  toast(mute ? `「${author}」さんの作品を、カタログから拾わないようにしました` : `「${author}」さんを、入れない作者から外しました`);
+  render();
 }
 
 async function toggleHidden(w, hide) {
@@ -421,7 +472,12 @@ export function prefsBlock() {
     h('div', {}, h('div', { class: 'muted' }, '作品を個人用カタログに登録するとき'),
       h('div', { class: 'row' }, radio('all', 'すべての個人用カタログに入れる'), radio('choose', '入れるカタログを毎回選ぶ'))),
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.catPrefs.askDefault, onchange: (ev) => setCatPrefs({ askDefault: ev.target.checked }) }),
-      'デフォルトのDL先から取れず、別の配布元から取ったとき「こちらをデフォルトのDL先に変更しますか？」と聞く'));
+      'デフォルトのDL先から取れず、別の配布元から取ったとき「こちらをデフォルトのDL先に変更しますか？」と聞く'),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', id: 'pref-show-held', checked: !!S.catPrefs.showHeld, onchange: (ev) => setCatPrefs({ showHeld: ev.target.checked }).then(render) }),
+      '一時保留中の作品も、最初から表示する（通報が多かったなどで、共用カタログで確かめているところの作品）'),
+    h('div', {}, h('div', { class: 'muted' }, `入れない作者（${(S.mutedAuthors || []).length}人）：この作者さんの作品は、カタログから拾いません`),
+      (S.mutedAuthors || []).length ? h('div', { class: 'row', id: 'muted-list' }, S.mutedAuthors.map((a) => h('span', { class: 'tag' }, a,
+        h('button', { 'aria-label': `${a}を入れない作者から外す`, title: '外す', onclick: () => muteAuthor(a, false) }, '×')))) : h('div', { class: 'muted' }, 'まだいません（カタログの作品の「この作者は入れない」で足せます）')));
 }
 
 function sourceRow(s) {

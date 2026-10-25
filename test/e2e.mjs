@@ -19,11 +19,23 @@ const pageHtml = Buffer.from(`<html><head><meta charset="Shift_JIS"><title>開�
   <a href="https://ux.getuploader.com/seiha_yukimiCW/download/12">uploader.jp の配布ページ</a>
   <a href="/about">作者について</a></body></html>`, 'utf8');
 const pageSjis = new Uint8Array(await (await import('node:child_process')).execFileSync('iconv', ['-f', 'utf-8', '-t', 'cp932'], { input: pageHtml }));
+// ファイルの一部だけ（Range）にも答える
+const sendRange = (req, res, buf) => {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (!m) return res.end(buf);
+  let start = m[1] === '' ? Math.max(0, buf.length - Number(m[2])) : Number(m[1]);
+  let end = m[1] === '' || m[2] === '' ? buf.length - 1 : Math.min(buf.length - 1, Number(m[2]));
+  res.statusCode = 206;
+  res.setHeader('content-range', `bytes ${start}-${end}/${buf.length}`);
+  return res.end(buf.subarray(start, end + 1));
+};
+const ranges = [];
 const server = createServer((req, res) => {
   if (req.url === '/files/dl.zip') {
     res.setHeader('content-type', 'application/zip');
     res.setHeader('content-disposition', "attachment; filename*=UTF-8''%E9%96%8B%E3%81%91%E3%82%89%E3%82%8C%E3%81%9F%E9%B3%A5%E7%B1%A0ver1_01.zip");
-    return res.end(readFileSync(join(FX, 'classic_cp932.zip')));
+    if (req.headers.range) ranges.push(req.headers.range);
+    return sendRange(req, res, readFileSync(join(FX, 'classic_cp932.zip')));
   }
   if (req.url === '/page.html') { res.setHeader('content-type', 'text/html'); return res.end(pageSjis); }
   if (req.url === '/multi.html') { res.setHeader('content-type', 'text/html; charset=utf-8'); return res.end('<html><head><title>まとめ置き場</title></head><body><a href="files/dl.zip">鳥籠.zip</a> <a href="files/alice.wsn">アリス.wsn</a> <a href="/about">作者について</a></body></html>'); }
@@ -313,6 +325,20 @@ async function run(colorScheme, width) {
   await birdCard.getByText('鳥籠の紹介ページ').waitFor();
   ok('紹介ページの題名・説明・画像', await birdCard.getByText('鳥籠を開ける短編です').isVisible() && (await birdCard.locator('.ogp img').count()) === 1);
 
+  // 7c2. ダウンロードせずに中身（目次）を見る・リンク切れを確かめる
+  ranges.length = 0;
+  await birdCard.locator('.dl li', { hasText: '新サイト' }).getByRole('button', { name: '中身を見る' }).click();
+  const peek = page.locator('#peek-modal');
+  await peek.waitFor();
+  ok('ダウンロードせずに目次だけ読む（ファイルの一部だけ）', /目次だけを読みました/.test(await peek.textContent()) && ranges.length >= 1 && ranges.every((r) => /^bytes=/.test(r)), ranges.join(','));
+  ok('目次に、中のファイルの名前が出る', await peek.getByText(/Summary\.wsm/).first().isVisible());
+  if (width > 600) await peek.screenshot({ path: join(OUT, `peek-${colorScheme}.png`) }).catch(() => {});
+  await peek.getByRole('button', { name: '閉じる' }).click();
+  await birdCard.locator('.dl li', { hasText: '旧サイト' }).getByRole('button', { name: 'リンクを確かめる' }).click();
+  await page.getByText(/1件を確かめました：✖ リンク切れ 1件/).waitFor();
+  ok('リンク切れの印（作品とDL先）', await birdCard.locator('.item-title ~ .link-dead').isVisible() && await birdCard.locator('.dl li', { hasText: '旧サイト' }).locator('.link-dead').isVisible());
+  ok('生きているDL先は「リンクあり」', !(await birdCard.locator('.dl li', { hasText: '新サイト' }).locator('.link-dead').count()));
+
   // 7d. 検索したら「検索結果をまとめてDL」
   await page.locator('#cat-q').fill('鳥籠');
   await page.getByRole('button', { name: '検索結果2件をまとめてDL' }).waitFor();
@@ -371,6 +397,29 @@ async function run(colorScheme, width) {
   ok('候補から外すと一覧から消える', !(await page.locator('.item-title', { hasText: 'サンプルの塔（Py版）' }).count()));
   await page.getByLabel('候補から外したものも表示').check();
   ok('「外したものも表示」で見える', await page.locator('.item-title', { hasText: 'サンプルの塔（Py版）' }).isVisible());
+
+  // 9a. 一時保留中の作品（いつもは出さない → 表示して選んで拾う）・出典・入れない作者
+  const cave = page.locator('.card.work', { has: page.locator('.item-title', { hasText: 'サンプルの洞窟' }) });
+  ok('一時保留中の作品は、いつもは出さない', !(await cave.count()) && /一時保留中の作品（1件）を表示/.test(await page.locator('#show-held').locator('..').textContent()));
+  await page.locator('#show-held').check();
+  await cave.waitFor();
+  ok('表示すると「一時保留中の作品」の印・改変版の印', await cave.locator('.held').isVisible() && await cave.getByText('改変版').isVisible());
+  ok('出典（元のカタログ）を出す', await page.locator('.card.work', { hasText: 'サンプルの森' }).first().getByText('出典：CWカタログのサンプル').isVisible());
+  if (width > 600) await cave.screenshot({ path: join(OUT, `held-${colorScheme}.png`) }).catch(() => {});
+  await cave.getByRole('button', { name: 'ダウンロード' }).click();
+  ok('一時保留中の作品を取るときは確かめる', await page.locator('dialog', { hasText: '一時保留中の作品' }).getByText(/見本：通報が多かったため/).isVisible());
+  await page.locator('dialog').getByRole('button', { name: 'やめる' }).click();
+  await page.locator('#show-held').uncheck();
+  const forest = page.locator('.card.work', { has: page.locator('.item-title', { hasText: /^サンプルの森$/ }) });
+  await forest.getByRole('button', { name: 'この作者は入れない' }).click();
+  await page.locator('dialog').getByRole('button', { name: '入れない' }).click();
+  await page.getByText(/「見本作者」さんの作品を、カタログから拾わないようにしました/).waitFor();
+  ok('入れない作者の作品は出さない', !(await forest.count()) && await page.locator('#show-muted').isVisible());
+  await page.locator('#show-muted').check();
+  await forest.getByRole('button', { name: '入れない作者から外す' }).click();
+  await page.getByText(/入れない作者から外しました/).waitFor();
+  await page.locator('#show-muted').uncheck().catch(() => {});
+  ok('入れない作者から外すと戻る', await forest.isVisible());
 
   // 9b. 選んでフォルダに入れる・作者ごとにまとめる・選んで候補から外す
   await page.getByLabel('候補から外したものも表示').uncheck();
@@ -594,6 +643,27 @@ async function run(colorScheme, width) {
   const shopTags = await shopCard.locator('.tag').allTextContents();
   ok('入れるときに、選んだ自動タグだけ付く', shopTags.some((t) => t.startsWith('店シナ')) && shopTags.some((t) => t.startsWith('1人専用')) && !shopTags.some((t) => t.startsWith('戦闘なし')), shopTags.join(','));
 
+  // 14b. 実行ファイルが入っているzip：注意を出し、いつもは外して入れる（元のzipも残さない）
+  const mz = new Uint8Array(4000); mz[0] = 0x4d; mz[1] = 0x5a;
+  const tool = Buffer.from(zipSync({ '道具入り/Summary.wsm': new Uint8Array(readFileSync(base15 + 'Summary.wsm')), '道具入り/Package3.wid': new Uint8Array(readFileSync(base15 + 'Package3.wid')), '道具入り/setup.exe': mz, '道具入り/data.dat': mz, '道具入り/りどみ.txt': strToU8('道具入りの見本です。') }));
+  await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: '道具入り.zip', mimeType: 'application/zip', buffer: tool });
+  const ew = page.locator('#exec-warn');
+  await ew.waitFor();
+  ok('実行ファイルの注意（名前と中身の頭のMZ）', /注意！このファイルには、カードワースのシナリオ以外の実行ファイルが入っています/.test(await ew.textContent()) && await ew.getByText('道具入り/setup.exe').isVisible() && await ew.getByText('道具入り/data.dat').isVisible() && /MZ/.test(await ew.textContent()));
+  ok('実行ファイルは、いつもは入れない', !(await page.locator('#exec-allow').isChecked()));
+  await page.locator('#contents summary').click();
+  await page.locator('#contents li.exec').first().waitFor();
+  ok('中身の一覧（実行ファイルに印）', (await page.locator('#contents li.exec').count()) === 2 && await page.locator('#contents').getByText('・入れません').first().isVisible());
+  await page.locator('#contents').getByRole('button', { name: '道具入り/りどみ.txt' }).click();
+  await page.locator('#text-modal', { hasText: '道具入りの見本です。' }).waitFor();
+  ok('中身のテキストを、その場で読める', true);
+  if (width > 600) await page.locator('#exec-warn').locator('..').screenshot({ path: join(OUT, `exec-warn-${colorScheme}.png`) }).catch(() => {});
+  await page.locator('dialog').getByRole('button', { name: '閉じる' }).click();
+  await page.getByLabel('Readme（利用規約）を読みました').check();
+  await page.getByRole('button', { name: 'インストール' }).click();
+  await page.getByText(/Scenario\/道具入り に入れました/).waitFor();
+
   // OPFSの中身を確認
   const tree = await page.evaluate(async () => {
     const out = [];
@@ -619,7 +689,8 @@ async function run(colorScheme, width) {
   ok('書き込み先は Scenario と CWCatalog_backup だけ', tree.every((p) => p === 'CardWirthNext.exe' || p.startsWith('Scenario/') || p.startsWith('CWCatalog_backup/')));
   ok('Next版が _店 に入った', tree.includes('Scenario/_店/うつろい森のあなた/Summary.wsm'));
   ok('移したものは選んだバックアップ先にある', !tree.includes('Scenario/_店/開けられた鳥籠ver1_01/Summary.wsm') && bk.some((p) => /^CardWirthNext[^/]*\/\d{8}_\d{6}_開けられた鳥籠ver1_01\/Summary\.wsm$/.test(p)), bk.filter((p) => p.endsWith('Summary.wsm')).join(', '));
-  ok('外側のReadmeはシナリオに入れない', !tree.some((p) => p.endsWith('りどみ.txt')));
+  ok('外側のReadmeはシナリオに入れない', !tree.some((p) => p.endsWith('りどみ.txt') && !p.includes('道具入り')));
+  ok('実行ファイルは外して入れ、元のzipも残さない', tree.includes('Scenario/道具入り/Summary.wsm') && !tree.some((p) => /道具入り\/(setup\.exe|data\.dat)$/.test(p)) && !archived.includes('道具入り.zip'), tree.filter((p) => p.includes('道具入り')).join(', '));
   ok('コンソールにエラーなし（CSP違反を含む）', errors.length === 0, errors.join(' | '));
   await ctx.close();
   return tree;

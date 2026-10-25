@@ -3,12 +3,12 @@
 //! Tauri の http プラグインは、受け取った見出し（ヘッダー）を画面側で組み立て直すため、
 //! Googleドライブのように日本語のファイル名をそのまま見出しに入れてくるサイトでは
 //! 「Failed to construct 'Headers'」で止まってしまう。そこで、ダウンロードはこちらで行い、
-//! 中身は CWCatalog-data\downloads に一時ファイルとして置いて、画面側に場所と見出しだけを渡す
-//! （画面側は読んだらすぐ消す）。
+//! 受け取った中身はパソコンに書き込まず、メモリの中だけに置いて、画面側が `net_take` で引き取る
+//! （インストールすると決めたものだけが、あとで保存先に書き込まれる）。
+//! 中身を確かめるため、ファイルの一部だけ（Range）を読むこともできる。
 use std::collections::HashMap;
-use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
 use tauri_plugin_http::reqwest;
@@ -27,6 +27,21 @@ pub struct NetReq {
     timeout: Option<u64>,
     /// 進み具合を知らせるときの番号（画面側で付ける）。なければ知らせない
     progress: Option<u32>,
+    /// ここまで読んだら止める（目次だけ読みたいときなど）。なければ最後まで
+    max: Option<u64>,
+}
+
+/// 受け取った中身の置き場（メモリの中だけ）。画面側が net_take で引き取ると消える
+fn mem() -> &'static Mutex<HashMap<u32, Vec<u8>>> {
+    static M: OnceLock<Mutex<HashMap<u32, Vec<u8>>>> = OnceLock::new();
+    M.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 受け取った中身を引き取る（1回だけ。引き取ったらメモリから消える）
+#[tauri::command]
+pub fn net_take(id: u32) -> tauri::ipc::Response {
+    let v = mem().lock().map(|mut m| m.remove(&id).unwrap_or_default()).unwrap_or_default();
+    tauri::ipc::Response::new(v)
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -52,7 +67,7 @@ fn client() -> Result<&'static reqwest::Client, String> {
     Ok(C.get_or_init(|| c))
 }
 
-/// 前に落ちたときなどに残った一時ファイルを消す（起動したときに呼ぶ）
+/// 前の版で使っていた一時ファイルが残っていたら消す（起動したときに呼ぶ）
 pub fn cleanup_parts() {
     let dir = crate::portable().downloads_dir();
     if let Ok(rd) = std::fs::read_dir(&dir) {
@@ -73,9 +88,13 @@ pub struct NetResp {
     content_disposition: String,
     content_length: u64,
     set_cookie: Vec<String>,
-    /// 中身を置いた一時ファイル（読んだら消す）。うまくいかなかったときは空
-    path: String,
+    /// 一部だけ読んだときの「bytes 始め-終わり/全体」
+    content_range: String,
+    /// 中身の引き取り番号（net_take に渡す）。中身が無いときは 0
+    id: u32,
     size: u64,
+    /// max で途中で止めたとき true
+    truncated: bool,
 }
 
 /// 見出しの値を文字にする。UTF-8 ならそのまま、違えば1バイト1文字で読む
@@ -130,20 +149,19 @@ pub async fn net_fetch(app: tauri::AppHandle, req: NetReq) -> Result<NetResp, St
         content_disposition: get(&h, "content-disposition"),
         content_length,
         set_cookie,
-        path: String::new(),
+        content_range: get(&h, "content-range"),
+        id: 0,
         size: 0,
+        truncated: false,
     };
     if !resp.status().is_success() {
         return Ok(out);
     }
-    if content_length > MAX_BYTES {
+    let max = req.max.unwrap_or(MAX_BYTES).min(MAX_BYTES);
+    if content_length > MAX_BYTES && req.max.is_none() {
         return Err("ファイルが大きすぎます".into());
     }
-    let dir = crate::portable().downloads_dir();
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join(format!("net-{}-{}.part", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed)));
-    let mut f = std::fs::File::create(&path).map_err(|e| e.to_string())?;
-    let mut size: u64 = 0;
+    let mut buf: Vec<u8> = Vec::with_capacity(content_length.min(max).min(256 * 1024 * 1024) as usize);
     let mut last = Instant::now();
     let tell = |got: u64| {
         if let Some(id) = req.progress {
@@ -155,31 +173,30 @@ pub async fn net_fetch(app: tauri::AppHandle, req: NetReq) -> Result<NetResp, St
         let chunk = match resp.chunk().await {
             Ok(Some(c)) => c,
             Ok(None) => break,
-            Err(e) => {
-                drop(f);
-                let _ = std::fs::remove_file(&path);
-                return Err(format!("途中で切れました（{e}）"));
-            }
+            Err(e) => return Err(format!("途中で切れました（{e}）")),
         };
-        size += chunk.len() as u64;
-        if size > MAX_BYTES {
-            drop(f);
-            let _ = std::fs::remove_file(&path);
-            return Err("ファイルが大きすぎます".into());
+        let room = (max - buf.len() as u64) as usize;
+        if chunk.len() > room {
+            buf.extend_from_slice(&chunk[..room]);
+            out.truncated = true;
+            break;
         }
-        if let Err(e) = f.write_all(&chunk) {
-            drop(f);
-            let _ = std::fs::remove_file(&path);
-            return Err(e.to_string());
-        }
+        buf.extend_from_slice(&chunk);
         if last.elapsed() >= Duration::from_millis(150) {
             last = Instant::now();
-            tell(size);
+            tell(buf.len() as u64);
         }
     }
-    tell(size);
-    out.path = path.to_string_lossy().to_string();
-    out.size = size;
+    if out.truncated && req.max.is_none() {
+        return Err("ファイルが大きすぎます".into());
+    }
+    out.size = buf.len() as u64;
+    tell(out.size);
+    if !buf.is_empty() {
+        let id = SEQ.fetch_add(1, Ordering::Relaxed).wrapping_add(1).max(1);
+        mem().lock().map_err(|_| "メモリの置き場が使えません".to_string())?.insert(id, buf);
+        out.id = id;
+    }
     Ok(out)
 }
 

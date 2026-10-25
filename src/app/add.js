@@ -20,6 +20,7 @@ import { findTagsInOpened } from '../core/autotag.js';
 import { addTagName } from './tags.js';
 import { backupOpts, backupFull } from './backup.js';
 import { existsAt } from '../core/fs.js';
+import { execWarning, contentsBox } from './safety-view.js';
 
 export const VERSION_SOURCE = { catalog: '（カタログで確定）', dl: '（カタログからDLした版）', user: '（手入力）', guess: '（名前から推測）' };
 
@@ -145,6 +146,8 @@ export function viewAdd() {
     S.openedZone ? h('p', { class: 'small muted', style: 'margin:6px 0 0;word-break:break-all' }, `DL元（ブラウザの記録）：${S.openedZone.referrerUrl || S.openedZone.hostUrl}`) : null,
     work ? h('p', { class: 'note ok small' }, `カタログの「${work.name}」ver ${work.version} ${S.matchBy === 'sha256' ? 'とファイルが一致しました（版まで確定）' : S.openedVia === 'catalog' ? 'から取ってきました' : 'と名前が一致しました'}。`) : null,
     o.warnings?.length ? h('details', { class: 'small' }, h('summary', {}, `注意 ${o.warnings.length}件`), h('ul', {}, o.warnings.map((w) => h('li', {}, w)))) : null,
+    execWarning(o),
+    contentsBox(o),
   ));
 
   if (!sc) {
@@ -227,7 +230,7 @@ export function viewAdd() {
     h('div', { class: 'row' },
       eng && !connected ? h('button', { class: 'btn', onclick: () => connectEngineQuiet(eng.id) }, 'フォルダに接続') : null,
       h('button', { class: 'btn primary', disabled: !canInstall, onclick: doInstall }, 'インストール'),
-      o.source.kind === 'archive' && S.archive.ref ? h('button', { class: 'btn', disabled: !!S.busy, onclick: () => busy('保存中', async () => { const n = await saveArchive(o, { force: true }); if (n) toast(`「${S.archive.label}」に ${n} を保存しました`); }) }, 'zipを保存場所に保存') : null,
+      o.source.kind === 'archive' && S.archive.ref && !o.execExcluded ? h('button', { class: 'btn', disabled: !!S.busy, onclick: () => busy('保存中', async () => { const n = await saveArchive(o, { force: true }); if (n) toast(`「${S.archive.label}」に ${n} を保存しました`); }) }, 'zipを保存場所に保存') : null,
       h('button', { class: 'btn', disabled: !S.readmeAck, onclick: doExportWeb }, 'WebCardWirth用に書き出す'),
     ),
   ));
@@ -271,6 +274,7 @@ function autoTagBox(o) {
 
 function archiveNote(o) {
   if (o.source.kind !== 'archive') return null;
+  if (o.execExcluded) return h('p', { class: 'small muted', style: 'margin:0' }, `実行ファイルが入っているので、元の ${o.archiveName || o.source.name} は保存場所に残しません`);
   if (S.archive.on && S.archive.ref) return h('p', { class: 'small muted', style: 'margin:0' }, `インストールすると、元の ${o.source.name} も「${S.archive.label}」に保存します（設定で変えられます）`);
   return null;
 }
@@ -344,6 +348,8 @@ export async function archiveDirOf(ask = true) {
 export async function saveArchive(opened, { force = false, subdir = '' } = {}) {
   const bytes = opened.archiveBytes || opened.bytes;
   if (opened.source.kind !== 'archive' || !bytes) return null;
+  // 実行ファイルを外して入れたときは、元のファイル（実行ファイル入り）は残さない
+  if (opened.execExcluded) return null;
   if (!force && !S.archive.on) return null;
   const root = await archiveDirOf(true);
   if (!root) throw new Error('zipの保存場所を使う許可がありませんでした。設定の「zip・wsnの保存場所」で選び直してください');

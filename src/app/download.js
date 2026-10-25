@@ -4,6 +4,7 @@
 //  ・BOOTH・note・Notion・Privatter+ などは、アプリ内ブラウザで本人が押す
 //  ・同意やDLキーのページは、ツールの画面で同意してもらう（2段階のページにも対応）。サイトごとに「同意を覚える」こともできる
 
+import { markLink } from './linkcheck.js';
 import { zipSync } from 'fflate';
 import { openArchive, archiveKind, sha256Hex } from '../core/archive.js';
 import { chooseDownloads } from '../core/catalogs.js';
@@ -32,8 +33,11 @@ export async function fetchOnce(url, opts, ctx = {}) {
   const f = fetchUrlFor(url);
   let r;
   try { r = await S.platform.fetchResource(f.url, ctx.onProgress ? { ...(opts || {}), onProgress: ctx.onProgress } : opts); } catch (e) {
-    return { kind: 'error', url, message: `${f.note ? `${f.note}：` : ''}${e.message || String(e)}` };
+    const dead = e?.status === 404 || e?.status === 410;
+    if (dead && !opts?.method) await markLink(url, 'dead', e.status);
+    return { kind: 'error', url, message: `${f.note ? `${f.note}：` : ''}${dead ? 'ファイルが見つかりませんでした（✖ リンク切れのようです）' : e.message || String(e)}` };
   }
+  if (!opts?.method && S.linkCheck?.[url]?.state && S.linkCheck[url].state !== 'ok') await markLink(url, 'ok', 200);
   let res = classify(r, url);
   // ワンタイムURLのサイト（firestorage など）：クッションページ → ダウンロードページ → ファイル と、順にたどる
   for (let hop = 0; hop < 4 && res.kind === 'page'; hop++) {

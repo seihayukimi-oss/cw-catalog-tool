@@ -10,6 +10,7 @@ import { store } from './store.js';
 import { h, toast, modal, fmtSize, formatBadge, sleep } from './ui.js';
 import { tryDownloads, dlLabel, pagePanel, inAppDownload, deliver, tryAutoAgree } from './download.js';
 import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
+import { execWarning, contentsBox } from './safety-view.js';
 import { readmeModal, installOpened, ensureDir, destFields, engineSelect, watchdog } from './add.js';
 import { KINDS, stashDirOf, installNonScenario, autoSkinCat, destStatus, openBtn } from './materials.js';
 import { readSkin } from '../core/skin.js';
@@ -307,6 +308,8 @@ function itemCard(it) {
         ['wait', 'error', 'action', 'ready'].includes(it.status) && !S.batch.installing ? h('button', { class: 'btn ghost sm', onclick: () => { S.batch.items = S.batch.items.filter((x) => x !== it); if (!S.batch.items.length) S.batch = null; render(); } }, '外す') : null)),
     h('div', { class: 'meta' }, [it.work?.author, it.work ? `ver ${it.work.version}` : '', it.zone?.referrerUrl || it.zone?.hostUrl ? `DL元：${(it.zone.referrerUrl || it.zone.hostUrl).replace(/^https?:\/\//, '').slice(0, 60)}` : '', it.used ? `取得元：${dlLabel(it.used)}` : '', it.opened ? `${it.opened.source.name}・${fmtSize(it.opened.source.size)}` : ''].filter(Boolean).join('・')),
     it.message ? h('div', { class: `small ${it.status === 'error' || it.status === 'failed' ? 'note bad' : 'muted'}`, id: `bi-msg-${it.id}` }, it.message) : null,
+    it.opened && it.status !== 'done' ? execWarning(it.opened, { compact: true, disabled: !editable }) : null,
+    it.opened && it.status === 'ready' ? contentsBox(it.opened, { id: `bi-contents-${it.id}` }) : null,
     it.status === 'done' && it.donePath ? h('div', { class: 'row' }, openBtn(it.donePath, '入れた場所を開く')) : null,
     it.fellBack && it.status !== 'done' ? h('div', { class: 'small muted' }, `デフォルトの「${dlLabel(it.fellBack.from)}」から取れなかったので、「${dlLabel(it.fellBack.to)}」から取りました。`) : null,
   );

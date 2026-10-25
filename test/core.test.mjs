@@ -544,3 +544,95 @@ test('登録フォーム（Google Apps Script）の共用カタログを読む',
   assert.equal(cat.links.register, 'https://docs.google.com/forms/d/e/x/viewform');
   assert.equal(cat.links.manage, undefined, 'http(s) 以外のリンクは捨てる');
 });
+
+import { findExecutables, includeExecutables, execSignature } from '../src/core/safety.js';
+import { peekArchive, PeekUnsupported } from '../src/core/peek.js';
+
+/** 手元のバイト列を、Range に対応したサイトのように読ませる */
+const rangeServer = (bytes, { partial = true, contentType = 'application/zip' } = {}) => {
+  const calls = [];
+  const fn = async ({ suffix, start = 0, end }) => {
+    calls.push({ suffix, start, end });
+    if (!partial) return { bytes: bytes.slice(0, 4 * 1024 * 1024), partial: false, total: bytes.length, complete: bytes.length <= 4 * 1024 * 1024, contentType, fileName: 'x' };
+    const s = suffix ? Math.max(0, bytes.length - suffix) : start;
+    const e = Math.min(bytes.length - 1, end ?? bytes.length - 1);
+    calls.got = (calls.got || 0) + (e - s + 1);
+    return { bytes: bytes.slice(s, e + 1), partial: true, total: bytes.length, complete: false, contentType, fileName: 'x' };
+  };
+  fn.calls = calls;
+  return fn;
+};
+
+test('実行ファイルを見つける（名前・中身の頭のMZ）、入れるものから外す', async () => {
+  const mz = new Uint8Array(3000); mz[0] = 0x4d; mz[1] = 0x5a;
+  const zip = writeZip([
+    { path: '森/Summary.wsm', data: new Uint8Array(10) },
+    { path: '森/りどみ.txt', data: new TextEncoder().encode('りどみ') },
+    { path: '森/setup.exe', data: new Uint8Array(5) },
+    { path: '森/data.dat', data: mz },
+    { path: '森/絵.bmp', data: mz },
+  ]);
+  const o = await openArchive(zip, 'mori.zip');
+  const ex = o.executables.map((x) => x.path).sort();
+  assert.deepEqual(ex, ['森/data.dat', '森/setup.exe']);
+  assert.match(o.executables.find((x) => x.path.endsWith('.dat')).why, /MZ/);
+  // いつもは外してある。本人が選べば戻せる
+  assert.ok(o.execExcluded);
+  assert.ok(!o.files.some((f) => /setup\.exe|data\.dat/.test(f.path)));
+  assert.ok(o.files.some((f) => f.path.endsWith('りどみ.txt')));
+  includeExecutables(o);
+  assert.equal(o.files.length, 5);
+  assert.equal(execSignature(new TextEncoder().encode('PK')), '');
+  // 圧縮されたものでも頭だけで分かる（全部は展開しない）
+  const big = new Uint8Array(2 * 1024 * 1024); big[0] = 0x4d; big[1] = 0x5a;
+  const z2 = readZip(writeZip([{ path: 'a/noext', data: big }]));
+  assert.equal((await findExecutables(z2.entries)).length, 1);
+});
+
+test('ダウンロードせずに目次だけ読む（zip・cab・7z、ページやlzhは読まない）', async () => {
+  const pad = new Uint8Array(400 * 1024).map((_, i) => (i * 7919) % 251);
+  const zip = writeZip([{ path: '森/Summary.wsm', data: new Uint8Array(10) }, { path: '森/big.png', data: pad }, { path: '森/tool.bat', data: new Uint8Array(3) }]);
+  const srv = rangeServer(zip);
+  const r = await peekArchive(srv);
+  assert.equal(r.format, 'zip');
+  assert.deepEqual(r.entries.map((e) => e.path).sort(), ['森/Summary.wsm', '森/big.png', '森/tool.bat']);
+  assert.equal(r.entries.find((e) => e.path.endsWith('.bat')).exec, true);
+  // 読んだのは頭と後ろだけ
+  assert.ok(srv.calls.got < zip.length / 2, `${srv.calls.got} < ${zip.length}`);
+  for (const f of ['sample.cab', 'sample.7z']) {
+    const p = await peekArchive(rangeServer(tfx(f)));
+    assert.deepEqual(p.entries.map((e) => e.path).sort(), ['森/data.bin', '森/りどみ.txt'], f);
+  }
+  await assert.rejects(peekArchive(rangeServer(tfx('sample.lzh'))), PeekUnsupported);
+  await assert.rejects(peekArchive(rangeServer(new TextEncoder().encode('<!doctype html><title>DL</title>'), { contentType: 'text/html' })), PeekUnsupported);
+  // 一部だけに対応していないサイトでも、小さいファイルなら全部来るので読める
+  assert.equal((await peekArchive(rangeServer(zip, { partial: false }))).entries.length, 3);
+});
+
+import { combine as combineCats, mirrorsOf } from '../src/core/catalogs.js';
+
+test('共用カタログ：一時保留中・出典・改変版・確かめたところ、写し（jsDelivr）のURL', () => {
+  const shared = parseCatalog({
+    format: 1, attribution: { name: 'CW共用カタログ', url: 'https://example.github.io/cw/' }, license: 'CC0-1.0',
+    entries: [
+      { id: 'e00001', name: '鳥籠', author: '雪見', state: 'held', held_reason: '無断改変の疑い', downloads: [{ url: 'https://a.example/x.zip' }] },
+      { id: 'e00002', name: '森', author: '雪見', checked: 'readme', derivative: { of: '元の森', basis: 'Readmeに改変可と記載' }, origin: { name: '前の一覧', url: 'https://old.example/' }, downloads: [] },
+      { id: 'e00003', name: '海', author: '空', state: 'deleted', downloads: [] },
+    ],
+  });
+  assert.equal(shared.attribution.name, 'CW共用カタログ');
+  assert.equal(shared.byId.get('e00003').state, 'public'); // 知らない状態は公開扱い（非公開のものは、そもそも配られない）
+  const own = parseCatalog({ format: 1, entries: [{ id: 'p00001', name: '海', author: '空', downloads: [] }] });
+  const c = combineCats([{ id: 's', kind: 'shared', name: '共用', catalog: shared }, { id: 'o', kind: 'own', name: 'マイ', catalog: own }]);
+  const w = (n) => c.works.find((x) => x.name === n);
+  assert.equal(w('鳥籠').held, true);
+  assert.equal(w('鳥籠').heldReason, '無断改変の疑い');
+  assert.deepEqual(w('鳥籠').origins.map((o) => o.name), ['CW共用カタログ']);
+  assert.deepEqual(w('森').origins.map((o) => o.name), ['前の一覧']);
+  assert.equal(w('森').derivative.basis, 'Readmeに改変可と記載');
+  assert.equal(w('森').checked, 'readme');
+  assert.equal(w('海').held, false);
+  const sha = 'a'.repeat(64);
+  assert.deepEqual(mirrorsOf({ sha256: sha, mirrors: ['https://cdn.jsdelivr.net/gh/u/r@0123abc/index.json', 'https://evil.example/index.json', 'http://cdn.jsdelivr.net/gh/u/r/index.json'] }), ['https://cdn.jsdelivr.net/gh/u/r@0123abc/index.json']);
+  assert.deepEqual(mirrorsOf({ mirrors: ['https://cdn.jsdelivr.net/gh/u/r@1/index.json'] }), []); // 指紋がなければ使わない
+});

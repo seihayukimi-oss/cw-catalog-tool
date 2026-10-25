@@ -61,6 +61,18 @@ export function sanitizeEntry(e) {
     // ラベル（作者さんごと・企画ごとなどの分け方）。受け取った人が、取り込むかどうかと範囲を選ぶ
     labels: (Array.isArray(e.labels) ? e.labels : []).filter((t) => typeof t === 'string').map((t) => t.trim().slice(0, 60)).filter(Boolean).slice(0, 20),
     description: str(e.description, 5000),
+    // 共用カタログの状態：public＝公開中、held＝一時保留中（通報が多かったものなど。受け取る側で、いつもは出さない）
+    state: e.state === 'held' ? 'held' : 'public',
+    held_reason: e.state === 'held' ? str(e.held_reason, 300) : '',
+    // 作者さんのサイト（作品ごと）
+    site: isHttp(e.site) ? e.site : '',
+    // 載せた人が、どこで確かめたか（readme・site＝作者さんのサイト／配布ページ・author＝作者さん本人から・other）
+    checked: ['readme', 'site', 'author', 'other'].includes(e.checked) ? e.checked : '',
+    checked_note: str(e.checked_note, 300),
+    // 改変版のとき：もとの作品と、改変してよいと分かるもの（規約のURLなど）
+    derivative: e.derivative && typeof e.derivative === 'object' ? { of: str(e.derivative.of, 200), basis: str(e.derivative.basis, 500) } : null,
+    // 出典：ほかのカタログから写したとき、元のカタログ
+    origin: e.origin && typeof e.origin === 'object' && str(e.origin.name, 100) ? { name: str(e.origin.name, 100), url: isHttp(e.origin.url) ? e.origin.url : '' } : null,
     requires: (Array.isArray(e.requires) ? e.requires : []).filter((x) => /^[ep]\d{5,}$/.test(x)),
     related: (Array.isArray(e.related) ? e.related : []).filter((x) => /^[ep]\d{5,}$/.test(x)),
     links: (Array.isArray(e.links) ? e.links : []).filter(isHttp),
@@ -90,8 +102,12 @@ export function parseCatalog(json) {
   }
   // 共用カタログの登録・変更のフォーム（あれば）
   const links = {};
-  for (const k of ['register', 'manage']) if (isHttp(json.links?.[k])) links[k] = json.links[k];
-  return { format: CATALOG_FORMAT, entries, authors, links, byId: new Map(entries.map((e) => [e.id, e])) };
+  for (const k of ['register', 'manage', 'report']) if (isHttp(json.links?.[k])) links[k] = json.links[k];
+  // 出典（このカタログを作ったところ）と、データの決まり（CC0 など）
+  const attribution = json.attribution && typeof json.attribution === 'object' && str(json.attribution.name, 100)
+    ? { name: str(json.attribution.name, 100), url: isHttp(json.attribution.url) ? json.attribution.url : '' } : null;
+  const license = str(json.license, 100);
+  return { format: CATALOG_FORMAT, entries, authors, links, attribution, license, byId: new Map(entries.map((e) => [e.id, e])) };
 }
 
 /** 比較用に名前をそろえる（全角半角・空白・記号の違いを無視） */

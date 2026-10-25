@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-net-take"
+description = "Enables the net_take command without any pre-configured scope."
+commands.allow = ["net_take"]
+
+[[permission]]
+identifier = "deny-net-take"
+description = "Denies the net_take command without any pre-configured scope."
+commands.deny = ["net_take"]

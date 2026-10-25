@@ -13,7 +13,8 @@ import { netProgress } from './state.js';
 import { S, views, setRenderer, render, busy, busyText, engine, recordsOf, dirOf, rerenderList, confirmBox, goTab, TAB_LABEL, APP_VERSION } from './state.js';
 import { store, recordId, exportRecords, importRecords } from './store.js';
 import { h, toast, modal, fmtDate, formatBadge, sleep } from './ui.js';
-import { loadCatalogs, applyCatalog, workOf, refreshSource, refreshStates, checkFileLists } from './catalog-data.js';
+import { loadCatalogs, applyCatalog, workOf, refreshSource, refreshStates, checkFileLists, defaultUrlOf } from './catalog-data.js';
+import { chooseDownloads } from '../core/catalogs.js';
 import { viewAdd, setupDrop, VERSION_SOURCE } from './add.js';
 import { downloadWork, handleInstallLink, viewLinkMaker, loadConsents, viewConsents } from './download.js';
 import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
@@ -27,6 +28,7 @@ import { openArchive } from '../core/archive.js';
 import { dirAt } from '../core/fs.js';
 import { openTidy, viewTidy } from './tidy.js';
 import { loadBackup, viewBackupSettings } from './backup.js';
+import { loadLinkCheck, checkLinks, staleLink, markLink } from './linkcheck.js';
 import { CREDITS } from './credits.js';
 import { MAT, SKIN, loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
 
@@ -54,6 +56,7 @@ export async function startApp(platform) {
   if (S.archive.ref) S.archiveDir = await platform.openFolder(S.archive.ref).catch(() => null);
   await loadStash();
   await loadBackup();
+  await loadLinkCheck();
   Object.assign(views, { mine: viewMine, add: viewAdd, catalog: viewCatalog, settings: viewSettings });
   setRenderer(draw);
   setupDrop();
@@ -429,6 +432,19 @@ async function checkUpdates() {
       }
     }
 
+    // 入れている作品のDL先が、リンク切れになっていないか（アプリ版だけ。1回に30件まで、1週間に1回）
+    let links = null;
+    if (S.platform.canCheckPages && online && S.combined && S.linkCheckOnUpdate !== false) {
+      const keys = new Set(all.map((r) => r.workKey).filter(Boolean));
+      const urls = [];
+      for (const w of S.combined.works) {
+        if (!keys.has(w.key)) continue;
+        const d = chooseDownloads(w, defaultUrlOf(w))[0];
+        if (d && staleLink(d.url)) urls.push(d.url);
+      }
+      if (urls.length) links = await checkLinks(urls.slice(0, 30), { onStep: (n) => busyText(`リンク切れを確認中… ${n}`) });
+    }
+
     // カタログ外のブックマーク：アプリ版だけ配布ページを見に行く
     let pages = 0, pageChanged = 0, pageFailed = 0;
     if (S.platform.canCheckPages && online) {
@@ -440,7 +456,10 @@ async function checkUpdates() {
           r.pageSnapshot = { mode: c.mode, snapshot: c.snapshot, at: new Date().toISOString() };
           if (c.changed) { r.pageChanged = { added: c.added, removed: c.removed, at: r.pageSnapshot.at }; pageChanged++; }
           pages++;
-        } catch { pageFailed++; }
+        } catch (e) {
+          pageFailed++;
+          if (e?.status === 404 || e?.status === 410) await markLink(r.pageUrl, 'dead', e.status);
+        }
         if (!changed.includes(r)) changed.push(r);
         await sleep(1500); // 相手のサイトに負担をかけないよう、1件ずつ間をあける
       }
@@ -449,7 +468,7 @@ async function checkUpdates() {
     S.records = await store.records();
     await store.set('lastCheck', new Date().toISOString());
     const n = S.records.filter((r) => r.state === 'update').length;
-    toast([`更新あり ${n}件`, lists?.checked ? `ファイル一覧 ${lists.checked}件（新しいファイル ${lists.found}件${lists.failed ? `・読めなかった一覧 ${lists.failed}件` : ''}）` : '', pages ? `ページ確認 ${pages}件（変化 ${pageChanged}件${pageFailed ? `・確認できず ${pageFailed}件` : ''}）` : ''].filter(Boolean).join('／'));
+    toast([`更新あり ${n}件`, lists?.checked ? `ファイル一覧 ${lists.checked}件（新しいファイル ${lists.found}件${lists.failed ? `・読めなかった一覧 ${lists.failed}件` : ''}）` : '', pages ? `ページ確認 ${pages}件（変化 ${pageChanged}件${pageFailed ? `・確認できず ${pageFailed}件` : ''}）` : '', links?.checked ? `リンク確認 ${links.checked}件${links.dead ? `（✖ リンク切れ ${links.dead}件）` : ''}` : ''].filter(Boolean).join('／'));
   });
 }
 

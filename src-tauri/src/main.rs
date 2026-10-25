@@ -261,6 +261,7 @@ fn main() {
             portable_info,
             take_open_args,
             net::net_fetch,
+            net::net_take,
             folders::default_store_dirs,
             folders::open_folder,
             update::portable_update_install,

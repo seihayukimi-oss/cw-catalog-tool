@@ -138,3 +138,23 @@ export async function opfsFolder(name) {
   // OPFSのハンドルはIndexedDBに保存せず、名前だけを覚えておく
   return { dir: new FsaDir(h), ref: { opfs: name }, label: `ブラウザ内：${name}` };
 }
+
+/**
+ * 試験用（#dev-opfs のときだけ使う）：同じサイトのファイルの一部を読む・リンクを確かめる。
+ * HTML版では、ほかのサイトはブラウザの制限で読めないので、ふだんは使わない（アプリ版の機能）。
+ */
+export async function devFetchRange(url, { suffix, start = 0, end } = {}) {
+  const range = suffix ? `bytes=-${suffix}` : `bytes=${start}-${end ?? ''}`;
+  const r = await fetch(url, { headers: { Range: range }, credentials: 'omit' });
+  if (!r.ok) throw Object.assign(new Error(`読み込めませんでした（${r.status}）`), { status: r.status });
+  const partial = r.status === 206;
+  const m = /\/(\d+)\s*$/.exec(r.headers.get('content-range') || '');
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  return { bytes, partial, total: partial ? Number(m?.[1] || 0) : bytes.length, complete: !partial, contentType: r.headers.get('content-type') || '', fileName: fileNameFrom(r.url || url, r.headers.get('content-disposition') || ''), finalUrl: r.url || url };
+}
+export async function devCheckLink(url) {
+  try {
+    const r = await fetch(url, { headers: { Range: 'bytes=0-0' }, credentials: 'omit' });
+    return { status: r.status, contentType: r.headers.get('content-type') || '' };
+  } catch (e) { return { status: 0, error: String(e) }; }
+}
