@@ -5,6 +5,7 @@
 //  ・同意やDLキーのページは、ツールの画面で同意してもらう（2段階のページにも対応）。サイトごとに「同意を覚える」こともできる
 
 import { markLink } from './linkcheck.js';
+import { safetyNote } from './safety-view.js';
 import { zipSync } from 'fflate';
 import { openArchive, archiveKind, sha256Hex } from '../core/archive.js';
 import { chooseDownloads } from '../core/catalogs.js';
@@ -510,7 +511,7 @@ export function viewUrlBox() {
   } else if (st?.status === 'inapp') {
     detail = h('div', { class: 'note warn small' },
       `${st.why}。`,
-      S.platform.canInAppBrowse ? 'アプリ内ブラウザで開くので、サイトのダウンロードボタンを押してください（ログインが要るサイトは、初回だけログインしてください）。ログインで先に進めないときは、普段のブラウザでDLして、上の「「ダウンロード」から選ぶ」で入れてください。' : 'ページを開いたので、そこでダウンロードしたファイルを上にドロップしてください。',
+      S.platform.canInAppBrowse ? 'アプリ内ブラウザで開くので、サイトのダウンロードボタンを押してください（ログインが要るサイトは、初回だけログインしてください）。アプリ内ブラウザではページのスクリプトが動きますが、アプリの機能（ファイル操作など）には触れられない設定です。ログインで先に進めないときは、普段のブラウザでDLして、上の「「ダウンロード」から選ぶ」で入れてください。' : 'ページを開いたので、そこでダウンロードしたファイルを上にドロップしてください。',
       h('div', { class: 'row', style: 'margin-top:6px' },
         S.platform.canInAppBrowse ? h('button', { class: 'btn sm', onclick: () => inAppDownload(st.url, hd) }, 'アプリ内でもう一度開く') : null,
         h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(st.url) }, 'ブラウザで開く')));
@@ -525,6 +526,7 @@ export function viewUrlBox() {
   return h('div', { class: 'card stack' },
     h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'URLから'), input, h('button', { class: 'btn', onclick: go }, '取ってくる')),
     st?.work ? h('div', { class: 'small muted' }, `カタログの「${st.work.name}」を取得中`) : null,
+    safetyNote({ url: st?.url || '', id: 'safety-note' }),
     detail);
 }
 

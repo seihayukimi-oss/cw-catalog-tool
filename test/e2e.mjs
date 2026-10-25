@@ -136,6 +136,16 @@ async function run(colorScheme, width) {
 
   // 2. 入れる：Next（二重フォルダ）を _店 に
   await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
+  ok('取ってくるところに、安全のしくみの短い説明', /中身を確かめてから/.test(await page.locator('#safety-note').textContent()));
+  await page.locator('#safety-note').getByRole('button', { name: 'くわしく' }).click();
+  ok('「くわしく」で安全のしくみを全部見られる', await page.locator('#safety-modal').getByText('できないこと（大事）').isVisible() && await page.locator('#safety-modal').getByText(/ウイルス対策ソフトではありません/).isVisible());
+  if (width > 600) await page.locator('#safety-modal').screenshot({ path: join(OUT, `safety-${colorScheme}.png`) }).catch(() => {});
+  await page.locator('#safety-modal').getByRole('button', { name: '閉じる' }).click();
+  await page.locator('#url-in').fill('http://localhost:8767/missing.zip');
+  await page.getByRole('button', { name: '取ってくる' }).click();
+  await page.locator('#safety-note .note.warn').waitFor();
+  ok('http のURLには注意を出す', /暗号化されていない通信/.test(await page.locator('#safety-note').textContent()));
+  await page.locator('#url-in').fill('');
   await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles(join(FX, 'next_nested.zip'));
   await page.getByText('うつろい森のあなた', { exact: true }).first().waitFor();
   ok('Next仕様と判定', await page.locator('.badge.next').first().isVisible());
@@ -506,6 +516,7 @@ async function run(colorScheme, width) {
   ok('記録の書き出し（公開形式）', rec.kind === 'cw-catalog-tool/records' && rec.records.length === (existsSync(join(FX, 'maigo.cab')) ? 6 : 5), `${rec.records.length}件`);
 
   // 12b. 素材・スキン：置き場所を決めて、分類フォルダに入れる → 自分のフォルダ一覧で見る → 分類フォルダを移す
+  ok('設定に「安全のしくみ」', await page.locator('#safety-info').getByText('中身を確かめるとき').isVisible());
   await page.locator('#dev-opfs-backup').click();
   await page.getByText(/バックアップは「.+」に置くようにしました/).waitFor();
   await page.locator('#backup-now', { hasText: 'test-backup' }).waitFor();

@@ -10,7 +10,7 @@ import { store } from './store.js';
 import { h, toast, modal, fmtSize, formatBadge, sleep } from './ui.js';
 import { tryDownloads, dlLabel, pagePanel, inAppDownload, deliver, tryAutoAgree } from './download.js';
 import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
-import { execWarning, contentsBox } from './safety-view.js';
+import { execWarning, contentsBox, safetyNote } from './safety-view.js';
 import { readmeModal, installOpened, ensureDir, destFields, engineSelect, watchdog } from './add.js';
 import { KINDS, stashDirOf, installNonScenario, autoSkinCat, destStatus, openBtn } from './materials.js';
 import { readSkin } from '../core/skin.js';
@@ -242,6 +242,7 @@ export function viewBatch() {
         b.running ? h('button', { class: 'btn sm', onclick: () => { b.stop = true; } }, '取得を止める') : null,
         !b.running && b.items.some((i) => i.status === 'wait') ? h('button', { class: 'btn sm', onclick: runFetch }, '続きを取得') : null,
         !b.running && !b.installing ? h('button', { class: 'btn ghost sm', onclick: () => { S.batch = null; render(); } }, b.done ? '閉じる' : 'やめる') : null)),
+    safetyNote({ id: 'batch-safety' }),
     b.running ? h('p', { class: 'small muted', style: 'margin:0' }, '直接DLできるものから順に取ってきています。同意やDLキーが必要なものは「操作待ち」になります。') : null,
     h('div', { class: 'list' }, b.items.map(itemCard)),
     !b.done ? h('div', { class: 'card soft stack', style: 'margin:0' },

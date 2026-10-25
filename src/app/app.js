@@ -29,6 +29,7 @@ import { dirAt } from '../core/fs.js';
 import { openTidy, viewTidy } from './tidy.js';
 import { loadBackup, viewBackupSettings } from './backup.js';
 import { loadLinkCheck, checkLinks, staleLink, markLink } from './linkcheck.js';
+import { viewSafetySettings } from './safety-view.js';
 import { CREDITS } from './credits.js';
 import { MAT, SKIN, loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
 
@@ -552,6 +553,9 @@ function viewSettings() {
 
     viewAppSettings(),
 
+    h('h2', {}, '安全のしくみ'),
+    viewSafetySettings(),
+
     h('h2', {}, '同意を覚えているサイト'),
     viewConsents(),
 
@@ -563,7 +567,7 @@ function viewSettings() {
       h('p', { style: 'margin:0' }, `CWカタログ ${APP_VERSION}（${S.platform.label}）`),
       h('ul', { style: 'margin:0;padding-left:1.2em' },
         h('li', {}, 'ツールが書き込むのは、登録したエンジンの「Scenario」と「CWCatalog_backup」フォルダ、それと指定したzip・wsnの保存場所・素材の置き場所・バックアップ先だけです。宿（Yado）には触りません。'),
-        h('li', {}, 'zipの中のファイルを実行することはありません。'),
+        h('li', {}, 'zipの中のファイルを実行することはありません（くわしくは上の「安全のしくみ」）。'),
         h('li', {}, 'ネットにつなぐのは、カタログの読み込み・更新チェック・ダウンロード・紹介を見るボタンを押したときだけです。'),
         S.platform.kind === 'web' ? h('li', {}, 'HTML版では、作者さんのサイトから直接ダウンロードできないことが多いです（ブラウザの制限）。その場合は配布ページを開いて、落としたファイルをドロップしてください。') : null)),
 
