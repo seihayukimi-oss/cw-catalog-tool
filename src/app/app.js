@@ -30,6 +30,7 @@ import { openTidy, viewTidy } from './tidy.js';
 import { loadBackup, viewBackupSettings } from './backup.js';
 import { loadLinkCheck, checkLinks, staleLink, markLink } from './linkcheck.js';
 import { viewSafetySettings } from './safety-view.js';
+import { viewChangelog, showWhatsNew } from './changelog-view.js';
 import { loadRatingPrefs, labelBadges, viewRatingSettings } from './ratings-view.js';
 import { CREDITS } from './credits.js';
 import { MAT, SKIN, loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
@@ -84,6 +85,7 @@ export async function startApp(platform) {
   render();
   handleInstallLink();
   startShell();
+  showWhatsNew().catch(() => {});
 }
 
 // ------------------------------------------------------------ 描画
@@ -606,6 +608,9 @@ function viewSettings() {
         h('dt', {}, 'メール'), h('dd', {}, CREDITS.mail, ' ', h('button', { class: 'btn ghost sm', onclick: async () => { try { await navigator.clipboard.writeText(CREDITS.mail); toast('メールアドレスをコピーしました'); } catch { toast('コピーできませんでした', { bad: true }); } } }, 'コピー')),
         h('dt', {}, '制作補助ツール'), h('dd', {}, CREDITS.helper)),
       CREDITS.lines.map((l) => h('p', { style: 'margin:0' }, l))),
+
+    h('h2', {}, `更新履歴（今の版：${APP_VERSION}）`),
+    viewChangelog(),
   );
 }
 

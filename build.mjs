@@ -5,14 +5,19 @@ import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
+import { parseChangelog } from './src/core/changelog.js';
+
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+// 更新履歴は CHANGELOG.md から作って、アプリの中に入れる（ネットにつながなくても見られる）
+const changelog = parseChangelog(readFileSync('CHANGELOG.md', 'utf8'));
+if (!changelog.some((e) => e.version === pkg.version)) console.warn(`※ CHANGELOG.md に ${pkg.version} の項目がありません`);
 const css = readFileSync('src/app/style.css', 'utf8');
 const common = {
   bundle: true,
   minify: true,
   format: 'iife',
   target: ['chrome110', 'edge110', 'firefox115', 'safari16'],
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __CHANGELOG__: JSON.stringify(changelog) },
   legalComments: 'eof',
   write: false,
   charset: 'utf8',

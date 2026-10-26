@@ -1,0 +1,29 @@
+# 使っている部品に、安全の問題（脆弱性）が見つかっていないかを、週に1回確かめる。
+# 見つかったら、この作業が「失敗」になって知らせるだけ。勝手に直したり、公開したりはしない。
+name: 部品の安全チェック
+
+on:
+  schedule:
+    - cron: "17 0 * * 1" # 毎週月曜 9:17（日本時間）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: JavaScript の部品（npm audit）
+        run: npm audit --audit-level=high
+      - name: cargo-audit を用意
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Rust の部品（cargo audit）
+        working-directory: src-tauri
+        run: cargo audit

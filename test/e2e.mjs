@@ -128,6 +128,21 @@ async function run(colorScheme, width) {
     }
   }, seed);
 
+  // 0. 更新したあと、最初の1回だけ「変わったところ」を版ごとに出す（初めて使うときは出さない）
+  ok('初めて使うときは「変わったところ」を出さない', !(await page.locator('#whats-new').count()));
+  await page.evaluate(() => new Promise((res, rej) => { const r = indexedDB.open('cw-catalog-tool'); r.onsuccess = () => { const t = r.result.transaction('kv', 'readwrite'); t.objectStore('kv').put({ k: 'seenVersion', v: '0.4.0' }); t.oncomplete = () => { r.result.close(); res(); }; t.onerror = rej; }; }));
+  await page.reload();
+  await page.locator('#whats-new').waitFor();
+  ok('更新したあと、変わったところを版ごとに出す', (await page.locator('#whats-new .changelog-entry').count()) >= 2 && await page.locator('#whats-new [data-version="0.4.1"]').isVisible());
+  if (width > 600) await page.locator('#whats-new').screenshot({ path: join(OUT, `whatsnew-${colorScheme}.png`) }).catch(() => {});
+  await page.locator('#whats-new').getByRole('button', { name: 'OK' }).click();
+  await page.locator('#whats-new').waitFor({ state: 'detached' });
+  await page.waitForTimeout(300); // 「見た」の記録を書き終えるまで
+  await page.reload();
+  await page.getByRole('tab', { name: '設定' }).waitFor();
+  await page.waitForTimeout(500);
+  ok('OKを押したら、もう出さない', !(await page.locator('#whats-new').count()));
+
   // 1. 設定 → テスト用エンジンを登録（自動で読み取り）
   await page.getByRole('tab', { name: '設定' }).click();
   await page.locator('#dev-opfs').click();
@@ -551,6 +566,10 @@ async function run(colorScheme, width) {
 
   // 12b. 素材・スキン：置き場所を決めて、分類フォルダに入れる → 自分のフォルダ一覧で見る → 分類フォルダを移す
   ok('設定に「安全のしくみ」', await page.locator('#safety-info').getByText('中身を確かめるとき').isVisible());
+  ok('設定のいちばん下に更新履歴（新しい5つ・今の版は開いている）', (await page.locator('#changelog > .changelog-entry').count()) === 5 && await page.locator('#changelog > .changelog-entry').first().evaluate((d) => d.open));
+  await page.locator('#changelog-more').click();
+  ok('「もっと見る」で全部見られる', (await page.locator('#changelog > .changelog-entry').count()) > 5);
+  if (width > 600) await page.locator('#changelog').screenshot({ path: join(OUT, `changelog-${colorScheme}.png`) }).catch(() => {});
   await page.locator('#dev-opfs-backup').click();
   await page.getByText(/バックアップは「.+」に置くようにしました/).waitFor();
   await page.locator('#backup-now', { hasText: 'test-backup' }).waitFor();

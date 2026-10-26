@@ -6,6 +6,7 @@
 //   release/latest-portable.json … 「更新を確認」が見に行く情報（署名があるときだけ）
 // 使い方：node scripts/make-portable.mjs [--release]
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
+import { parseChangelog } from '../src/core/changelog.js';
 import { join } from 'node:path';
 import { writeZip } from '../src/core/zip.js';
 
@@ -45,7 +46,7 @@ if (process.argv.includes('--pack')) {
     const notesFile = process.env.RELEASE_NOTES_FILE;
     const latest = {
       version,
-      notes: notesFile && existsSync(notesFile) ? readFileSync(notesFile, 'utf8') : `CWカタログ ${version}`,
+      notes: notesFile && existsSync(notesFile) ? readFileSync(notesFile, 'utf8') : changelogNotes(version),
       pub_date: new Date().toISOString(),
       url: `https://github.com/${repo}/releases/download/${tag}/CWCatalog.exe`,
       signature: sig.trim(),
@@ -53,4 +54,13 @@ if (process.argv.includes('--pack')) {
     writeFileSync('release/latest-portable.json', JSON.stringify(latest, null, 2));
   }
   console.log(`release/: ${readdirSync('release').join('・')}`);
+}
+
+/** 更新の画面に出す「変わったところ」：CHANGELOG.md のその版の要点 */
+function changelogNotes(version) {
+  try {
+    const e = parseChangelog(readFileSync('CHANGELOG.md', 'utf8')).find((x) => x.version === version);
+    if (e?.points.length) return e.points.map((p) => `・${p}`).join('\n');
+  } catch { /* なければ下へ */ }
+  return `CWカタログ ${version}`;
 }

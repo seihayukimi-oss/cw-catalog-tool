@@ -666,3 +666,18 @@ test('シナリオラベル：対象年齢・注意のラベル・管理人が�
   assert.deepEqual(a.content.sort(), ['gore', 'horror', 'utsu']);
   assert.ok(c.contentLabels.some((d) => d.id === 'utsu'));
 });
+
+import { parseChangelog, newSince } from '../src/core/changelog.js';
+
+test('更新履歴：CHANGELOG.md を読む・更新したあとに出す版（版ごと）', () => {
+  const log = parseChangelog(readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8'));
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(log[0].version, pkg.version, 'いちばん上が今の版');
+  assert.ok(log.every((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.points.length), '版ごとに日付と要点がある');
+  const md = '## 1.0.2（2027-01-03）\n### 要点\n- C\n### もっと詳しく\n- c1\n- c2\n## 1.0.1（2027-01-02）\n### 要点\n- B\n## 1.0.0（2027-01-01）\n### 要点\n- A\n';
+  const l = parseChangelog(md);
+  assert.deepEqual(l[0].details, ['c1', 'c2']);
+  assert.deepEqual(newSince(l, '1.0.0', '1.0.2').map((e) => e.version), ['1.0.2', '1.0.1']);
+  assert.deepEqual(newSince(l, '', '1.0.2'), []); // 初めて使うときは出さない
+  assert.deepEqual(newSince(l, '1.0.2', '1.0.2'), []);
+});
