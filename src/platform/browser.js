@@ -79,13 +79,21 @@ export const platform = {
     };
   },
 
+  /** HTML版は、記録がブラウザごとなので、パソコン・ブラウザが変われば自然に聞き直す */
+  async machineKey() {
+    return 'web';
+  },
+
   async fetchText() {
     throw new Error('配布ページの確認はアプリ版の機能です');
   },
 
   openUrl(url) {
     if (!/^https?:\/\//.test(url)) return;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // 押してから時間がたつと、ブラウザが「勝手に開いた窓」として止めることがある。そのときは知らせる
+    const w = window.open(url, '_blank');
+    if (!w) throw new Error('ブラウザが新しいタブを止めました');
+    try { w.opener = null; } catch { /* そのまま */ }
   },
 
   async saveFile(fileName, data) {

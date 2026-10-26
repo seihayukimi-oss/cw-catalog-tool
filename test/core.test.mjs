@@ -636,3 +636,33 @@ test('共用カタログ：一時保留中・出典・改変版・確かめた�
   assert.deepEqual(mirrorsOf({ sha256: sha, mirrors: ['https://cdn.jsdelivr.net/gh/u/r@0123abc/index.json', 'https://evil.example/index.json', 'http://cdn.jsdelivr.net/gh/u/r/index.json'] }), ['https://cdn.jsdelivr.net/gh/u/r@0123abc/index.json']);
   assert.deepEqual(mirrorsOf({ mirrors: ['https://cdn.jsdelivr.net/gh/u/r@1/index.json'] }), []); // 指紋がなければ使わない
 });
+
+import { findRating, mergeLabelDefs, sanitizeLabelDefs, stricter } from '../src/core/ratings.js';
+import { findTags } from '../src/core/autotag.js';
+
+test('シナリオラベル：対象年齢・注意のラベル・管理人が増やしたラベル・Readmeから見つける', () => {
+  assert.equal(findRating('このシナリオはR-18です'), 'r18');
+  assert.equal(findRating('18禁'), 'r18');
+  assert.equal(findRating('R18要素はありません'), '');
+  assert.equal(findRating('非R18'), '');
+  assert.equal(findRating('R15程度の表現があります'), 'r15');
+  assert.equal(findRating('R180'), '');
+  assert.ok(findTags('成人向けの作品です').includes('R18'));
+  assert.equal(stricter('r15', 'r18'), 'r18');
+  assert.equal(stricter('r18', 'all'), 'r18');
+  const defs = mergeLabelDefs(sanitizeLabelDefs([{ id: 'utsu', name: '鬱・救いのない展開' }, { id: 'BAD ID', name: 'x' }, { id: 'gore', name: 'グロ' }]));
+  assert.deepEqual(defs.map((d) => d.id), ['gore', 'horror', 'sexual', 'utsu']);
+  assert.equal(defs.find((d) => d.id === 'gore').name, 'グロ');
+  const cat = parseCatalog({ format: 1, content_labels: [{ id: 'utsu', name: '鬱' }], entries: [
+    { id: 'e00001', name: 'A', author: 'x', rating: 'r18', content: ['gore', 'utsu', 'NG!'], downloads: [] },
+    { id: 'e00002', name: 'B', author: 'x', rating: 'adult', downloads: [] },
+  ] });
+  assert.deepEqual(cat.byId.get('e00001').content, ['gore', 'utsu']);
+  assert.equal(cat.byId.get('e00002').rating, 'all');
+  const own = parseCatalog({ format: 1, entries: [{ id: 'p00001', name: 'A', author: 'x', rating: 'r15', content: ['horror'], downloads: [] }] });
+  const c = combineCats([{ id: 's', kind: 'shared', name: '共用', catalog: cat }, { id: 'o', kind: 'own', name: 'マイ', catalog: own }]);
+  const a = c.works.find((w) => w.name === 'A');
+  assert.equal(a.rating, 'r18'); // いちばん厳しいもの
+  assert.deepEqual(a.content.sort(), ['gore', 'horror', 'utsu']);
+  assert.ok(c.contentLabels.some((d) => d.id === 'utsu'));
+});

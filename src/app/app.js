@@ -9,7 +9,7 @@
 import { scanScenarioFolder, detectEngineKind, checkEngineFolder } from '../core/scan.js';
 import { ENGINE_KINDS, compareVersions } from '../core/catalog.js';
 import { comparePage } from '../core/pagecheck.js';
-import { netProgress } from './state.js';
+import { netProgress, dlProgress } from './state.js';
 import { S, views, setRenderer, render, busy, busyText, engine, recordsOf, dirOf, rerenderList, confirmBox, goTab, TAB_LABEL, APP_VERSION } from './state.js';
 import { store, recordId, exportRecords, importRecords } from './store.js';
 import { h, toast, modal, fmtDate, formatBadge, sleep } from './ui.js';
@@ -30,21 +30,41 @@ import { openTidy, viewTidy } from './tidy.js';
 import { loadBackup, viewBackupSettings } from './backup.js';
 import { loadLinkCheck, checkLinks, staleLink, markLink } from './linkcheck.js';
 import { viewSafetySettings } from './safety-view.js';
+import { loadRatingPrefs, labelBadges, viewRatingSettings } from './ratings-view.js';
 import { CREDITS } from './credits.js';
 import { MAT, SKIN, loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
 
 const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
 
+/** ブラウザで開けなかったとき */
+function openFailed(url, e) {
+  return modal((close) => h('div', { class: 'stack', id: 'open-failed' },
+    h('h2', { style: 'margin:0' }, 'ブラウザで開けませんでした'),
+    h('p', { class: 'small', style: 'margin:0' }, `理由：${e?.message || e}`),
+    h('p', { class: 'small muted', style: 'margin:0' }, S.platform.kind === 'app' ? 'URLをコピーして、ふだんのブラウザに貼り付けてください。' : '下のリンクを押すか、URLをコピーして、ふだんのブラウザに貼り付けてください。'),
+    h('div', { class: 'note small', style: 'word-break:break-all;user-select:all' }, S.platform.kind === 'app' ? url : h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, url)),
+    h('div', { class: 'row', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(url); toast('URLをコピーしました'); } catch { toast('コピーできませんでした。リンクを右クリックしてコピーしてください', { bad: true }); } } }, 'URLをコピー'),
+      h('button', { class: 'btn primary', onclick: () => close(null) }, '閉じる'))));
+}
+
 // ------------------------------------------------------------ 起動
 export async function startApp(platform) {
   S.platform = platform;
   platform.netProgress = netProgress;
+  platform.dlProgress = dlProgress;
+  // 「ブラウザで開く」：開けなかったときは、理由とURL（コピー・押して開くリンク）を出す
+  const rawOpen = platform.openUrl.bind(platform);
+  platform.openUrl = async (url) => {
+    try { await rawOpen(url); } catch (e) { await openFailed(url, e); }
+  };
   document.documentElement.dataset.platform = platform.kind;
   S.engines = await store.engines();
   S.engineId = (await store.get('engineId')) || S.engines[0]?.id || null;
   S.categories = (await store.get('categories')) || {};
   S.archive = { on: false, ref: null, label: '', ...((await store.get('archive')) || {}) };
   await loadCatalogs();
+  await loadRatingPrefs();
   await loadConsents();
   await setupShell();
   S.records = await store.records();
@@ -80,9 +100,13 @@ function draw() {
   ];
   root.replaceChildren(
     h('header', { class: 'top' }, h('div', { class: 'top-inner' },
-      h('div', { class: 'brand' }, h('h1', {}, 'CWカタログ'), h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`),
-        S.busy ? h('span', { class: 'small muted' }, `${S.busy}…`) : null,
-        S.busy ? h('progress', { id: 'busy-prog', max: 1, hidden: true, 'aria-label': '進み具合' }) : null),
+      h('div', { class: 'top-row' },
+        h('div', { class: 'brand' }, h('h1', {}, 'CWカタログ'), h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`)),
+        // 進み具合（右上）：いま何をしているか・バー・何の作業か
+        S.busy ? h('div', { class: 'busy-box', id: 'busy-box', role: 'status', 'aria-live': 'polite' },
+          h('div', { class: 'busy-stage', id: 'busy-text' }, `${S.busy}…`),
+          h('progress', { id: 'busy-prog', max: 1, hidden: true, 'aria-label': '進み具合' }),
+          h('div', { class: 'busy-sub', id: 'busy-sub' })) : null),
       h('nav', { class: 'tabs', role: 'tablist' }, tabs.map(([k, label, extra]) => h('button', {
         role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', onclick: () => { S.tab = k; render(); },
       }, label, extra))))),
@@ -210,6 +234,7 @@ function recordCard(r) {
         }, (r.tags || []).includes('お気に入り') ? '★' : '☆'),
         h('span', { class: 'item-title' }, r.name || '(名前なし)'),
         r.type === 'bookmark' ? h('span', { class: 'badge plain' }, 'ブックマーク') : formatBadge(r),
+        labelBadges(work),
         r.encrypted ? h('span', { class: 'badge enc', title: 'NextのWirthBuilderで暗号化（WDP）されたデータです' }, '暗号化') : null,
         st ? h('span', { class: `badge ${st === 'update' ? 'update' : st === 'latest' ? 'ok' : 'plain'}` }, STATE_LABEL[st]) : null,
         r.missing ? h('span', { class: 'badge bad' }, '見つからない') : null,
@@ -536,6 +561,9 @@ function viewSettings() {
       prefsBlock(),
       h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => { S.manageOpen = true; goTab('catalog'); } }, 'カタログの管理を開く'),
         h('span', { class: 'small muted' }, '共用カタログ・個人用カタログの追加、候補に含めるかどうか、DL一覧の読み込み・書き出しはここから'))),
+
+    h('h2', {}, 'シナリオラベル（R18・R15・注意のラベル）'),
+    viewRatingSettings(),
 
     h('h2', {}, 'タグ'),
     h('div', { class: 'card stack' },

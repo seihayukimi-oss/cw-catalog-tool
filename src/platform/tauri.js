@@ -94,6 +94,7 @@ async function netFetch(url, { method = 'GET', body, headers = {}, timeout = nul
     await progListen;
     progress = ++progSeq;
     progCbs.set(progress, cb);
+    cb(-1, 0); // 見出しが来るまでは「つないでいます」
   }
   let r;
   try {
@@ -165,6 +166,11 @@ export const platform = {
   /** フォルダをエクスプローラーで開く（アプリが触れてよいフォルダだけ） */
   async revealFolder(path) {
     return invoke('open_folder', { path });
+  },
+
+  /** このパソコン・このWindowsユーザーの目印（年齢確認を、パソコンが変わったら聞き直すため） */
+  async machineKey() {
+    return invoke('machine_key');
   },
 
   async portableInfo() {
@@ -248,6 +254,8 @@ export const platform = {
           } catch (e) { reject(e); }
         }),
         listen('cw-download-closed', () => { if (!done) { done = true; cleanup(); resolve(null); } }),
+        // サイトのボタンを押してダウンロードが始まったら、進み具合を右上に出す
+        listen('cw-dl-progress', (ev) => { if (!done) platform.dlProgress?.(ev.payload?.got || 0, ev.payload?.total || 0); }),
         // Google ドライブの「ダウンロード」は、アプリ内ブラウザでは受け取らず、アドレスだけもらって直接取る
         listen('cw-download-url', (ev) => { if (!done) { done = true; cleanup(); resolve({ directUrl: ev.payload?.url || '' }); } }),
       ]).then(async (fns) => {

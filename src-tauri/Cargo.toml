@@ -1,6 +1,6 @@
 [package]
 name = "cw-catalog"
-version = "0.4.0"
+version = "0.4.1"
 description = "CardWirth シナリオの一括DL・インストール・更新チェックツール"
 license = "MIT"
 edition = "2021"
@@ -30,6 +30,9 @@ serde_json = "=1.0.154"
 [target.'cfg(windows)'.dependencies]
 # .wsn・右クリック・cwcatalog:// の登録（自分のユーザー用の場所だけ）
 winreg = "=0.56.0"
+# アプリ内ブラウザのダウンロードの進み具合（Tauri が使っているものと同じ版）
+webview2-com = "=0.39.1"
+windows-core = "=0.62.2"
 
 [profile.release]
 codegen-units = 1

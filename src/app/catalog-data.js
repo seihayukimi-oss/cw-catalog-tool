@@ -140,13 +140,16 @@ async function putCatalog(src, json) {
 }
 
 /** URLのカタログ（共用・読み込んだDL一覧）を取り直す。meta.json が変わっていなければ本体は取らない */
-export async function refreshSource(src, { useMeta = false } = {}) {
+export async function refreshSource(src, { useMeta = false, force = false } = {}) {
   if (!src.url) return false;
   // meta.json（指紋）を先に見て、変わっていなければ本体は取らない。登録フォーム（Google Apps Script）なら ?file=meta
   const metaUrl = /\/index\.json(\?.*)?$/.test(src.url) ? src.url.replace(/index\.json(\?.*)?$/, 'meta.json')
     : /[?&]file=index(&|$)/.test(src.url) ? src.url.replace(/([?&]file=)index/, '$1meta') : '';
   const meta = src.url !== 'sample' && metaUrl ? await S.platform.fetchJson(metaUrl).catch(() => null) : null;
-  if (useMeta && meta?.sha256 && src.sha256 && meta.sha256 === src.sha256) { src.checkedAt = new Date().toISOString(); await saveSources(); return false; }
+  // R18 の分（index-r18.json）は、設定でR18をONにしている人だけが取る
+  const wantR18 = !!(S.catPrefs?.showR18 && S.ageOk && meta?.r18?.sha256);
+  const sameR18 = !wantR18 || meta.r18.sha256 === src.r18sha;
+  if (!force && useMeta && meta?.sha256 && src.sha256 && meta.sha256 === src.sha256 && sameR18 && !!src.r18sha === wantR18) { src.checkedAt = new Date().toISOString(); await saveSources(); return false; }
   // 本体は、meta.json に書かれた写し（jsDelivr など。版を固定したURL）から先に取る。中身の指紋が合わなければ使わない
   let json = null;
   src.via = '';
@@ -157,16 +160,42 @@ export async function refreshSource(src, { useMeta = false } = {}) {
     } catch { /* 次へ */ }
   }
   if (!json) json = src.url === 'sample' ? SAMPLE_CATALOG : await S.platform.fetchJson(src.url);
-  await putCatalog(src, json);
   // meta.json の sha256 と比べられるよう、index.json と同じ書き方（区切りなしのJSON）で指紋を取る
-  src.sha256 = src.url === 'sample' ? '' : await sha256Hex(new TextEncoder().encode(JSON.stringify(json)));
+  const sha = src.url === 'sample' ? '' : await sha256Hex(new TextEncoder().encode(JSON.stringify(json)));
+  src.r18sha = '';
+  if (wantR18) {
+    const r18 = await fetchR18(src, meta).catch(() => null);
+    if (r18) {
+      const ids = new Set((json.entries || []).map((e) => e?.id));
+      // R18 のファイルにある作品は、書き忘れがあっても R18 として扱う
+      json = { ...json, entries: [...(json.entries || []), ...r18.json.entries.filter((e) => e && !ids.has(e.id)).map((e) => ({ ...e, rating: 'r18' }))] };
+      src.r18sha = r18.sha;
+    }
+  }
+  await putCatalog(src, json);
+  src.sha256 = sha;
   src.loadedAt = new Date().toISOString();
   if (json.name && src.kind === 'sub' && !src.renamed) src.name = String(json.name).slice(0, 60);
   await saveSources();
   rebuild();
-  // 「更新したときもラベルを取り込む」にしていれば
+  // 「更新したときも分類名を取り込む」にしていれば
   if (src.labelSync) await importLabels(src, src.labelSync).catch(() => {});
   return true;
+}
+
+/** 共用カタログの R18 の分（index-r18.json）を取る。写し（jsDelivr）→ 同じ場所 の順で、指紋が合うものだけ */
+async function fetchR18(src, meta) {
+  const want = meta.r18.sha256;
+  const urls = [...mirrorsOf({ sha256: want, mirrors: meta.r18.mirrors })];
+  if (/\/index\.json(\?.*)?$/.test(src.url)) urls.push(src.url.replace(/index\.json(\?.*)?$/, 'index-r18.json'));
+  for (const u of urls) {
+    try {
+      const j = await S.platform.fetchJson(u);
+      const sha = await sha256Hex(new TextEncoder().encode(JSON.stringify(j)));
+      if (sha === want && Array.isArray(j?.entries)) return { json: j, sha };
+    } catch { /* 次へ */ }
+  }
+  return null;
 }
 
 /** 共用カタログをURLで足す */
@@ -338,9 +367,11 @@ export async function saveOwnEntry(entry, { origKey = '', targetIds = [] }) {
 }
 
 /** 人に渡せるDL一覧（JSON）にする */
-export function exportSource(src, { includeKeys = false, labels = null } = {}) {
+export function exportSource(src, { includeKeys = false, labels = null, includeR18 = false } = {}) {
   const cat = S.catalogs.get(src.id);
-  const out = exportPersonal(src.name, cat.entries, { hidden: src.hidden, tool: `CWカタログ ${APP_VERSION}` });
+  // R18 の作品は、「R18を含める」にチェックしたときだけ
+  const entries = includeR18 ? cat.entries : cat.entries.filter((e) => e.rating !== 'r18');
+  const out = exportPersonal(src.name, entries, { hidden: src.hidden, tool: `CWカタログ ${APP_VERSION}` });
   out.authors = cat.authors || {};
   const def = (e) => S.workPrefs[workKey(e)]?.defaultUrl;
   // デフォルトのDL先にしているものを先頭にしておく（受け取った人もそこから取る）
@@ -349,7 +380,7 @@ export function exportSource(src, { includeKeys = false, labels = null } = {}) {
     let dl = d ? [...e.downloads].sort((a, b) => (b.url === d) - (a.url === d)) : e.downloads;
     // DLキーは、選んだときだけ書き出す
     if (!includeKeys) dl = dl.map(({ dlkey, ...rest }) => rest);
-    // ラベル：選んだフォルダの名前を付ける（選ばなければ付けない）
+    // 分類名：選んだフォルダの名前を付ける（選ばなければ付けない）
     const { labels: _old, ...rest } = e;
     const names = labels ? foldersOf(workKey(e)).filter((f) => labels.has(f.id)).map((f) => f.name) : [];
     return { ...rest, downloads: dl, ...(names.length ? { labels: names } : {}) };
@@ -357,7 +388,7 @@ export function exportSource(src, { includeKeys = false, labels = null } = {}) {
   return out;
 }
 
-/** カタログに付いているラベルの一覧（名前と件数） */
+/** カタログに付いている分類名の一覧（名前と件数） */
 export function labelsOf(src) {
   const count = new Map();
   for (const e of S.catalogs.get(src.id)?.entries || []) for (const l of e.labels || []) count.set(l, (count.get(l) || 0) + 1);
@@ -365,8 +396,8 @@ export function labelsOf(src) {
 }
 
 /**
- * カタログのラベルを、自分のフォルダとして取り込む
- * @param {{names: string[]|null, prefix: boolean}} opt names が null なら全部。prefix なら「カタログ名：ラベル」というフォルダにする
+ * カタログの分類名を、自分のフォルダとして取り込む
+ * @param {{names: string[]|null, prefix: boolean}} opt names が null なら全部。prefix なら「カタログ名：分類名」というフォルダにする
  * @returns {Promise<number>} 入れた作品の数
  */
 export async function importLabels(src, { names = null, prefix = false } = {}) {

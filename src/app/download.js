@@ -5,6 +5,7 @@
 //  ・同意やDLキーのページは、ツールの画面で同意してもらう（2段階のページにも対応）。サイトごとに「同意を覚える」こともできる
 
 import { markLink } from './linkcheck.js';
+import { r18On, r18Guide } from './ratings-view.js';
 import { safetyNote } from './safety-view.js';
 import { zipSync } from 'fflate';
 import { openArchive, archiveKind, sha256Hex } from '../core/archive.js';
@@ -155,7 +156,22 @@ export async function tryDownloads(work, { onTry, onProgress } = {}) {
 }
 
 /** 作品の「ダウンロード」ボタン：デフォルトのDL先から。だめなら別の配布元から取って、デフォルトを変えるか聞く */
+/**
+ * R18 の作品は、アプリの中ではダウンロードせず、配布元をふだんのブラウザで開く（配布元の年齢確認・ログインをそのまま通る）。
+ * 設定でR18がOFFなら、案内だけ出す。R18 でなければ false（ふつうに取る）
+ */
+export async function r18External(work, d = null) {
+  if (work?.rating !== 'r18') return false;
+  if (!r18On()) { await r18Guide(work.name); return true; }
+  const target = d || chooseDownloads(work, defaultUrlOf(work))[0];
+  if (!target) { toast('この作品には、今開ける配布元がありません', { bad: true }); return true; }
+  toast('R18の作品なので、配布元をブラウザで開きます。落としたファイルは「シナリオ・素材・スキンをDLする」の「「ダウンロード」から選ぶ」で入れられます', { ms: 12000 });
+  await S.platform.openUrl(target.url);
+  return true;
+}
+
 export async function downloadWork(work) {
+  if (await r18External(work)) return;
   const out = await busy(`「${work.name}」を取得中`, () => tryDownloads(work));
   if (!out) return;
   if (out.res.kind === 'none') { toast('この作品には、今DLできる配布元がありません', { bad: true }); return; }
@@ -166,6 +182,7 @@ export async function downloadWork(work) {
 
 /** 指定した配布元だけから取る */
 export async function downloadFrom(work, d) {
+  if (await r18External(work, d)) return;
   return fetchFromUrl(d.url, work, singleHandler(work), { dl: d });
 }
 
@@ -553,6 +570,9 @@ export async function askInstallLink({ url, entryId, name }) {
     work = S.combined?.works.find((w) => w.refs.some((r) => r.entry.id === entryId && r.kind === 'shared')) || null;
     if (!work) { toast(`作品ID ${entryId} が共用カタログに見つかりませんでした。「カタログ」タブで共用カタログを読み込んでから、もう一度リンクを押してください`, { bad: true, ms: 10000 }); return; }
   }
+  // R18 の作品へのリンク：OFFなら案内、ONなら配布元をブラウザで開く
+  const named = !work && name ? S.combined?.works.find((w) => w.name === name && w.rating === 'r18') : null;
+  if ((work || named)?.rating === 'r18') { await r18External(work || named, url ? { url } : null); return; }
   if (url && !/^https?:\/\/\S+$/.test(url)) { toast('リンクのURLが正しくありません', { bad: true }); return; }
   if (url.length > 2000) { toast('リンクのURLが長すぎます', { bad: true }); return; }
   const target = url || chooseDownloads(work, defaultUrlOf(work))[0]?.url;

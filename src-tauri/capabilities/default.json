@@ -13,6 +13,7 @@
     "allow-take-open-args",
     "allow-net-fetch",
     "allow-net-take",
+    "allow-machine-key",
     "allow-default-store-dirs",
     "allow-open-folder",
     "allow-portable-update-install",
@@ -43,7 +44,17 @@
         }
       ]
     },
-    "opener:allow-open-url",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://*"
+        }
+      ]
+    },
     {
       "identifier": "opener:allow-open-path",
       "allow": [

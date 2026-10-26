@@ -16,6 +16,7 @@ import { h, toast, modal, fmtDate } from './ui.js';
 import { applyCatalog } from './catalog-data.js';
 import { tagEditor, tagChips, pickTags, applyTags, addTagName } from './tags.js';
 import { catPicker } from './catpick.js';
+import { choosePlace } from './place.js';
 
 export const MAT = '__mat';
 export const SKIN = '__skin';
@@ -136,12 +137,13 @@ export async function installNonScenario(o, m) {
     root = await dirOf(d.engineId, true);
     if (!root) throw new Error(`${engine(d.engineId)?.name || 'エンジン'}のフォルダに接続できませんでした`);
   } else {
-    root = await stashDirOf(m.kind, true);
+    root = m.place?.dir || await stashDirOf(m.kind, true);
     if (!root) throw new Error(`${KINDS[m.kind].place}を使う許可がありませんでした。「設定」で選び直してください`);
   }
   // もう同じ名前のものがあれば、バックアップに移してから置き換える
   let backup = null;
   if (d.dest && (await existsAt(root, d.dest))) {
+    if (m.place) throw new Error(`選んだ保存先に、同じ名前のものがもうあります：${d.dest}。フォルダ名を変えてください`);
     const bk = d.engineId ? ['engine', d.engineId] : [m.kind, ''];
     const moved = await moveToBackup(root, d.dest, { anywhere: true, ...(await backupOpts(...bk)) });
     backup = backupFull(bk[0], bk[1], moved);
@@ -149,11 +151,11 @@ export async function installNonScenario(o, m) {
   const r = await installMaterial(root, src, { category: d.category, folderName: m.name.trim(), asArchive: !!m.asArc });
   // 元のzipも残す（設定でオン・オフ）
   let zip = null;
-  if (!m.asArc && stash(m.kind)?.keepZip && S.archive.ref) {
+  if (!m.asArc && stash(m.kind)?.keepZip && (S.archive.ref || o.zipPlace)) {
     const { saveArchive } = await import('./add.js');
-    zip = await saveArchive(o, { force: true, subdir: KINDS[m.kind].zipSub }).catch(() => null);
+    zip = await saveArchive(o, { force: true, subdir: o.zipPlace ? '' : KINDS[m.kind].zipSub }).catch(() => null);
   }
-  if (!d.engineId) await scanStash(m.kind, true).catch(() => {});
+  if (!d.engineId && !m.place) await scanStash(m.kind, true).catch(() => {});
   // 入れた場所（エクスプローラーで開く用。zipのまま置いたときは、そのフォルダ）
   const full = d.baseRef ? joinPath(d.baseRef, m.asArc ? r.dest.split('/').slice(0, -1).join('/') : r.dest) : '';  // アプリ版だけ
   return { ...r, where: d.where, zip, backup, full };
@@ -172,10 +174,11 @@ export function destOf(o, m) {
   const cat = category ? safeRelativePath(category) : '';
   const dest = leaf && !leaf.includes('/') && (category ? cat : true) ? [cat, leaf].filter(Boolean).join('/') : '';
   const e = toEngine ? engine(toEngine) : null;
-  const baseRef = e ? e.ref : stash(m.kind)?.ref || '';
-  const where = e ? `${e.name} の Data/Skin` : `${KINDS[m.kind].place}（${stash(m.kind)?.label || '未設定'}）`;
+  const pl = !e && m.place ? m.place : null; // 「保存先を選ぶ」で今回だけ選んだ場所
+  const baseRef = e ? e.ref : pl ? pl.ref : stash(m.kind)?.ref || '';
+  const where = e ? `${e.name} の Data/Skin` : pl ? `選んだ保存先（${pl.label}・今回だけ）` : `${KINDS[m.kind].place}（${stash(m.kind)?.label || '未設定'}）`;
   // HTML版では、置き場所はブラウザの「フォルダの許可」なので、場所の文字はない
-  const label = e ? e.label : stash(m.kind)?.label || '';
+  const label = e ? e.label : pl ? pl.label : stash(m.kind)?.label || '';
   const full = dest ? (typeof baseRef === 'string' && baseRef ? joinPath(baseRef, dest) : `「${label}」の中の ${dest}`) : '';
   return { dest, category, engineId: toEngine, baseRef: typeof baseRef === 'string' ? baseRef : '', where, full };
 }
@@ -185,6 +188,7 @@ export function destStatus(o, m) {
   const d = destOf(o, m);
   if (!d.dest) return { ...d, text: 'フォルダ名を入れてください', level: 'bad' };
   if (d.engineId) return { ...d, text: `入れ先：${d.full || d.dest}（同じ名前のものがあれば、前のものはバックアップに移してから置き換えます）`, level: 'muted' };
+  if (m.place) return { ...d, text: `入れ先：${d.full || d.dest}（今回だけ選んだ保存先。同じ名前のものがあるときは入れずに止めます）`, level: 'muted' };
   const id = KINDS[m.kind].id;
   const recs = S.records.filter((r) => r.engineId === id && !r.missing);
   const here = recs.some((r) => r.path === d.dest);
@@ -229,7 +233,9 @@ export function viewMaterialInstall(o) {
   const upd = () => {
     const ds = destStatus(o, { ...m, cat: curCat(), skin });
     statusEl.className = `small dest-status note ${ds.level === 'ok' ? 'ok' : ds.level === 'warn' ? 'warn' : ds.level === 'bad' ? 'bad' : ''}`;
-    statusEl.replaceChildren(...[h('span', {}, ds.text), openBtn(ds.baseRef, '置き場所を開く')].filter(Boolean));
+    statusEl.replaceChildren(...[h('span', {}, ds.text), openBtn(ds.baseRef, '置き場所を確認する'),
+      !toEngine && S.platform.canWriteFolders ? h('button', { class: 'btn ghost sm', id: 'mat-place', title: 'フォルダを選んで、今回だけ、または次からもそこに入れます', onclick: () => pickMatPlace(o, m) }, '保存先を選ぶ…') : null,
+      m.place ? h('button', { class: 'btn ghost sm', onclick: () => { m.place = null; render(); } }, 'いつもの置き場所に戻す') : null].filter(Boolean));
   };
   const nameIn = h('input', { type: 'text', id: 'mat-name', value: m.name, 'aria-label': 'フォルダ名', oninput: (ev) => { m.name = ev.target.value; upd(); } });
   if (o.execExcluded) m.asArc = false; // 実行ファイル入りのzipは、そのままは置かない
@@ -269,14 +275,60 @@ export function viewMaterialInstall(o) {
             S.opened = null;
           });
         },
-      }, toEngine ? `${engine(m.to)?.name} に入れる` : `${k.place}に入れる`),
-      h('span', { class: 'small muted' }, [
-        st?.keepZip && S.archive.ref && !m.asArc && !o.execExcluded ? `元のzipも「${S.archive.label}」の「${k.zipSub}」に残します` : '',
-        o.readmes?.length ? '入れる前に Readme（利用規約）を確認します' : '',
-      ].filter(Boolean).join('／'))),
+      }, toEngine ? `${engine(m.to)?.name} に入れる` : m.place ? '選んだ保存先に入れる' : `${k.place}に入れる`),
+      o.readmes?.length ? h('span', { class: 'small muted' }, '入れる前に Readme（利用規約）を確認します') : null),
+    st?.keepZip && (S.archive.ref || o.zipPlace) && !m.asArc && !o.execExcluded ? zipPlaceRow(o, k.zipSub) : null,
   ].filter(Boolean));
   upd();
   return card;
+}
+
+/** 素材・スキンの保存先を選ぶ（今回だけ／次からも） */
+async function pickMatPlace(o, m) {
+  const k = KINDS[m.kind];
+  const p = await choosePlace({ title: `${k.label}を入れるフォルダを選んでください`, id: m.kind, what: k.place });
+  if (!p) return;
+  if (p.remember) {
+    S.stash[m.kind] = { ...S.stash[m.kind], ref: p.ref, label: p.label, auto: false, lastScan: '' };
+    S.stashDir[m.kind] = p.dir;
+    if (m.kind === 'material') S.materials = S.stash.material;
+    await store.set(k.kv, S.stash[m.kind]);
+    m.place = null;
+    await busy(`${k.place}を読み取る`, () => scanStash(m.kind, true));
+    toast(`${k.label}は、次からも「${p.label}」に入れます`);
+  } else {
+    m.place = p;
+    toast(`今回だけ「${p.label}」に入れます`);
+  }
+  render();
+}
+
+/** 元のzipの保存先（確認・選ぶ）。素材・スキンとシナリオの両方で使う */
+export function zipPlaceRow(o, sub = '') {
+  const isApp = S.platform.kind === 'app';
+  const where = o.zipPlace ? `「${o.zipPlace.label}」（今回だけ）` : `「${S.archive.label}」${sub ? `の「${sub}」` : ''}`;
+  const full = o.zipPlace ? o.zipPlace.ref : isApp && S.archive.ref ? joinPath(S.archive.ref, sub) : '';
+  return h('div', { class: 'row small', id: 'zip-place' },
+    h('span', { class: 'muted' }, `元の ${o.archiveName || o.source.name} は ${where} に保存します`),
+    openBtn(full, '置き場所を確認する'),
+    S.platform.canWriteFolders ? h('button', { class: 'btn ghost sm', id: 'zip-place-pick', onclick: () => pickZipPlace(o) }, '保存先を選ぶ…') : null,
+    o.zipPlace ? h('button', { class: 'btn ghost sm', onclick: () => { o.zipPlace = null; render(); } }, 'いつもの保存場所に戻す') : null);
+}
+
+export async function pickZipPlace(o) {
+  const p = await choosePlace({ title: '元のzip・wsnを保存するフォルダを選んでください', id: 'archive', what: 'zip・wsnの保存場所' });
+  if (!p) return;
+  if (p.remember) {
+    S.archive = { ...S.archive, ref: p.ref, label: p.label, on: true, auto: false };
+    S.archiveDir = p.dir;
+    await store.set('archive', S.archive);
+    o.zipPlace = null;
+    toast(`zip・wsnは、次からも「${p.label}」に保存します`);
+  } else {
+    o.zipPlace = p;
+    toast(`元のzipは、今回だけ「${p.label}」に保存します`);
+  }
+  render();
 }
 
 /** どのファイルを入れるか選ぶ欄（最初は全部。フォルダごとにも選べる） */

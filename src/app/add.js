@@ -14,13 +14,14 @@ import { viewUrlBox } from './download.js';
 import { viewBatch } from './batch.js';
 import { editEntry } from './catalog-view.js';
 import { openLocalFiles, pickFiles, pickDownloads } from './localfiles.js';
-import { viewMaterialInstall, openBtn } from './materials.js';
+import { viewMaterialInstall, openBtn, zipPlaceRow } from './materials.js';
 import { catPicker } from './catpick.js';
 import { findTagsInOpened } from '../core/autotag.js';
 import { addTagName } from './tags.js';
 import { backupOpts, backupFull } from './backup.js';
 import { existsAt } from '../core/fs.js';
 import { execWarning, contentsBox } from './safety-view.js';
+import { r18On, r18Guide } from './ratings-view.js';
 
 export const VERSION_SOURCE = { catalog: '（カタログで確定）', dl: '（カタログからDLした版）', user: '（手入力）', guess: '（名前から推測）' };
 
@@ -63,7 +64,7 @@ export function setupDrop() {
  */
 export async function openSource(fn, work = null) {
   S.tab = 'add';
-  const opened = await busy('分析中', fn);
+  const opened = await busy('データを確かめています', fn);
   if (!opened) return;
   S.opened = opened;
   S.openedZone = S.pendingZone || null; // ダウンロードフォルダなどから開いたときの「DL元」
@@ -144,6 +145,7 @@ export function viewAdd() {
         h('button', { class: 'btn ghost', onclick: () => { S.opened = null; render(); } }, '閉じる'))),
     o.nonUtf8Names ? h('p', { class: 'note ok small' }, `日本語のファイル名 ${o.nonUtf8Names}件 を、文字コードを判定して読み直しました。`) : null,
     S.openedZone ? h('p', { class: 'small muted', style: 'margin:6px 0 0;word-break:break-all' }, `DL元（ブラウザの記録）：${S.openedZone.referrerUrl || S.openedZone.hostUrl}`) : null,
+    work?.rating === 'r18' && !r18On() ? h('p', { class: 'note warn small', id: 'r18-note' }, 'この作品はR18シナリオです。カタログに表示するには、設定で『R18表示』を有効にしてください。', h('button', { class: 'btn ghost sm', onclick: () => r18Guide(work.name) }, '設定を開く')) : null,
     work ? h('p', { class: 'note ok small' }, `カタログの「${work.name}」ver ${work.version} ${S.matchBy === 'sha256' ? 'とファイルが一致しました（版まで確定）' : S.openedVia === 'catalog' ? 'から取ってきました' : 'と名前が一致しました'}。`) : null,
     o.warnings?.length ? h('details', { class: 'small' }, h('summary', {}, `注意 ${o.warnings.length}件`), h('ul', {}, o.warnings.map((w) => h('li', {}, w)))) : null,
     execWarning(o),
@@ -275,7 +277,7 @@ function autoTagBox(o) {
 function archiveNote(o) {
   if (o.source.kind !== 'archive') return null;
   if (o.execExcluded) return h('p', { class: 'small muted', style: 'margin:0' }, `実行ファイルが入っているので、元の ${o.archiveName || o.source.name} は保存場所に残しません`);
-  if (S.archive.on && S.archive.ref) return h('p', { class: 'small muted', style: 'margin:0' }, `インストールすると、元の ${o.source.name} も「${S.archive.label}」に保存します（設定で変えられます）`);
+  if ((S.archive.on && S.archive.ref) || o.zipPlace) return zipPlaceRow(o);
   return null;
 }
 
@@ -350,8 +352,9 @@ export async function saveArchive(opened, { force = false, subdir = '' } = {}) {
   if (opened.source.kind !== 'archive' || !bytes) return null;
   // 実行ファイルを外して入れたときは、元のファイル（実行ファイル入り）は残さない
   if (opened.execExcluded) return null;
-  if (!force && !S.archive.on) return null;
-  const root = await archiveDirOf(true);
+  if (!force && !S.archive.on && !opened.zipPlace) return null;
+  // 「保存先を選ぶ」で今回だけ選んだ場所があれば、そこに置く
+  const root = opened.zipPlace?.dir || await archiveDirOf(true);
   if (!root) throw new Error('zipの保存場所を使う許可がありませんでした。設定の「zip・wsnの保存場所」で選び直してください');
   // 素材・スキンのzipは、保存場所の中の「素材」「スキン」フォルダに分ける
   const d = subdir ? await root.dir(subdir, { create: true }) : root;
@@ -405,6 +408,7 @@ export async function installOpened({ opened, pick, eng, dir, cat, folderName, v
     await store.set('categories', S.categories);
   }
   let archived = null;
+  busyText('保存中…（元のzip）');
   try { archived = await saveArchive(opened); } catch (e) { toast(`zipを保存場所に置けませんでした：${e.message}`, { bad: true }); }
   return { plan, res, rec, archived };
 }
@@ -502,6 +506,8 @@ function prefillFromOpened() {
       wsn_version: sc.wsnVersion ?? null, description: (sc.description || '').trim().slice(0, 2000), tags: [], intro: [],
       downloads,
       file: { name: o.source.kind === 'archive' ? o.source.name : '', sha256: o.source.sha256 || '' },
+      // Readme に R18・R15 と書いてあれば、対象年齢にする（登録の画面で直せる）
+      rating: o.autoTags?.includes('R18') ? 'r18' : o.autoTags?.includes('R15') ? 'r15' : 'all',
     },
   };
 }

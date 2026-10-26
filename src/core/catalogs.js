@@ -4,6 +4,7 @@
 // 同じ作品が複数のカタログに載っていたら「作品」として1つにまとめ、配布元を合わせる。
 
 import { normalizeName, compareVersions } from './catalog.js';
+import { stricter, mergeLabelDefs } from './ratings.js';
 
 export const KIND_ORDER = { shared: 0, own: 1, sub: 2 };
 export const KIND_LABEL = { shared: '共用', own: '個人用', sub: '個人用（読み込み）' };
@@ -55,6 +56,9 @@ export function combine(sources) {
     w.hidden = w.refs.every((r) => w.hiddenIn.has(r.sourceId));
     // どの掲載元でも一時保留中なら、一時保留中（個人用カタログに自分で載せていれば、そちらが優先）
     w.held = w.refs.every((r) => r.entry.state === 'held');
+    // シナリオラベル：対象年齢は、いちばん厳しいもの。注意のラベルは、全部合わせる
+    w.rating = w.refs.reduce((a, r) => stricter(a, r.entry.rating), 'all');
+    w.content = [...new Set(w.refs.flatMap((r) => r.entry.content || []))];
     w.heldReason = w.held ? w.refs.map((r) => r.entry.held_reason).find(Boolean) || '' : '';
     w.derivative = w.refs.map((r) => r.entry.derivative).find(Boolean) || null;
     w.site = w.refs.map((r) => r.entry.site).find(Boolean) || '';
@@ -66,7 +70,8 @@ export function combine(sources) {
       if (o && !w.origins.some((x) => x.name === o.name)) w.origins.push(o);
     }
   }
-  return { works, byKey, authors };
+  const contentLabels = mergeLabelDefs(...ordered.map((s) => s.catalog.contentLabels || []));
+  return { works, byKey, authors, contentLabels };
 }
 
 /**

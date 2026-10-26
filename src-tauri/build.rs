@@ -9,6 +9,7 @@ fn main() {
                 "take_open_args",
                 "net_fetch",
                 "net_take",
+                "machine_key",
                 "default_store_dirs",
                 "open_folder",
                 "portable_update_install",

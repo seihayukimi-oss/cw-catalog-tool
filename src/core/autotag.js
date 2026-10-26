@@ -1,6 +1,8 @@
 // Readme・シナリオの説明文から、タグを自動で見つける（店シナ・読み物・人数・戦闘あり／なし など）。
 // 書いてあることをそのまま拾うだけで、推測はしない（見つからなければ付けない）。
 
+import { findRating } from './ratings.js';
+
 const KANJI = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 壱: 1, 弐: 2 };
 const num = (s) => (/\d/.test(s) ? parseInt(s, 10) : KANJI[s] || 0);
 const N = '([1-6１-６一二三四五六])';
@@ -43,6 +45,9 @@ export function findTags(text) {
   // 対象レベル
   const lv = t.match(/(?:対象|推奨|適正)レベル\s*[:：]?\s*(\d{1,2})\s*(?:[~～〜\-ー]|から)\s*(\d{1,2})/);
   if (lv) tags.add(`Lv${lv[1]}-${lv[2]}`);
+  // 対象年齢（R18・R15）。書いてあるときだけ
+  const rating = findRating(t);
+  if (rating) tags.add(rating === 'r18' ? 'R18' : 'R15');
   return [...tags];
 }
 

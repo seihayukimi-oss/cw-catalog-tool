@@ -8,8 +8,10 @@
 //  ・配布元からのダウンロード（日本語のファイル名を見出しに入れてくるサイトにも対応）          net.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod dlprogress;
 mod downloads;
 mod folders;
+mod machine;
 mod net;
 mod portable;
 mod update;
@@ -137,6 +139,7 @@ fn build_browser_window(
         .on_download(move |webview, event| {
             match event {
                 DownloadEvent::Requested { destination, .. } => {
+                    dlprogress::started(&app_dl);
                     let name = destination
                         .file_name()
                         .map(|n| n.to_string_lossy().to_string())
@@ -146,6 +149,7 @@ fn build_browser_window(
                     *destination = path;
                 }
                 DownloadEvent::Finished { url, path, success } => {
+                    dlprogress::finished();
                     let _ = app_dl.emit_to(
                         "main",
                         "cw-download",
@@ -169,7 +173,9 @@ fn build_browser_window(
     if let Some(f) = features {
         b = b.window_features(f);
     }
-    b.build()
+    let w = b.build()?;
+    dlprogress::attach(&w);
+    Ok(w)
 }
 
 /// 配布ページを別の窓で開く。本人がサイトのダウンロードボタンを押すと、
@@ -191,6 +197,7 @@ async fn open_download_window(app: tauri::AppHandle, url: String) -> Result<(), 
     let app_close = app.clone();
     window.on_window_event(move |e| {
         if let tauri::WindowEvent::Destroyed = e {
+            dlprogress::finished();
             let _ = app_close.emit_to("main", "cw-download-closed", ());
         }
     });
@@ -262,6 +269,7 @@ fn main() {
             take_open_args,
             net::net_fetch,
             net::net_take,
+            machine::machine_key,
             folders::default_store_dirs,
             folders::open_folder,
             update::portable_update_install,

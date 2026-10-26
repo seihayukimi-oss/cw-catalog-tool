@@ -92,14 +92,16 @@ export async function busy(label, fn) {
   }
 }
 
-/** 見出しの横に、進み具合を小さく出す */
+/** 右上に、いまの段階を出す（下の小さい行には、何の作業か） */
 export function busyText(text) {
-  const el = document.querySelector('.brand .small');
+  const el = document.getElementById('busy-text');
   if (el) el.textContent = text;
+  const sub = document.getElementById('busy-sub');
+  if (sub) sub.textContent = S.busy && !String(text).startsWith(S.busy) ? S.busy : '';
 }
 
 const mb = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
-/** 見出しの横の進み具合のバー。ratio が null なら隠す */
+/** 右上の進み具合のバー。ratio が null なら隠す。負なら「動いているけど量は分からない」 */
 export function busyProgress(ratio, text = '') {
   const bar = document.getElementById('busy-prog');
   if (bar) {
@@ -111,9 +113,16 @@ export function busyProgress(ratio, text = '') {
 /** ダウンロードの進み具合（1つずつ取るとき）。まとめて取るときは、件数で別に出す */
 export function netProgress(got, total) {
   if (S.progressByCount) return;
-  const label = S.busy || '取得中';
-  if (total > 0) busyProgress(got / total, `${label}… ${Math.floor((got / total) * 100)}%（${mb(got)} / ${mb(total)}）`);
-  else busyProgress(-1, `${label}… ${mb(got)}`);
+  if (got < 0) busyProgress(-1, 'サイトにつないでいます…');
+  else if (total > 0) busyProgress(got / total, `ダウンロード中… ${Math.floor((got / total) * 100)}%（${mb(got)} / ${mb(total)}）`);
+  else if (got === 0) busyProgress(-1, 'サイトにつないでいます…');
+  else busyProgress(-1, `ダウンロード中… ${mb(got)}`);
+}
+
+/** アプリ内ブラウザでのダウンロードの進み具合 */
+export function dlProgress(got, total) {
+  if (total > 0) busyProgress(got / total, `サイトからダウンロード中… ${Math.floor((got / total) * 100)}%（${mb(got)} / ${mb(total)}）`);
+  else busyProgress(-1, `サイトからダウンロード中… ${mb(got)}`);
 }
 
 export function rerenderList(id, viewFn) {

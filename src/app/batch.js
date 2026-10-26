@@ -29,7 +29,12 @@ let seq = 0;
  * @param {{work: object, record?: object}[]} list record があれば「更新」として、その場所に置き換える
  */
 export function startBatch(list, title = 'まとめてDL') {
-  return startItems(list, title);
+  // R18 の作品は、まとめてDLには入れない（配布元をブラウザで開いて、1つずつ取ってもらう）
+  const r18 = list.filter((x) => x.work?.rating === 'r18');
+  if (r18.length) toast(`R18の作品（${r18.length}件：${r18.slice(0, 3).map((x) => `「${x.work.name}」`).join('')}${r18.length > 3 ? '…' : ''}）は、まとめてDLには入れません。作品の「ダウンロード」から、配布元をブラウザで開いてください`, { ms: 12000 });
+  const rest = list.filter((x) => x.work?.rating !== 'r18');
+  if (!rest.length) return null;
+  return startItems(rest, title);
 }
 
 /**
@@ -96,7 +101,7 @@ async function runFetch() {
     const out = await tryDownloads(it.work, {
       onTry: (d) => { from = dlLabel(d); it.message = `${from} から取得中…`; render(); },
       onProgress: (got, total) => {
-        it.message = `${from} から取得中… ${total > 0 ? `${Math.floor((got / total) * 100)}%（${fmtSize(got)} / ${fmtSize(total)}）` : fmtSize(got)}`;
+        it.message = got < 0 ? `${from} につないでいます…` : `${from} からダウンロード中… ${total > 0 ? `${Math.floor((got / total) * 100)}%（${fmtSize(got)} / ${fmtSize(total)}）` : fmtSize(got)}`;
         const el = document.getElementById(`bi-msg-${it.id}`);
         if (el) el.textContent = it.message; else render();
       },
@@ -254,7 +259,7 @@ export function viewBatch() {
       mats.length ? h('div', { class: 'small stack', style: 'gap:4px' },
         [...new Set(mats.map((i) => i.matKind))].map((kind) => h('div', { class: 'row' },
           h('span', {}, `${KINDS[kind].label}（${mats.filter((i) => i.matKind === kind).length}件）は、${KINDS[kind].place}「${S.stash?.[kind]?.label || '未設定'}」に入れます（作品ごとの欄で、分類フォルダとフォルダ名を決められます）`),
-          openBtn(S.stash?.[kind]?.ref, '置き場所を開く')))) : null,
+          openBtn(S.stash?.[kind]?.ref, '置き場所を確認する')))) : null,
       hasNew && S.engines.length > 1 ? h('div', { class: 'row' },
         h('button', { class: 'btn sm', id: 'batch-assign', disabled: b.installing, onclick: () => { const n = assignEngines(b); toast(n ? `${n}件のエンジンを、形式に合わせて振り分けました` : '振り分けが変わる作品はありませんでした'); render(); } }, '形式に合わせてエンジンに振り分ける'),
         h('span', { class: 'small muted' }, 'Py仕様（WSN）→ CardWirthPy、Next仕様 → CardWirthNext、クラシック → 上で選んだエンジン。作品ごとに「エンジン」で変えることもできます（分類フォルダは同じ名前で作ります）')) : null,
@@ -319,7 +324,7 @@ function itemCard(it) {
   const updDest = () => {
     const ds = destStatus(it.opened, matOpts(it));
     destEl.className = `small dest-status note ${ds.level === 'ok' ? 'ok' : ds.level === 'warn' ? 'warn' : ds.level === 'bad' ? 'bad' : ''}`;
-    destEl.replaceChildren(...[h('span', {}, ds.text), openBtn(ds.baseRef, '置き場所を開く')].filter(Boolean));
+    destEl.replaceChildren(...[h('span', {}, ds.text), openBtn(ds.baseRef, '置き場所を確認する')].filter(Boolean));
   };
   if (it.status === 'ready' && it.material) {
     const k = KINDS[it.matKind];

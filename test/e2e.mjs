@@ -115,6 +115,8 @@ async function run(colorScheme, width) {
     await root.removeEntry('test-materials', { recursive: true }).catch(() => {});
     await root.removeEntry('test-backup', { recursive: true }).catch(() => {});
     await root.removeEntry('test-skins', { recursive: true }).catch(() => {});
+    await root.removeEntry('test-pick-material', { recursive: true }).catch(() => {});
+    await root.removeEntry('test-pick-archive', { recursive: true }).catch(() => {});
     const eng = await root.getDirectoryHandle('test-engine', { create: true });
     for (const [path, bytes] of Object.entries(seed)) {
       const parts = path.split('/');
@@ -431,6 +433,38 @@ async function run(colorScheme, width) {
   await page.locator('#show-muted').uncheck().catch(() => {});
   ok('入れない作者から外すと戻る', await forest.isVisible());
 
+  // 9a2. シナリオラベル：R18 はいつもは出さない → 設定で年齢確認してONにすると出る。R15・注意のラベル・苦手なラベルを隠す
+  const house = page.locator('.card.work', { has: page.locator('.item-title', { hasText: 'サンプルの館' }) });
+  const tower = page.locator('.card.work', { has: page.locator('.item-title', { hasText: 'サンプルの塔（Py版）' }) });
+  ok('R18 の作品は、いつもは出さない', !(await house.count()));
+  ok('R15・注意のラベルを付けて表示する', await tower.locator('.rating-r15').isVisible() && await tower.getByText('⚠ グロ・残酷描写').isVisible());
+  await page.getByRole('tab', { name: '設定' }).click();
+  await page.locator('#rating-settings').scrollIntoViewIfNeeded();
+  await page.getByLabel('「R15」のラベルの作品を隠す').check();
+  await page.locator('#pref-r18').check();
+  await page.locator('#age-check').waitFor();
+  ok('R18 をONにするとき、年齢を確認する', /18歳以上ですか/.test(await page.locator('#age-check').textContent()));
+  if (width > 600) await page.locator('#age-check').screenshot({ path: join(OUT, `age-${colorScheme}.png`) }).catch(() => {});
+  await page.locator('#age-check').getByRole('button', { name: 'はい' }).click();
+  await page.getByText('R18の作品を表示します').waitFor();
+  if (width > 600) await page.locator('#rating-settings').screenshot({ path: join(OUT, `rating-settings-${colorScheme}.png`) }).catch(() => {});
+  await page.getByRole('tab', { name: 'カタログ' }).click();
+  await house.waitFor();
+  ok('ONにすると R18 の作品が出る（R18のラベル・成人向けの注意・ブラウザで開く）', await house.locator('.rating-r18').isVisible() && await house.getByText(/この作品は成人向け（R18）です/).isVisible() && await house.getByRole('button', { name: 'ダウンロード（ブラウザで開く）' }).isVisible());
+  ok('苦手なラベル（R15）の作品は隠す', !(await tower.count()) && /苦手なラベルで隠した作品（1件）も表示/.test(await page.locator('#show-label-hidden').locator('..').textContent()));
+  if (width > 600) await house.screenshot({ path: join(OUT, `r18-${colorScheme}.png`) }).catch(() => {});
+  await page.getByRole('tab', { name: '設定' }).click();
+  await page.locator('#pref-r18').uncheck();
+  await page.getByText('R18の作品を表示しないようにしました').waitFor();
+  await page.getByLabel('「R15」のラベルの作品を隠す').uncheck();
+  await page.locator('#pref-r18').check();
+  await page.getByText('R18の作品を表示します').waitFor();
+  ok('年齢の確認は初回だけ', !(await page.locator('#age-check').count()));
+  await page.locator('#pref-r18').uncheck();
+  await page.getByText('R18の作品を表示しないようにしました').waitFor();
+  await page.getByRole('tab', { name: 'カタログ' }).click();
+  ok('OFFに戻すと R18 は出ない', !(await house.count()) && await tower.isVisible());
+
   // 9b. 選んでフォルダに入れる・作者ごとにまとめる・選んで候補から外す
   await page.getByLabel('候補から外したものも表示').uncheck();
   await page.getByLabel('開けられた鳥籠を選ぶ').check();
@@ -463,16 +497,16 @@ async function run(colorScheme, width) {
   const [dl3] = await Promise.all([page.waitForEvent('download'), page.locator('dialog').getByRole('button', { name: '書き出す' }).click()]);
   const listPath = await dl3.path();
   const list = JSON.parse(readFileSync(listPath, 'utf8'));
-  ok('DL一覧の書き出し（3件・デフォルトが先頭・DLキーは入れない・ラベル付き）', list.entries.length === 3 && !JSON.stringify(list).includes('mizu') && list.entries.find((e) => e.name === '開けられた鳥籠').downloads[0].label === '新サイト' && list.entries.find((e) => e.name === '開けられた鳥籠').labels?.[0] === '鳥籠シリーズ', `${list.entries.length}件`);
+  ok('DL一覧の書き出し（3件・デフォルトが先頭・DLキーは入れない・分類名付き）', list.entries.length === 3 && !JSON.stringify(list).includes('mizu') && list.entries.find((e) => e.name === '開けられた鳥籠').downloads[0].label === '新サイト' && list.entries.find((e) => e.name === '開けられた鳥籠').labels?.[0] === '鳥籠シリーズ', `${list.entries.length}件`);
   await page.getByRole('button', { name: '＋ カタログを追加' }).click();
   await page.locator('#list-file').setInputFiles({ name: '有志の一覧.json', mimeType: 'application/json', buffer: readFileSync(listPath) });
   await page.getByText(/を個人用カタログとして読み込みました（3件）/).waitFor();
-  await page.locator('dialog', { hasText: 'のラベルを取り込む' }).waitFor();
-  ok('ラベル付きのDL一覧を読み込むと、取り込むか聞く', await page.getByLabel('ラベル「鳥籠シリーズ」を取り込む').isChecked());
+  await page.locator('dialog', { hasText: 'の分類名を取り込む' }).waitFor();
+  ok('分類名付きのDL一覧を読み込むと、取り込むか聞く', await page.getByLabel('分類名「鳥籠シリーズ」を取り込む').isChecked());
   await page.locator('dialog').getByText(/フォルダの名前の前に、カタログの名前を付ける/).click();
   await page.locator('#label-go').click();
-  await page.getByText(/1種類のラベルを取り込みました（2件をフォルダに入れました）/).waitFor();
-  ok('ラベルを、カタログの名前を付けたフォルダとして取り込む', true);
+  await page.getByText(/1種類の分類名を取り込みました（2件をフォルダに入れました）/).waitFor();
+  ok('分類名を、カタログの名前を付けたフォルダとして取り込む', true);
   ok('DL一覧を個人用カタログとして読み込み', await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).isVisible());
   await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).getByLabel(/を候補に含める/).uncheck();
   await page.waitForTimeout(300);
@@ -583,6 +617,28 @@ async function run(colorScheme, width) {
   await page.locator('#mine-list .card', { hasText: 'MedievalFantasy/和風テスト' }).waitFor();
   ok('スキンの置き場所を一覧で見る', true);
   await page.getByLabel('エンジン').selectOption({ index: 0 });
+
+  // 12d. 取ってきたときに保存先を選ぶ（今回だけ）：素材の入れ先と、元のzipの保存先
+  await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
+  const extra = Buffer.from(zipSync({ 'おまけ/se.ogg': new Uint8Array([79, 103, 103, 83]) }));
+  await page.locator('input[type=file][accept=".zip,.wsn,.cab,.lzh,.lha,.7z"]').setInputFiles({ name: 'omake.zip', mimeType: 'application/zip', buffer: extra });
+  await page.locator('#mat-place').click();
+  await page.locator('#place-modal').waitFor();
+  ok('保存先を選ぶと「今回だけ／次からも」を聞く（最初は今回だけ）', await page.locator('#place-once').isChecked());
+  await page.locator('#place-ok').click();
+  await page.locator('#mat-dest', { hasText: '今回だけ' }).waitFor();
+  await page.locator('#zip-place-pick').click();
+  await page.locator('#place-ok').click();
+  await page.locator('#zip-place', { hasText: '今回だけ' }).waitFor();
+  ok('元のzipの保存先も選べる', true);
+  if (width > 600) await page.locator('#mat-dest').locator('..').screenshot({ path: join(OUT, `place-${colorScheme}.png`) }).catch(() => {});
+  await page.locator('#mat-install').click();
+  await page.locator('#mat-done', { hasText: /今回だけ/ }).waitFor();
+  const pickedMat = await page.evaluate(async () => { const out = []; const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('test-pick-material'); async function walk(x, p) { for await (const [n, hh] of x.entries()) { const q = p ? `${p}/${n}` : n; if (hh.kind === 'directory') await walk(hh, q); else out.push(q); } } await walk(d, ''); return out; });
+  const pickedZip = await page.evaluate(async () => { const out = []; const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('test-pick-archive'); for await (const [n] of d.entries()) out.push(n); return out; });
+  ok('今回だけ選んだ場所に入れる（素材・元のzip）', pickedMat.includes('omake/se.ogg') && pickedZip.includes('omake.zip'), `${pickedMat.join(',')} / ${pickedZip.join(',')}`);
+  await page.locator('#mat-done').getByRole('button', { name: '閉じる' }).click();
+  await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
 
   // 13. 選んでタグをまとめて付ける・整理と二重チェック
   const mcards = page.locator('#mine-list > .card');

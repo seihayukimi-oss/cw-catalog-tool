@@ -10,6 +10,8 @@ export const ENGINE_KINDS = {
   wcw: { name: 'WebCardWirth（書き出し）', short: 'Web' },
 };
 
+import { normRating, normContent, sanitizeLabelDefs } from './ratings.js';
+
 const COMPAT = new Set(['verified', 'expected', 'no', 'unknown']);
 const STATUS = new Set(['active', 'mirror', 'old', 'closed']);
 const isHttp = (u) => typeof u === 'string' && /^https?:\/\/[^\s]+$/.test(u);
@@ -58,9 +60,12 @@ export function sanitizeEntry(e) {
     tags: (Array.isArray(e.tags) ? e.tags : []).filter((t) => typeof t === 'string').slice(0, 30),
     // 登録した人（author＝作者さん本人・proxy＝作者さん以外の代理登録）。共用カタログの登録フォームが付ける
     claim: e.claim === 'author' || e.claim === 'proxy' ? e.claim : '',
-    // ラベル（作者さんごと・企画ごとなどの分け方）。受け取った人が、取り込むかどうかと範囲を選ぶ
+    // 分類名（作者さんごと・企画ごとなどの分け方。データ上のキーは labels のまま）。受け取った人が、取り込むかどうかと範囲を選ぶ
     labels: (Array.isArray(e.labels) ? e.labels : []).filter((t) => typeof t === 'string').map((t) => t.trim().slice(0, 60)).filter(Boolean).slice(0, 20),
     description: str(e.description, 5000),
+    // シナリオラベル：対象年齢（all・r15・r18）と、注意のラベル（gore・horror・sexual など。種類は content_labels）
+    rating: normRating(e.rating),
+    content: normContent(e.content),
     // 共用カタログの状態：public＝公開中、held＝一時保留中（通報が多かったものなど。受け取る側で、いつもは出さない）
     state: e.state === 'held' ? 'held' : 'public',
     held_reason: e.state === 'held' ? str(e.held_reason, 300) : '',
@@ -107,7 +112,9 @@ export function parseCatalog(json) {
   const attribution = json.attribution && typeof json.attribution === 'object' && str(json.attribution.name, 100)
     ? { name: str(json.attribution.name, 100), url: isHttp(json.attribution.url) ? json.attribution.url : '' } : null;
   const license = str(json.license, 100);
-  return { format: CATALOG_FORMAT, entries, authors, links, attribution, license, byId: new Map(entries.map((e) => [e.id, e])) };
+  // 注意のラベルの種類（管理人が増やしたもの）
+  const contentLabels = sanitizeLabelDefs(json.content_labels);
+  return { format: CATALOG_FORMAT, entries, authors, links, attribution, license, contentLabels, byId: new Map(entries.map((e) => [e.id, e])) };
 }
 
 /** 比較用に名前をそろえる（全角半角・空白・記号の違いを無視） */
