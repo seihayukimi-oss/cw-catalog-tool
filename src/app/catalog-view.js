@@ -23,7 +23,7 @@ import { labelBadges, catalogVisible, hiddenByLabel, contentLabelDefs } from './
 const LV = { verified: ['確認済み', 'ok'], expected: ['動くはず', 'warn'], no: ['非対応', 'bad'], unknown: ['未確認', 'plain'] };
 const AGE = { new: '新', old: '旧（移転済み）', closed: '終了' };
 const ROLE = { normal: '通常', mirror: '予備' };
-const CHECKED = { readme: 'Readme', site: '作者さんのサイト・配布ページ', author: '作者さん本人から', other: 'その他' };
+const CHECKED = { readme: 'Readme', site: '作者公式サイト・配布ページ', author: '作者本人へ直接確認', other: 'その他' };
 
 // ------------------------------------------------------------ 一覧
 const GROUPS = [['', 'そのまま'], ['author', '作者ごと'], ['folder', 'フォルダごと'], ['name', '名前順'], ['updated', '新しい順']];
@@ -277,7 +277,7 @@ function workCard(w, mine) {
     // 共用カタログ（登録フォームから）の作品：作品IDと、直す・削除を依頼するフォーム
     ...w.refs.filter((r) => r.kind === 'shared' && S.catalogs.get(r.sourceId)?.links?.manage).slice(0, 1).map((r) => h('div', { class: 'row small muted', style: 'margin:2px 0 6px' },
       h('span', {}, `作品ID：${r.entry.id}（${r.sourceName}）`),
-      h('button', { class: 'btn ghost sm', onclick: () => { toast(`フォームの「作品ID」に ${r.entry.id} と入れてください`, { ms: 9000 }); S.platform.openUrl(S.catalogs.get(r.sourceId).links.manage); } }, '登録を修正する・登録を解除する'))),
+      h('button', { class: 'btn ghost sm', onclick: () => { toast(`フォームの「作品ID」に ${r.entry.id} と入れてください`, { ms: 9000 }); S.platform.openUrl(S.catalogs.get(r.sourceId).links.manage); } }, '登録内容の変更・解除'))),
     w.rating === 'r18' ? h('p', { class: 'note bad small', style: 'margin:4px 0' }, '※この作品は成人向け（R18）です。「ダウンロード」を押すと、配布元をブラウザで開きます。') : null,
     w.description ? descBlock(w.description) : null,
     introBlock(w),
@@ -502,7 +502,7 @@ function sourceRow(s) {
       h('div', { class: 'row' }, h('b', {}, s.name), h('span', { class: 'badge plain' }, kindLabel), !s.enabled ? h('span', { class: 'badge plain' }, '候補に含めない') : null),
       h('div', { class: 'meta' }, [`${s.count || 0}件`, hidden ? `外した作品 ${hidden}件` : '', s.loadedAt ? `読み込み ${fmtDate(s.loadedAt)}` : ''].filter(Boolean).join('・'))),
     S.catalogs.get(s.id)?.links?.register ? h('button', { class: 'btn sm', title: '作者さん以外の方も登録できます（代理登録）', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.register) }, '作品を登録する') : null,
-    S.catalogs.get(s.id)?.links?.manage ? h('button', { class: 'btn ghost sm', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.manage) }, '登録を修正する・登録を解除する') : null,
+    S.catalogs.get(s.id)?.links?.manage ? h('button', { class: 'btn ghost sm', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.manage) }, '登録内容の変更・解除') : null,
     s.url ? h('button', { class: 'btn sm', onclick: () => after(() => refreshSource(s), (changed) => (changed ? `「${s.name}」を取り直しました（${s.count}件）` : '変わっていませんでした')) }, '取り直す') : null,
     h('button', { class: 'btn ghost sm', 'aria-label': `${s.name}のメニュー`, onclick: () => sourceMenu(s) }, '⋯'));
 }
