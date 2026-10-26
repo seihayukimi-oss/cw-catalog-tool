@@ -277,7 +277,7 @@ function workCard(w, mine) {
     // 共用カタログ（登録フォームから）の作品：作品IDと、直す・削除を依頼するフォーム
     ...w.refs.filter((r) => r.kind === 'shared' && S.catalogs.get(r.sourceId)?.links?.manage).slice(0, 1).map((r) => h('div', { class: 'row small muted', style: 'margin:2px 0 6px' },
       h('span', {}, `作品ID：${r.entry.id}（${r.sourceName}）`),
-      h('button', { class: 'btn ghost sm', onclick: () => { toast(`フォームの「作品ID」に ${r.entry.id} と入れてください`, { ms: 9000 }); S.platform.openUrl(S.catalogs.get(r.sourceId).links.manage); } }, '登録を直す・削除を依頼'))),
+      h('button', { class: 'btn ghost sm', onclick: () => { toast(`フォームの「作品ID」に ${r.entry.id} と入れてください`, { ms: 9000 }); S.platform.openUrl(S.catalogs.get(r.sourceId).links.manage); } }, '登録を修正する・登録を解除する'))),
     w.rating === 'r18' ? h('p', { class: 'note bad small', style: 'margin:4px 0' }, '※この作品は成人向け（R18）です。「ダウンロード」を押すと、配布元をブラウザで開きます。') : null,
     w.description ? descBlock(w.description) : null,
     introBlock(w),
@@ -502,7 +502,7 @@ function sourceRow(s) {
       h('div', { class: 'row' }, h('b', {}, s.name), h('span', { class: 'badge plain' }, kindLabel), !s.enabled ? h('span', { class: 'badge plain' }, '候補に含めない') : null),
       h('div', { class: 'meta' }, [`${s.count || 0}件`, hidden ? `外した作品 ${hidden}件` : '', s.loadedAt ? `読み込み ${fmtDate(s.loadedAt)}` : ''].filter(Boolean).join('・'))),
     S.catalogs.get(s.id)?.links?.register ? h('button', { class: 'btn sm', title: '作者さん以外の方も登録できます（代理登録）', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.register) }, '作品を登録する') : null,
-    S.catalogs.get(s.id)?.links?.manage ? h('button', { class: 'btn ghost sm', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.manage) }, '登録を直す・削除を依頼') : null,
+    S.catalogs.get(s.id)?.links?.manage ? h('button', { class: 'btn ghost sm', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.manage) }, '登録を修正する・登録を解除する') : null,
     s.url ? h('button', { class: 'btn sm', onclick: () => after(() => refreshSource(s), (changed) => (changed ? `「${s.name}」を取り直しました（${s.count}件）` : '変わっていませんでした')) }, '取り直す') : null,
     h('button', { class: 'btn ghost sm', 'aria-label': `${s.name}のメニュー`, onclick: () => sourceMenu(s) }, '⋯'));
 }
@@ -648,7 +648,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       version: h('input', { type: 'text', class: 'ver', value: base.version || '' }),
       updated: h('input', { type: 'date', value: base.updated || '' }),
       type: h('select', { 'aria-label': '種類' }, [['scenario', 'シナリオ'], ['skin', 'スキン（CardWirthPy）'], ['material', '素材（画像・音など）']].map(([k, l]) => h('option', { value: k, selected: (['scenario', 'skin'].includes(base.type || 'scenario') ? base.type || 'scenario' : 'material') === k ? 'selected' : null }, l))),
-      format: h('select', {}, [['classic', 'クラシック（1.50・Next・Py）'], ['next', 'Next仕様'], ['wsn', 'Py仕様（WSN）']].map(([k, l]) => h('option', { value: k, selected: (base.format || 'classic') === k ? 'selected' : null }, l))),
+      format: h('select', {}, [['classic', 'クラシック（1.50）'], ['next', 'Next仕様'], ['wsn', 'Py仕様（WSN）']].map(([k, l]) => h('option', { value: k, selected: (base.format || 'classic') === k ? 'selected' : null }, l))),
       tags: h('input', { type: 'text', value: (base.tags || []).join('、'), placeholder: '探索、短編（「、」か「,」で区切る）' }),
       description: h('textarea', { rows: 4, style: 'width:100%' }),
       rating: h('select', { id: 'edit-rating', 'aria-label': '対象年齢' }, [['all', '全年齢'], ['r15', 'R15'], ['r18', 'R18（成人向け）']].map(([k, l]) => h('option', { value: k, selected: (base.rating || 'all') === k ? 'selected' : null }, l))),
