@@ -165,7 +165,7 @@ export async function r18External(work, d = null) {
   if (!r18On()) { await r18Guide(work.name); return true; }
   const target = d || chooseDownloads(work, defaultUrlOf(work))[0];
   if (!target) { toast('この作品には、今開ける配布元がありません', { bad: true }); return true; }
-  toast('R18作品のため、お使いのブラウザで配布元ページを開きます。入手したファイルは「シナリオ・素材・スキンをDLする」の「『ダウンロード』から選ぶ」で追加してください', { ms: 12000 });
+  toast('R18作品のため、お使いのブラウザで配布元ページを開きます。ダウンロードしたファイルは「DLする」タブの「『ダウンロード』から選ぶ」で追加してください', { ms: 12000 });
   await S.platform.openUrl(target.url);
   return true;
 }

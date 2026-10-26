@@ -317,7 +317,7 @@ export function viewTidy() {
 
   const noZipList = t.noZip.filter((r) => !isEx(recKey(r)));
   const noZipBody = h('div', { class: 'stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, `「${engine()?.name || ''}」に入っているけれど、保存場所に元のzipが見当たらない作品です。入れ直したいときに困らないよう、取っておきたいものはDLし直して保存場所に置いてください。`),
+    h('p', { class: 'small muted', style: 'margin:0' }, `「${engine()?.name || ''}」に導入済みですが、保存場所に元のzipが見つからない作品です。再導入用に必要な作品は再ダウンロードし、保存場所へ配置することをお勧めします。`),
     h('ul', { class: 'dl' }, t.noZip.map((r) => h('li', { class: isEx(recKey(r)) ? 'excluded' : null }, h('span', { class: 'grow' }, h('b', {}, r.name), h('span', { class: 'small muted' }, `　${r.author}・${disp(r.path)}`)), exBtn(recKey(r), 'これ')))));
 
   const tsumiBody = h('div', { class: 'stack' },

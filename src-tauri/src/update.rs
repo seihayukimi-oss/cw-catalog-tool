@@ -21,12 +21,12 @@ fn b64(s: &str) -> Result<String, String> {
 
 pub fn verify(data: &[u8], signature: &str) -> Result<(), String> {
     if PUBKEY.trim().is_empty() || PUBKEY.contains("NOT-CONFIGURED") {
-        return Err("この版には更新用の鍵が入っていないため、自動では更新できません。GitHubのリリースから新しい CWCatalog.exe を取ってきて置き換えてください".into());
+        return Err("このバージョンには更新用鍵が含まれていないため、自動更新できません。GitHubのリリースから最新の CWCatalog.exe をダウンロードし、手動で置き換えてください".into());
     }
     let pk = minisign_verify::PublicKey::decode(&b64(PUBKEY)?).map_err(|e| format!("公開鍵を読めません：{e}"))?;
     let sig = minisign_verify::Signature::decode(&b64(signature)?).map_err(|e| format!("署名を読めません：{e}"))?;
     pk.verify(data, &sig, true)
-        .map_err(|_| "署名が合いません。ダウンロードしたファイルが本物ではない可能性があるので、更新を中止しました".to_string())
+        .map_err(|_| "署名検証に失敗しました。ダウンロードしたファイルが不正な可能性があるため、更新を中止しました".to_string())
 }
 
 fn exe_paths() -> Result<(PathBuf, PathBuf, PathBuf), String> {

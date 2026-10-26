@@ -34,7 +34,7 @@ export function execWarning(o, { compact = false, disabled = false, onChange = r
     h('p', { class: 'small', style: 'margin:0' },
       'ファイル名とデータ先頭部分（ヘッダー）を読み取って検出しました（開いたり実行したりはしていません）。インストールしても、開かなければ動作しません。',
       allow ? null : '誤って開くことがないよう、インストール時は除外し、元のzipも保存先には残しません。'),
-    inner.length ? h('label', { class: 'check small' }, box, '実行ファイルも入れる（作者さんが用意した道具だと分かっているときだけ）') : null);
+    inner.length ? h('label', { class: 'check small' }, box, '実行ファイルも含めて導入する（信頼できる作者のツール等だと分かっている場合のみ）') : null);
 }
 
 /** 中身の一覧（入れる前に見られる。テキストはその場で読める） */

@@ -90,7 +90,7 @@ export function siteNotice(url) {
   let host = '';
   try { host = new URL(url).hostname; } catch { return ''; }
   if (/(^|\.)getuploader\.com$|(^|\.)uploader\.jp$/.test(host)) {
-    return 'uploader.jpは 2026年11月25日 23:59 で終了し、ファイルも削除されます。作者さんには、引っ越し先の案内をお願いしたいところです。';
+    return 'uploader.jpは 2026年11月25日 23:59 にサービス終了し、全ファイルが削除されます。移行先・別配布元の登録をおすすめします。';
   }
   return '';
 }

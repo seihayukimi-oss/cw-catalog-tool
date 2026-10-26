@@ -46,7 +46,7 @@ async function askAge() {
   return modal((close) => h('div', { class: 'stack', id: 'age-check' },
     h('h2', { style: 'margin:0' }, '年齢の確認'),
     h('p', { style: 'margin:0' }, 'R18（成人向け）の作品を表示します。あなたは18歳以上ですか？'),
-    h('p', { class: 'small muted', style: 'margin:0' }, 'このパソコンで一度だけ聞きます。別のパソコンで開いたときや、アプリを入れ直したときは、もう一度聞きます。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'このPCで一度確認します。別のPCで起動した場合や、アプリを再導入した場合は再度確認が行われます。'),
     h('div', { class: 'row', style: 'justify-content:flex-end' },
       h('button', { class: 'btn', onclick: () => close(false) }, 'いいえ'),
       h('button', { class: 'btn primary', onclick: () => close(true) }, 'はい'))));

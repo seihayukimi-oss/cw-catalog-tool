@@ -65,7 +65,7 @@ export function viewCatalog() {
         h('p', { style: 'margin:0' }, 'まだ作品がありません。'),
         h('ul', { style: 'margin:6px 0 0;padding-left:1.2em' },
           h('li', {}, '共用カタログ：作者さんが登録したカタログのURL（index.json）を追加します'),
-          h('li', {}, '個人用カタログ：有志の方のDL一覧を読み込むか、「＋作品を登録」で自分で作品を足します')),
+          h('li', {}, '個人用カタログ：有志作成のDLリストを読み込むか、「＋作品を登録」で自分で作品を足します')),
         h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn', onclick: () => editEntry({}) }, '＋作品を登録（個人用）'))));
   }
 
@@ -86,7 +86,7 @@ export function viewCatalog() {
         h('option', { value: 'full', selected: !compactView() ? 'selected' : null }, '表示：くわしく'),
         h('option', { value: 'compact', selected: compactView() ? 'selected' : null }, '表示：コンパクト')),
       h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: S.filter.showHidden, onchange: (ev) => { S.filter.showHidden = ev.target.checked; render(); } }), '候補から外したものも表示'),
-      heldCount() ? h('label', { class: 'check small', title: '通報が多かったなどで、共用カタログで一時保留中の作品です。中身を確かめてから入れてください' }, h('input', { type: 'checkbox', id: 'show-held', checked: showHeld(), disabled: !!S.catPrefs.showHeld, onchange: (ev) => { S.filter.showHeld = ev.target.checked; render(); } }), `一時保留中の作品（${heldCount()}件）を表示`) : null,
+      heldCount() ? h('label', { class: 'check small', title: '通報等により共用カタログで一時保留中の作品です。中身をご確認の上、導入してください' }, h('input', { type: 'checkbox', id: 'show-held', checked: showHeld(), disabled: !!S.catPrefs.showHeld, onchange: (ev) => { S.filter.showHeld = ev.target.checked; render(); } }), `一時保留中の作品（${heldCount()}件）を表示`) : null,
       labelHiddenCount() ? h('label', { class: 'check small' }, h('input', { type: 'checkbox', id: 'show-label-hidden', checked: !!S.filter.showLabelHidden, onchange: (ev) => { S.filter.showLabelHidden = ev.target.checked; render(); } }), `苦手なラベルで隠した作品（${labelHiddenCount()}件）も表示`) : null,
       mutedCount() ? h('label', { class: 'check small' }, h('input', { type: 'checkbox', id: 'show-muted', checked: !!S.filter.showMuted, onchange: (ev) => { S.filter.showMuted = ev.target.checked; render(); } }), `除外した作者の作品（${mutedCount()}件）も表示`) : null),
     folderChips());
@@ -103,7 +103,7 @@ const labelHiddenCount = () => S.combined.works.filter((w) => hiddenByLabel(w) &
 async function okToTake(works) {
   const held = works.filter((w) => w.held);
   if (!held.length) return true;
-  return confirmBox(`一時保留中の作品が含まれています：${held.slice(0, 5).map((w) => `「${w.name}」`).join('')}${held.length > 5 ? ` ほか${held.length - 5}件` : ''}。通報が多かったなどで、共用カタログで確かめているところです（${held.map((w) => w.heldReason).find(Boolean) || '理由は書かれていません'}）。入れる前に、中身の一覧と実行ファイルの注意、Readme（利用規約）をよく確かめてください。取りますか？`, { yes: '確かめながら取る', no: 'やめる', title: '一時保留中の作品' });
+  return confirmBox(`一時保留中の作品が含まれています：${held.slice(0, 5).map((w) => `「${w.name}」`).join('')}${held.length > 5 ? ` ほか${held.length - 5}件` : ''}。通報等により共用カタログ側で確認中の作品です（${held.map((w) => w.heldReason).find(Boolean) || '理由は書かれていません'}）。導入前に中身の一覧・実行ファイル警告・Readme（利用規約）を十分にご確認ください。取得しますか？`, { yes: '確認して取得する', no: 'やめる', title: '一時保留中の作品' });
 }
 
 /** フォルダの切り替え（すべて・未分類・自分で作ったフォルダ） */
@@ -250,7 +250,7 @@ function workCard(w, mine) {
       mine ? h('span', { class: `badge ${mine.state === 'update' ? 'update' : 'ok'}` }, mine.state === 'update' ? `入っている版 ${mine.version}→${w.version}` : 'フォルダにあり') : null,
       hiddenHere ? h('span', { class: 'badge plain' }, '候補から外しています') : null,
       labelBadges(w),
-      w.held ? h('span', { class: 'badge warn held', title: w.heldReason || '通報が多かったなどで、共用カタログで確かめているところです' }, '一時保留中の作品') : null,
+      w.held ? h('span', { class: 'badge warn held', title: w.heldReason || '通報等により共用カタログ側で確認中の作品です' }, '一時保留中の作品') : null,
       isMutedAuthor(w.author) ? h('span', { class: 'badge plain' }, '除外中の作者') : null,
       w.derivative ? h('span', { class: 'badge plain', title: [w.derivative.of ? `もとの作品：${w.derivative.of}` : '', w.derivative.basis ? `改変してよいと分かるもの：${w.derivative.basis}` : ''].filter(Boolean).join('\n') }, '改変版') : null,
       workHasDead(w) ? h('span', { class: 'badge bad link-dead', title: 'DL先のどれかで、ファイルが見つかりませんでした（くわしくはDL先の欄）' }, '✖ リンク切れ') : null,
@@ -426,7 +426,7 @@ export function viewManage(open) {
         S.combined ? h('button', { class: 'btn ghost sm', onclick: () => { S.manageOpen = false; render(); } }, '▲ たたむ') : null)),
     h('p', { class: 'small muted', style: 'margin:0' }, 'チェックを外したカタログの作品は、一覧・更新チェック・まとめてDLに出なくなります。'),
     section('共用カタログ', '作者さんが登録フォームから登録した作品のカタログです。', shared),
-    section('個人用カタログ', '自分で作るカタログと、有志の方のDL一覧です。いくつでも持てます。', personal),
+    section('個人用カタログ', '自分で作るカタログと、有志作成のDLリストです。いくつでも持てます。', personal),
     h('p', { class: 'small muted', style: 'margin:0' }, '作品を登録するときの入れ先や、デフォルトのDL先の確認は ',
       h('button', { class: 'btn ghost sm', onclick: () => goTab('settings') }, '「設定」タブ'), ' で変えられます。'));
 }
@@ -456,7 +456,7 @@ async function addCatalogDialog() {
           if (!/^https:\/\//.test(u)) { toast('https:// から始まるURLを入れてください', { bad: true }); return; }
           go(() => addShared(u), (src) => `「${src.name}」を追加しました（${src.count}件）`);
         } }, '追加')),
-      choice('有志の方のDL一覧を読み込む', '人からもらったDL一覧（.json）を、個人用カタログの1つとして読み込みます。',
+      choice('有志作成のDLリストを読み込む', '人からもらったDL一覧（.json）を、個人用カタログの1つとして読み込みます。',
         h('button', { class: 'btn', onclick: () => fileIn.click() }, 'ファイルを選ぶ'), fileIn,
         h('span', { class: 'small muted' }, 'または'), listUrl,
         h('button', { class: 'btn', onclick: () => {
