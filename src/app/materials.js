@@ -449,7 +449,7 @@ export function viewStashSettings(dev) {
         openBtn(st.ref),
         S.platform.canWriteFolders ? h('button', { class: 'btn sm', onclick: () => pickStashFolder(k.key).then(render) }, st.ref ? '置き場所を変える' : '置き場所を選ぶ') : null,
         dev ? h('button', { class: 'btn sm', id: `dev-opfs-${k.key === 'skin' ? 'skins' : 'materials'}-set`, onclick: () => pickStashFolder(k.key, true).then(render) }, `テスト用（${k.label}）`) : null),
-      h('label', { class: 'check small' }, keep, `入れたときに、元のzipも「zip・wsnの保存場所」の「${k.zipSub}」フォルダに残す`),
+      h('label', { class: 'check small' }, keep, `${k.label}の導入時、元のzipファイルも保存フォルダ（「zip・wsnの保存場所」の「${k.zipSub}」）へ残す`),
       k.key === 'skin' ? h('p', { class: 'small muted', style: 'margin:0' }, 'スキン（Skin.xml があるもの）は、種類（Skin.xml の Type）で分類フォルダを自動で分けられます。CardWirthPy を登録していれば、その Data/Skin に直接入れることもできます。') : null,
       !S.platform.canWriteFolders ? h('p', { class: 'note warn small', style: 'margin:0' }, 'このブラウザでは、置き場所の登録はできません。') : null);
   }));

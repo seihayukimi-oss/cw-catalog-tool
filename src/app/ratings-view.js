@@ -99,9 +99,9 @@ export function viewRatingSettings() {
     }), name);
   return h('div', { class: 'card stack small', id: 'rating-settings' },
     h('p', { class: 'muted', style: 'margin:0' }, '作品には、対象年齢（R18・R15）と、注意のラベル（グロ・残酷描写など）を付けられます。まとめて「シナリオラベル」（ラベル）と呼びます。'),
-    h('label', { class: 'check' }, r18, 'R18（成人向け）の作品を表示する'),
-    h('p', { class: 'muted', style: 'margin:0 0 0 1.6em' }, 'いつもは表示しません。ONにするとき、このパソコンで一度だけ年齢を確認します。R18の作品は、アプリの中ではダウンロードせず、配布元をブラウザで開きます。自分のフォルダに入っている作品は、OFFでもそのまま表示します。'),
-    h('label', { class: 'check', style: 'margin-left:1.6em' }, media, 'R18の作品の、紹介の画像と説明も最初から表示する（いつもは押したときだけ）'),
-    h('div', {}, h('div', { class: 'muted' }, '苦手なラベルの作品を隠す（カタログの一覧から外します。チェックしなければ、ラベルを付けて表示します）'),
+    h('label', { class: 'check' }, r18, 'R18（成人向け）作品を表示する'),
+    h('p', { class: 'muted', style: 'margin:0 0 0 1.6em' }, '初期状態では非表示です。ONに切り替える際、初回のみ年齢確認を行います。R18作品はアプリ内で直接ダウンロードせず、お使いのブラウザで配布元ページを開きます。※ローカル保存済みの作品はOFFでも表示されます。'),
+    h('label', { class: 'check', style: 'margin-left:1.6em' }, media, 'R18作品の画像・説明文を常時表示する（オフ時は選択時のみ表示）'),
+    h('div', {}, h('div', { class: 'muted' }, '特定のラベルを持つ作品を非表示にする（チェックを入れたラベルの作品を一覧から除外します）'),
       h('div', { class: 'row', id: 'hide-labels' }, hideBox('r15', RATING_NAME.r15), contentLabelDefs().map((d) => hideBox(d.id, d.name)))));
 }

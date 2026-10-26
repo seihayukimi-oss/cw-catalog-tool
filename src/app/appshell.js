@@ -148,7 +148,7 @@ export function viewAppSettings() {
       h('ul', { style: 'margin:0;padding-left:1.2em' },
         h('li', {}, 'インストールは要りません。CWCatalog.exe と、横にできる「CWCatalog-data」フォルダ（設定・記録・アプリ内ブラウザのログイン状態）で全部です。'),
         h('li', {}, 'アプリを削除するときは、上の「Windows設定との連携」を登録していたら「登録を外す」を押してから、フォルダごと消してください。'),
-        h('li', {}, '人に渡すときは、CWCatalog.exe だけを渡してください（CWCatalog-data にはログインの状態も入っています）。'),
+        h('li', {}, '他者へ配布・共有する場合は CWCatalog.exe 単体のみを渡してください（CWCatalog-data にはログインセッション情報が含まれます）。'),
         h('li', {}, '「C:\\Program Files」の中には置かないでください（Windowsの決まりで、記録の保存や更新ができません）。'))));
 }
 

@@ -101,7 +101,7 @@ async function runFetch() {
     const out = await tryDownloads(it.work, {
       onTry: (d) => { from = dlLabel(d); it.message = `${from} から取得中…`; render(); },
       onProgress: (got, total) => {
-        it.message = got < 0 ? `${from} につないでいます…` : `${from} からダウンロード中… ${total > 0 ? `${Math.floor((got / total) * 100)}%（${fmtSize(got)} / ${fmtSize(total)}）` : fmtSize(got)}`;
+        it.message = got < 0 ? `${from} に接続中…` : `${from} からダウンロード中… ${total > 0 ? `${Math.floor((got / total) * 100)}%（${fmtSize(got)} / ${fmtSize(total)}）` : fmtSize(got)}`;
         const el = document.getElementById(`bi-msg-${it.id}`);
         if (el) el.textContent = it.message; else render();
       },

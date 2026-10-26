@@ -113,9 +113,9 @@ export function busyProgress(ratio, text = '') {
 /** ダウンロードの進み具合（1つずつ取るとき）。まとめて取るときは、件数で別に出す */
 export function netProgress(got, total) {
   if (S.progressByCount) return;
-  if (got < 0) busyProgress(-1, 'サイトにつないでいます…');
+  if (got < 0) busyProgress(-1, 'サーバーに接続中…');
   else if (total > 0) busyProgress(got / total, `ダウンロード中… ${Math.floor((got / total) * 100)}%（${mb(got)} / ${mb(total)}）`);
-  else if (got === 0) busyProgress(-1, 'サイトにつないでいます…');
+  else if (got === 0) busyProgress(-1, 'サーバーに接続中…');
   else busyProgress(-1, `ダウンロード中… ${mb(got)}`);
 }
 

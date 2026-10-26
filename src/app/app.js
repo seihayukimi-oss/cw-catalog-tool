@@ -42,7 +42,7 @@ function openFailed(url, e) {
   return modal((close) => h('div', { class: 'stack', id: 'open-failed' },
     h('h2', { style: 'margin:0' }, 'ブラウザで開けませんでした'),
     h('p', { class: 'small', style: 'margin:0' }, `理由：${e?.message || e}`),
-    h('p', { class: 'small muted', style: 'margin:0' }, S.platform.kind === 'app' ? 'URLをコピーして、ふだんのブラウザに貼り付けてください。' : '下のリンクを押すか、URLをコピーして、ふだんのブラウザに貼り付けてください。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, S.platform.kind === 'app' ? 'URLをコピーして、お使いのブラウザに貼り付けてください。' : '下のリンクを押すか、URLをコピーして、お使いのブラウザに貼り付けてください。'),
     h('div', { class: 'note small', style: 'word-break:break-all;user-select:all' }, S.platform.kind === 'app' ? url : h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, url)),
     h('div', { class: 'row', style: 'justify-content:flex-end' },
       h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(url); toast('URLをコピーしました'); } catch { toast('コピーできませんでした。リンクを右クリックしてコピーしてください', { bad: true }); } } }, 'URLをコピー'),
@@ -623,7 +623,7 @@ function viewArchiveSettings(dev) {
     toast(`「${p.label}」に保存するようにしました`);
   });
   return h('div', { class: 'card stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, 'シナリオを入れるとき、元のzip・wsnを別のフォルダにも残しておけます（入れ直し・バックアップ用）。エンジンのScenarioフォルダとは別の場所を選んでください。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'シナリオ導入時、元のzip・wsnファイルをバックアップ用として専用フォルダに保存できます。エンジンのScenarioフォルダとは別の場所を選んでください。'),
     h('div', { class: 'row' },
       h('label', { class: 'check' }, h('input', {
         type: 'checkbox', checked: S.archive.on, disabled: !S.archive.ref, 'aria-label': 'インストールしたときにzipも保存する',

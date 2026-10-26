@@ -64,7 +64,7 @@ export function setupDrop() {
  */
 export async function openSource(fn, work = null) {
   S.tab = 'add';
-  const opened = await busy('データを確かめています', fn);
+  const opened = await busy('データを検証中', fn);
   if (!opened) return;
   S.opened = opened;
   S.openedZone = S.pendingZone || null; // ダウンロードフォルダなどから開いたときの「DL元」

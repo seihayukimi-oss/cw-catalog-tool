@@ -153,9 +153,9 @@ async function run(colorScheme, width) {
 
   // 2. 入れる：Next（二重フォルダ）を _店 に
   await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();
-  ok('取ってくるところに、安全のしくみの短い説明', /中身を確かめてから/.test(await page.locator('#safety-note').textContent()));
-  await page.locator('#safety-note').getByRole('button', { name: 'くわしく' }).click();
-  ok('「くわしく」で安全のしくみを全部見られる', await page.locator('#safety-modal').getByText('できないこと（大事）').isVisible() && await page.locator('#safety-modal').getByText(/ウイルス対策ソフトではありません/).isVisible());
+  ok('取得画面に、安全のしくみの短い説明', /内容を検証してから/.test(await page.locator('#safety-note').textContent()));
+  await page.locator('#safety-note').getByRole('button', { name: '詳細' }).click();
+  ok('「詳細」で安全のしくみを全部見られる', await page.locator('#safety-modal').getByText('免責・制限事項（重要）').isVisible() && await page.locator('#safety-modal').getByText(/ウイルス対策ソフトではありません/).isVisible());
   if (width > 600) await page.locator('#safety-modal').screenshot({ path: join(OUT, `safety-${colorScheme}.png`) }).catch(() => {});
   await page.locator('#safety-modal').getByRole('button', { name: '閉じる' }).click();
   await page.locator('#url-in').fill('http://localhost:8767/missing.zip');
@@ -357,7 +357,7 @@ async function run(colorScheme, width) {
   await birdCard.locator('.dl li', { hasText: '新サイト' }).getByRole('button', { name: '中身を見る' }).click();
   const peek = page.locator('#peek-modal');
   await peek.waitFor();
-  ok('ダウンロードせずに目次だけ読む（ファイルの一部だけ）', /目次だけを読みました/.test(await peek.textContent()) && ranges.length >= 1 && ranges.every((r) => /^bytes=/.test(r)), ranges.join(','));
+  ok('ダウンロードせずに目次だけ読む（ファイルの一部だけ）', /目次情報のみを読み込みました/.test(await peek.textContent()) && ranges.length >= 1 && ranges.every((r) => /^bytes=/.test(r)), ranges.join(','));
   ok('目次に、中のファイルの名前が出る', await peek.getByText(/Summary\.wsm/).first().isVisible());
   if (width > 600) await peek.screenshot({ path: join(OUT, `peek-${colorScheme}.png`) }).catch(() => {});
   await peek.getByRole('button', { name: '閉じる' }).click();
@@ -438,13 +438,13 @@ async function run(colorScheme, width) {
   await page.locator('dialog').getByRole('button', { name: 'やめる' }).click();
   await page.locator('#show-held').uncheck();
   const forest = page.locator('.card.work', { has: page.locator('.item-title', { hasText: /^サンプルの森$/ }) });
-  await forest.getByRole('button', { name: 'この作者は入れない' }).click();
-  await page.locator('dialog').getByRole('button', { name: '入れない' }).click();
-  await page.getByText(/「見本作者」さんの作品を、カタログから拾わないようにしました/).waitFor();
+  await forest.getByRole('button', { name: 'この作者を除外' }).click();
+  await page.locator('dialog').getByRole('button', { name: '除外する' }).click();
+  await page.getByText(/「見本作者」さんの作品をカタログに表示しないようにしました/).waitFor();
   ok('入れない作者の作品は出さない', !(await forest.count()) && await page.locator('#show-muted').isVisible());
   await page.locator('#show-muted').check();
-  await forest.getByRole('button', { name: '入れない作者から外す' }).click();
-  await page.getByText(/入れない作者から外しました/).waitFor();
+  await forest.getByRole('button', { name: '作者の除外を解除' }).click();
+  await page.getByText(/の除外を解除しました/).waitFor();
   await page.locator('#show-muted').uncheck().catch(() => {});
   ok('入れない作者から外すと戻る', await forest.isVisible());
 
@@ -565,7 +565,7 @@ async function run(colorScheme, width) {
   ok('記録の書き出し（公開形式）', rec.kind === 'cw-catalog-tool/records' && rec.records.length === (existsSync(join(FX, 'maigo.cab')) ? 6 : 5), `${rec.records.length}件`);
 
   // 12b. 素材・スキン：置き場所を決めて、分類フォルダに入れる → 自分のフォルダ一覧で見る → 分類フォルダを移す
-  ok('設定に「安全のしくみ」', await page.locator('#safety-info').getByText('中身を確かめるとき').isVisible());
+  ok('設定に「安全のしくみ」', await page.locator('#safety-info').getByText('ファイルの検証').isVisible());
   ok('設定のいちばん下に更新履歴（新しい5つ・今の版は開いている）', (await page.locator('#changelog > .changelog-entry').count()) === 5 && await page.locator('#changelog > .changelog-entry').first().evaluate((d) => d.open));
   await page.locator('#changelog-more').click();
   ok('「もっと見る」で全部見られる', (await page.locator('#changelog > .changelog-entry').count()) > 5);

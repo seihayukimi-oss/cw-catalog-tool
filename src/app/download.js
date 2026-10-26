@@ -157,7 +157,7 @@ export async function tryDownloads(work, { onTry, onProgress } = {}) {
 
 /** 作品の「ダウンロード」ボタン：デフォルトのDL先から。だめなら別の配布元から取って、デフォルトを変えるか聞く */
 /**
- * R18 の作品は、アプリの中ではダウンロードせず、配布元をふだんのブラウザで開く（配布元の年齢確認・ログインをそのまま通る）。
+ * R18 の作品は、アプリの中ではダウンロードせず、配布元をお使いのブラウザで開く（配布元の年齢確認・ログインをそのまま通る）。
  * 設定でR18がOFFなら、案内だけ出す。R18 でなければ false（ふつうに取る）
  */
 export async function r18External(work, d = null) {
@@ -165,7 +165,7 @@ export async function r18External(work, d = null) {
   if (!r18On()) { await r18Guide(work.name); return true; }
   const target = d || chooseDownloads(work, defaultUrlOf(work))[0];
   if (!target) { toast('この作品には、今開ける配布元がありません', { bad: true }); return true; }
-  toast('R18の作品なので、配布元をブラウザで開きます。落としたファイルは「シナリオ・素材・スキンをDLする」の「「ダウンロード」から選ぶ」で入れられます', { ms: 12000 });
+  toast('R18作品のため、お使いのブラウザで配布元ページを開きます。入手したファイルは「シナリオ・素材・スキンをDLする」の「『ダウンロード』から選ぶ」で追加してください', { ms: 12000 });
   await S.platform.openUrl(target.url);
   return true;
 }
@@ -528,7 +528,7 @@ export function viewUrlBox() {
   } else if (st?.status === 'inapp') {
     detail = h('div', { class: 'note warn small' },
       `${st.why}。`,
-      S.platform.canInAppBrowse ? 'アプリ内ブラウザで開くので、サイトのダウンロードボタンを押してください（ログインが要るサイトは、初回だけログインしてください）。アプリ内ブラウザではページのスクリプトが動きますが、アプリの機能（ファイル操作など）には触れられない設定です。ログインで先に進めないときは、普段のブラウザでDLして、上の「「ダウンロード」から選ぶ」で入れてください。' : 'ページを開いたので、そこでダウンロードしたファイルを上にドロップしてください。',
+      S.platform.canInAppBrowse ? 'アプリ内ブラウザで開くので、サイトのダウンロードボタンを押してください（ログインが要るサイトは、初回だけログインしてください）。アプリ内ブラウザではページのスクリプトが動きますが、アプリの機能（ファイル操作など）には触れられない設定です。ログインで先に進めないときは、お使いのブラウザでダウンロードして、上の「『ダウンロード』から選ぶ」で追加してください。' : 'ページを開いたので、そこでダウンロードしたファイルを上にドロップしてください。',
       h('div', { class: 'row', style: 'margin-top:6px' },
         S.platform.canInAppBrowse ? h('button', { class: 'btn sm', onclick: () => inAppDownload(st.url, hd) }, 'アプリ内でもう一度開く') : null,
         h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(st.url) }, 'ブラウザで開く')));
