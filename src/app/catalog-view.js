@@ -56,6 +56,11 @@ const filtering = () => !!(S.filter.cat.trim() || S.filter.catEngine || S.filter
 const compactView = () => (S.catView.compact == null ? (S.combined?.works.length || 0) > 30 : S.catView.compact);
 async function saveView(patch) { Object.assign(S.catView, patch); await store.set('catView', S.catView); render(); }
 
+
+/** 共用カタログのページを、作品IDを入れた状態で開くURL（?id=e00012） */
+function withId(url, id) {
+  try { const u = new URL(url); u.searchParams.set('id', id); return u.toString(); } catch { return url; }
+}
 export function viewCatalog() {
   const hasAny = !!S.combined;
   const manage = viewManage(!hasAny || S.manageOpen);
@@ -274,10 +279,14 @@ function workCard(w, mine) {
       ['cw150', 'next', 'py'].map((k) => h('span', { class: `badge ${LV[w.compat?.[k] || 'unknown'][1]}` }, `${ENGINE_KINDS[k].short}：${LV[w.compat?.[k] || 'unknown'][0]}`)),
       w.convert === 'forbidden' ? h('span', { class: 'badge bad' }, '変換NG') : null,
       w.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))),
-    // 共用カタログ（登録フォームから）の作品：作品IDと、直す・削除を依頼するフォーム
-    ...w.refs.filter((r) => r.kind === 'shared' && S.catalogs.get(r.sourceId)?.links?.manage).slice(0, 1).map((r) => h('div', { class: 'row small muted', style: 'margin:2px 0 6px' },
-      h('span', {}, `作品ID：${r.entry.id}（${r.sourceName}）`),
-      h('button', { class: 'btn ghost sm', onclick: () => { toast(`フォームの「作品ID」に ${r.entry.id} と入れてください`, { ms: 9000 }); S.platform.openUrl(S.catalogs.get(r.sourceId).links.manage); } }, '登録内容の変更・解除'))),
+    // 共用カタログ（登録フォームから）の作品：作品IDと、変更・解除のページ・通報のページ（?id= で作品IDが入った状態で開く）
+    ...w.refs.filter((r) => r.kind === 'shared' && (S.catalogs.get(r.sourceId)?.links?.manage || S.catalogs.get(r.sourceId)?.links?.report)).slice(0, 1).map((r) => {
+      const links = S.catalogs.get(r.sourceId).links;
+      return h('div', { class: 'row small muted', style: 'margin:2px 0 6px' },
+        h('span', {}, `作品ID：${r.entry.id}（${r.sourceName}）`),
+        links.manage ? h('button', { class: 'btn ghost sm', onclick: () => S.platform.openUrl(withId(links.manage, r.entry.id)) }, '登録内容の変更・解除') : null,
+        links.report ? h('button', { class: 'btn ghost sm', title: '年齢区分の付け忘れ・無断掲載・リンク切れなどを、カタログの管理人に知らせます', onclick: () => S.platform.openUrl(withId(links.report, r.entry.id)) }, '通報する') : null);
+    }),
     w.rating === 'r18' ? h('p', { class: 'note bad small', style: 'margin:4px 0' }, '※この作品は成人向け（R18）です。「ダウンロード」を押すと、配布元をブラウザで開きます。') : null,
     w.description ? descBlock(w.description) : null,
     introBlock(w),
