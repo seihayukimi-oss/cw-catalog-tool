@@ -3,9 +3,18 @@ name: リリース
 # v0.3.0 のようなタグを push すると、ポータブル版（Windows）とHTML版を作って、
 # 「下書き」のリリースに置く。中身を確認してから GitHub の画面で公開する。
 # 公開すると、アプリの「更新を確認」が latest-portable.json を見つけられるようになる。
+#
+# タグを送れないとき（Claude の作業場など）は、Actions の画面の「Run workflow」で、版（例：0.4.5）を入れて動かす。
+# main の最新のコミットで作り、下書きのリリースに v0.4.5 のタグを付ける（タグは、リリースを公開したときにできる）。
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "出す版（例：0.4.5）。package.json の版と同じにする"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,6 +33,27 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+
+      - name: 版とタグを決める
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then echo "::error::Run workflow は main で動かしてください"; exit 1; fi
+            V="${INPUT_VERSION#v}"
+            if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "::error::版は 0.4.5 のような形で入れてください（入れた値：$INPUT_VERSION）"; exit 1; fi
+            TAG="v$V"
+          else
+            TAG="$GITHUB_REF_NAME"; V="${TAG#v}"
+          fi
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$PKG" != "$V" ]; then echo "::error::package.json の版（$PKG）と、出す版（$V）が違います"; exit 1; fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "$(git ls-remote --tags "https://github.com/$GITHUB_REPOSITORY" "refs/tags/$TAG")" ]; then
+            echo "::error::$TAG のタグはもうあります。版を上げてから動かしてください"; exit 1
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "::notice title=出す版::$TAG（コミット $GITHUB_SHA）"
 
       - name: Rust を用意
         run: |
@@ -85,9 +115,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           V="${TAG#v}"
-          gh release create "$TAG" --draft --title "CWカタログ $TAG" \
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "CWカタログ $TAG" \
             --notes "ポータブル版：CWCatalog-v${V}-portable.zip をダウンロードして、好きなフォルダに展開し、CWCatalog.exe を起動してください（インストール不要）。すでに使っている人は、アプリの「設定」→「更新を確認」で更新できます。HTML版：cw-catalog-v${V}.html をブラウザ（Chrome・Edge）で開くだけで使えます。" \
             release/*

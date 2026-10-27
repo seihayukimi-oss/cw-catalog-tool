@@ -32,7 +32,7 @@
 - 始める前に `npm ci`。直したら `npm test`（core.test.mjs。実物のシナリオが要る試験は、手元に無ければ飛ばされる）。組み立ては `npm run build`
 - `test/e2e.mjs`（Playwright）は実物のシナリオファイルが要るので、作業場では動かないことがある
 - コミットの文は日本語で、何をなぜ変えたかを短く
-- ワークフロー：ci.yml（試験と HTML版の公開）、test-build.yml（お試し版の exe を作る。手動）、release.yml（`v*` のタグで、下書きのリリースを作る）、security-audit.yml（部品の安全チェック。毎週）
+- ワークフロー：ci.yml（試験と HTML版の公開）、test-build.yml（お試し版の exe を作る。手動）、release.yml（下書きのリリースを作る。Claude の作業場からはタグを送れないので、運営者が Actions の「Run workflow」で版を入れて動かす）、security-audit.yml（部品の安全チェック。毎週）
 
 ### 版を出すとき
 
