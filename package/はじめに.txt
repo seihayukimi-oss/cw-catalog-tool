@@ -90,6 +90,7 @@ CardWirth（1.50・Next・Py）のシナリオを、まとめてダウンロー�
   CWCatalog.exe     … アプリ本体（ポータブル版）
   cw-catalog.html   … HTML版（Chrome / Edge 等のブラウザで開くだけで使用可能）
   はじめに.txt       … 本ファイル
+  THIRD-PARTY-NOTICES.txt … 本アプリが使用している部品（ライブラリ）の許諾文
 
   起動すると、CWCatalog.exe と同じ場所に以下のデータが生成されます。
     CWCatalog-data … 設定データ・履歴・アプリ内ブラウザのログイン状態

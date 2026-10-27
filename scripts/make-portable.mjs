@@ -2,7 +2,8 @@
 //   out/CWCatalog.exe            … アプリ本体
 //   out/cw-catalog.html          … HTML版
 //   out/はじめに.txt              … 起動・更新・アンインストールのしかた
-//   release/CWCatalog-v○-portable.zip … 上の3つをまとめたもの
+//   out/THIRD-PARTY-NOTICES.txt  … 部品の許諾文（scripts/third-party.mjs が dist/ に作ったもの）
+//   release/CWCatalog-v○-portable.zip … 上の4つをまとめたもの
 //   release/latest-portable.json … 「更新を確認」が見に行く情報（署名があるときだけ）
 // 使い方：node scripts/make-portable.mjs [--release]
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
@@ -32,13 +33,17 @@ copyFileSync('dist/web/cw-catalog.html', 'out/cw-catalog.html');
 // メモ帳などで文字化けしないよう、BOM付きのUTF-8・改行はCRLF
 const guide = readFileSync('package/はじめに.txt', 'utf8').replace(/\r?\n/g, '\r\n');
 writeFileSync('out/はじめに.txt', '﻿' + guide);
-console.log(`out/: CWCatalog.exe（${exeName} から）・cw-catalog.html・はじめに.txt`);
+// 部品の許諾文（scripts/third-party.mjs が作る）。リリースでは必ず入れる
+const notices = 'dist/THIRD-PARTY-NOTICES.txt';
+if (existsSync(notices)) writeFileSync('out/THIRD-PARTY-NOTICES.txt', '﻿' + readFileSync(notices, 'utf8').replace(/\r?\n/g, '\r\n'));
+else if (release) throw new Error('部品の許諾文（dist/THIRD-PARTY-NOTICES.txt）がありません。先に node scripts/third-party.mjs を動かしてください');
+console.log(`out/: CWCatalog.exe（${exeName} から）・cw-catalog.html・はじめに.txt${existsSync(notices) ? '・THIRD-PARTY-NOTICES.txt' : ''}`);
 
 if (process.argv.includes('--pack')) {
   rmSync('release', { recursive: true, force: true });
   mkdirSync('release', { recursive: true });
   const folder = `CWCatalog-v${version}`;
-  const files = ['CWCatalog.exe', 'cw-catalog.html', 'はじめに.txt'].map((n) => ({ path: `${folder}/${n}`, data: new Uint8Array(readFileSync(join('out', n))) }));
+  const files = ['CWCatalog.exe', 'cw-catalog.html', 'はじめに.txt', 'THIRD-PARTY-NOTICES.txt'].filter((n) => existsSync(join('out', n))).map((n) => ({ path: `${folder}/${n}`, data: new Uint8Array(readFileSync(join('out', n))) }));
   writeFileSync(`release/CWCatalog-v${version}-portable.zip`, writeZip(files));
   copyFileSync('out/CWCatalog.exe', 'release/CWCatalog.exe');
   copyFileSync('dist/web/cw-catalog.html', `release/cw-catalog-v${version}.html`);

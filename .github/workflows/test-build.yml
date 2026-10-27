@@ -75,6 +75,11 @@ jobs:
             exit 1
           }
 
+      # 使っている部品の一覧と許諾文（THIRD-PARTY-NOTICES.txt）を作る。cargo が部品を取ってきたあとに動かす
+      - name: 部品の許諾文を作る
+        shell: bash
+        run: node scripts/third-party.mjs
+
       - name: 配布物の形に並べる
         id: pack
         shell: bash

@@ -22,8 +22,9 @@
 - `src/core/`：画面に関係ない中身（zip・cab・lzh の展開、Summary.wsm／Summary.xml の読み取り、カタログ、インストール、文字コード など）
 - `src/app/`：画面（catalog-view.js・download.js・changelog-view.js など）。`src/platform/`：アプリ版・HTML版ごとの違い（tauri.js・fsa.js・browser.js）
 - `src-tauri/`：アプリ版の器（Rust）
-- `docs/データ形式.md`：カタログの JSON・ツールの記録・シナリオの判定方法（公開の仕様）
-- `docs/開発とリリース.md`：開発・版の出し方・署名鍵（README から分けた）。`SECURITY.md`：安全の報告の受け方（共用カタログの分もここで受ける）
+- `docs/開発者向け/`：データ形式.md（カタログの JSON・ツールの記録・シナリオの判定方法。公開の仕様）・引き継ぎガイド.md（開発・版の出し方・署名鍵）・しくみとファイルの地図.md・共用カタログの運用.md
+- `docs/みんな向け/`：使っている部品.md（`node scripts/third-party.mjs` で自動で作る。手で直さない）・お知らせ.md（アプリの外の話はここに書く）
+- `SECURITY.md`：安全の報告の受け方（共用カタログの分もここで受ける）。THIRD-PARTY-NOTICES.txt（部品の許諾文）は Actions が作って、配る zip に入れる
 - `CHANGELOG.md`：版ごとに「### 要点」（使う人向けに短くやさしく）と「### もっと詳しく」。アプリの設定のいちばん下にも出る
 - `scripts/strings/listall.mjs`：画面の文の一覧を作る（`node scripts/strings/listall.mjs 出力先.txt`）
 
@@ -39,12 +40,13 @@
 1. CHANGELOG.md に新しい版を書き足す（要点＋もっと詳しく）
 2. `package.json` と `src-tauri/Cargo.toml` の版を上げる（tauri.conf.json は package.json の版を見る）
 3. 運営者に渡すもの：HTML版（cw-catalog-vX.Y.Z.html）・ソースの zip・はじめに.txt・画面の文の一覧（CWカタログ_画面の文一覧_X.Y.Z.txt）
-4. リリースは運営者がOKしてから。運営者が Actions の「リリース」→「Run workflow」で版を入れて、下書きを作る → 中身を見て公開する（くわしくは docs/開発とリリース.md）。**1.0.0 の前に、0.9.0 → 0.9.1 で自動更新を試す**
+4. リリースは運営者がOKしてから。運営者が Actions の「リリース」→「Run workflow」で版を入れて、下書きを作る → 中身を見て公開する（くわしくは docs/開発者向け/引き継ぎガイド.md。「Set as a pre-release」にはチェックしない）。**1.0.0 の前に、0.9.0 → 0.9.1 で自動更新を試す**
 
 ### いまの版
 
 - 公開している版：**0.4.5**（はじめてのリリース。中身は CHANGELOG.md）
-- 次の版に入れる分：まだなし（直したら、ここに書き足す）
+- 次の版に入れる分（コミット済み）：
+  - 配る zip に THIRD-PARTY-NOTICES.txt（部品の許諾文）を入れる。はじめに.txt の「同梱内容」に1行足した
 
 ## 決まっていること（くわしくは運営者のメモ）
 

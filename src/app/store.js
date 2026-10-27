@@ -1,5 +1,5 @@
 // ツールの記録（IndexedDB）。HTML版でもアプリ版でも同じ。
-// 形式は docs/データ形式.md の「ツールの記録」に書いてある。
+// 形式は docs/開発者向け/データ形式.md の「ツールの記録」に書いてある。
 
 const DB_NAME = 'cw-catalog-tool';
 const DB_VERSION = 1;
