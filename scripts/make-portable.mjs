@@ -13,7 +13,8 @@ import { writeZip } from '../src/core/zip.js';
 const release = process.argv.includes('--release');
 const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
 const repo = process.env.GITHUB_REPOSITORY || 'seihayukimi-oss/cw-catalog-tool';
-const tag = process.env.GITHUB_REF_NAME || `v${version}`;
+// リリースの「Run workflow」で動かしたときは、release.yml が決めた TAG（v0.4.5 など）を使う（GITHUB_REF_NAME は main になるため）
+const tag = process.env.TAG || process.env.GITHUB_REF_NAME || `v${version}`;
 if (release && tag !== `v${version}`) throw new Error(`タグ ${tag} と package.json の版 ${version} が一致しません`);
 
 // tauri build（bundle なし）でできた exe
