@@ -97,64 +97,10 @@ CardWirth（1.50／Next 1.60／Py）のシナリオを、**まとめてDLする�
 
 ---
 
-## 開発
+## 開発・リリース
 
-```bash
-npm ci            # 部品を入れる（.npmrc でインストール時スクリプトは無効）
-npm test          # 中核処理の試験
-npm run build     # dist/web/cw-catalog.html（HTML版）と dist/app/（アプリ版の画面）を作る
-npx tauri dev     # アプリ版を開発モードで起動（Rustが必要）
-```
-
-実物の作品ファイルを使う試験は、作者さんの作品をリポジトリに入れないために、手元のフォルダを指定したときだけ動きます：
-
-```bash
-CW_FIXTURES=/path/to/fixtures npm test
-CW_FIXTURES=/path/to/fixtures node test/e2e.mjs ./shots   # ブラウザでHTML版を動かす試験
-```
-
-### フォルダ構成
-
-| 場所 | 中身 |
-|---|---|
-| `src/core/` | 中核処理（zip・文字コード・判定・インストール・カタログ）。HTML版・アプリ版で共通 |
-| `src/app/` | 画面 |
-| `src/platform/browser.js` | HTML版の入れ物（ブラウザのフォルダ書き込み機能） |
-| `src/platform/tauri.js` | アプリ版の入れ物（Tauriのプラグイン） |
-| `src-tauri/` | アプリ版（Rust）：ポータブル版の土台・更新・ダウンロードフォルダ・Windowsへの登録 |
-| `package/はじめに.txt` | 配布物に入れる説明 |
-| `scripts/make-portable.mjs` | 配布物（zip・latest-portable.json）を作る |
-| `docs/データ形式.md` | 公開している仕様 |
-
-## 初めてのリリースの前に
-
-ポータブル版の更新には、**更新用の署名鍵**（無料・自分で作る）が要ります。Windowsのコード署名証明書とは別物です。
-
-1. 鍵を作る：`npx tauri signer generate -w ~/.tauri/cwcatalog.key`
-2. 公開鍵（`cwcatalog.key.pub` の中身）を `src-tauri/update-pubkey.txt` に入れる（このリポジトリでは設定済み）
-3. GitHubのリポジトリの Settings → Secrets and variables → Actions →「New repository secret」で登録：
-   - `TAURI_SIGNING_PRIVATE_KEY`：秘密鍵ファイル（`cwcatalog.key`）の中身
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：鍵を作ったときのパスワード
-4. 秘密鍵はなくさないように保管する（なくすと、それまでのアプリに更新を届けられなくなる）
-
-## リリースのしかた
-
-1. `package.json` の `version` を上げる（例：`0.3.0`）
-2. `v0.3.0` というタグを付けて push する
-3. GitHub Actions がポータブル版とHTML版を作り、署名して、**下書き**のリリースに置く
-   - `CWCatalog-v0.3.0-portable.zip`（CWCatalog.exe・cw-catalog.html・はじめに.txt）
-   - `CWCatalog.exe` と `latest-portable.json`（アプリの「更新を確認」が見るもの）
-   - `cw-catalog-v0.3.0.html`
-4. 中身を確認して、GitHubの画面で「公開」する → アプリの「更新を確認」で新しい版が見つかるようになる
-
-お試し版（署名なし）は、Actions の「お試し版を作る」→「Run workflow」で作れます。
-
-HTML版は、`main` に入るたびに GitHub Pages にも自動で置かれます（`https://seihayukimi-oss.github.io/cw-catalog-tool/cw-catalog.html`）。
-
-## おすすめの設定（GitHub）
-
-- Settings → Code security：Dependabot alerts と CodeQL（Default setup）を有効にする
-- Settings → Pages：Source を「GitHub Actions」にする
+直す人・版を出す人向けの手順は [docs/開発とリリース.md](docs/開発とリリース.md) にあります。
+安全の問題を見つけたときは、公開の Issue には書かず、[SECURITY.md](SECURITY.md) の方法で知らせてください。
 
 ## クレジット
 

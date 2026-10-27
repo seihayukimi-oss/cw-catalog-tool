@@ -21,6 +21,7 @@
 - `src/app/`：画面（catalog-view.js・download.js・changelog-view.js など）。`src/platform/`：アプリ版・HTML版ごとの違い（tauri.js・fsa.js・browser.js）
 - `src-tauri/`：アプリ版の器（Rust）
 - `docs/データ形式.md`：カタログの JSON・ツールの記録・シナリオの判定方法（公開の仕様）
+- `docs/開発とリリース.md`：開発・版の出し方・署名鍵（README から分けた）。`SECURITY.md`：安全の報告の受け方（共用カタログの分もここで受ける）
 - `CHANGELOG.md`：版ごとに「### 要点」（使う人向けに短くやさしく）と「### もっと詳しく」。アプリの設定のいちばん下にも出る
 - `scripts/strings/listall.mjs`：画面の文の一覧を作る（`node scripts/strings/listall.mjs 出力先.txt`）
 
