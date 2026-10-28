@@ -412,7 +412,7 @@ async function addBookmark() {
     return h('form', { class: 'stack', onsubmit: (ev) => { ev.preventDefault(); close({ name: f.name.value.trim(), author: f.author.value.trim(), url: f.url.value.trim(), version: f.ver.value.trim(), note: f.note.value.trim() }); } },
       h('h2', {}, 'カタログ外の作品を登録'),
       h('p', { class: 'small muted' }, '配布ページを登録しておくと、アプリ版では「更新チェック」でページの変化（配布ファイル名の変化）を確認できます。DLもしたい作品は「カタログ」タブの「＋作品を登録（個人用）」が便利です。'),
-      h('label', { class: 'field' }, '作品名', f.name),
+      h('label', { class: 'field' }, h('span', {}, h('b', { class: 'req' }, '必須'), '作品名'), f.name),
       h('label', { class: 'field' }, '作者', f.author),
       h('label', { class: 'field' }, '配布ページのURL', f.url),
       h('label', { class: 'field' }, '手元のバージョン', f.ver),

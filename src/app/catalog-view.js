@@ -734,7 +734,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       h('h2', {}, origKey ? '個人用カタログの作品を直す' : '個人用カタログに登録'),
       work && !origKey ? h('p', { class: 'small muted', style: 'margin:0' }, '共用カタログ・読み込んだDL一覧の作品をコピーして、個人用カタログに入れます。元のカタログは変わりません。') : null,
       h('div', { class: 'grid2' },
-        h('label', { class: 'field' }, '作品名', f.name),
+        h('label', { class: 'field' }, h('span', {}, h('b', { class: 'req' }, '必須'), '作品名'), f.name),
         h('label', { class: 'field' }, '作者', f.author),
         h('label', { class: 'field' }, 'バージョン', f.version),
         h('label', { class: 'field' }, '更新日', f.updated),

@@ -129,7 +129,7 @@ async function confirmAndSave(items, common) {
       h('p', { class: 'small muted', style: 'margin:0' }, '作品名・作者・バージョンは、ここで直せます。チェックを外したものは登録しません。'),
       h('ul', { class: 'dl bulk-list' }, rows.map((r) => h('li', { class: 'stack', style: 'gap:2px' },
         h('div', { class: 'row' }, r.on,
-          h('label', { class: 'field grow' }, '作品名', r.name),
+          h('label', { class: 'field grow' }, h('span', {}, h('b', { class: 'req' }, '必須'), '作品名'), r.name),
           h('label', { class: 'field' }, '作者', r.author),
           h('label', { class: 'field' }, 'バージョン', r.version)),
         h('div', { class: 'small muted', style: 'word-break:break-all' }, [r.it.url, r.it.note].filter(Boolean).join('　'), '　', r.state)))),
