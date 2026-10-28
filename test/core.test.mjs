@@ -700,7 +700,9 @@ test('まとめて登録：URLの行・作品のデータ・すでにある作�
   assert.deepEqual(urlLines('https://a.example/\n\n https://b.example/x \nhttps://a.example/'), ['https://a.example/', 'https://b.example/x']);
   assert.throws(() => urlLines('javascript:alert(1)'), /https:\/\//);
   const e = bulkEntry({ name: ' 森 ', author: '作者', version: '1.0', format: 'wsn', wsnVersion: 5, url: 'https://new.example/mori.zip', rating: 'r18' },
-    { pages: ['https://new.example/'], oldPages: ['https://old.example/dl.html', 'https://new.example/'], intro: ['https://site.example/'] });
+    { pages: ['https://new.example/'], oldPages: ['https://old.example/dl.html', 'https://new.example/'], intro: ['https://site.example/'], site: 'https://top.example/' });
+  assert.equal(e.site, 'https://top.example/');
+  assert.equal(bulkEntry({ name: 'x', url: 'https://a.example/' }, { site: 'javascript:alert(1)' }).site, '');
   assert.equal(e.name, '森');
   assert.equal(e.wsn_version, 5);
   assert.equal(e.rating, 'r18');
@@ -722,6 +724,8 @@ test('まとめて登録：URLの行・作品のデータ・すでにある作�
     ['https://new.example/', 'active'],
   ]);
   assert.equal(m.intro.length, 1);
+  assert.equal(m.site, 'https://top.example/'); // 空だったので入れる
+  assert.equal(mergeEntry({ ...cur, site: 'https://keep.example/' }, e).site, 'https://keep.example/');
   // 移転前に書いていないDL先は、今の設定のまま
   assert.equal(mergeEntry({ ...cur, downloads: [{ url: 'https://keep.example/', kind: 'page', status: 'mirror' }] }, e).downloads[0].status, 'mirror');
 });

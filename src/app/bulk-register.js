@@ -57,6 +57,7 @@ async function askCommon({ count, pageUrl = '', canFetch = false }) {
   const pages = h('textarea', { rows: 2, style: 'width:100%' });
   pages.value = pageUrl;
   const oldPages = h('textarea', { rows: 2, style: 'width:100%', placeholder: 'https://… （1行に1つ）' });
+  const site = h('input', { type: 'url', placeholder: 'https://（作者さんのサイトのトップページ）' });
   const intro = h('textarea', { rows: 2, style: 'width:100%', placeholder: 'https://… （1行に1つ）' });
   const rating = h('select', { 'aria-label': '対象年齢' }, RATINGS.map(([k, l]) => h('option', { value: k }, l)));
   const err = h('p', { class: 'note bad small', style: 'display:none' });
@@ -66,7 +67,7 @@ async function askCommon({ count, pageUrl = '', canFetch = false }) {
       try {
         const v = {
           fetch: canFetch && fetchOn.checked, author: author.value.trim(), rating: rating.value,
-          pages: urlLines(pages.value), oldPages: urlLines(oldPages.value), intro: urlLines(intro.value),
+          pages: urlLines(pages.value), oldPages: urlLines(oldPages.value), intro: urlLines(intro.value), site: urlLines(site.value)[0] || '',
           ids: boxes.filter((b) => b.box.checked).map((b) => b.s.id),
         };
         if (own.length && !v.ids.length) throw new Error('入れる個人用カタログを1つ以上選んでください');
@@ -84,11 +85,12 @@ async function askCommon({ count, pageUrl = '', canFetch = false }) {
       h('label', { class: 'field' }, '作者名（全部同じ作者さんのとき）', author),
       h('label', { class: 'field' }, '配布ページ（移転先。新しい配布ページ・作者さんのページ。1行に1つ）', pages),
       h('label', { class: 'field' }, '移転前の配布ページ・DL先（「旧（移転済み）」として残します。1行に1つ）', oldPages),
-      h('label', { class: 'field' }, '作者さんのサイト・紹介ページ（X・Misskey など。1行に1つ）', intro),
+      h('label', { class: 'field' }, '作者さんのサイト', site),
+      h('label', { class: 'field' }, '紹介ページ（サイト内の作品紹介ページ、告知のノート、X・Misskey などの投稿URL。全部の作品に入れます。1行に1つ）', intro),
       h('label', { class: 'field' }, '対象年齢', rating),
       own.length ? h('div', {}, h('div', { class: 'small muted' }, '入れる個人用カタログ'), h('div', { class: 'row' }, boxes.map((b) => h('label', { class: 'check' }, b.box, b.s.name))))
         : h('p', { class: 'small muted', style: 'margin:0' }, '個人用カタログ「マイカタログ」を作って入れます。'),
-      h('p', { class: 'small muted', style: 'margin:0' }, 'DL先は、作品ごとのリンク → 配布ページ（移転先）→ 移転前の順に入れます。同じ作品（作品名＋作者）がもう個人用カタログにあるときは、DL先・紹介ページを足します（移転前に書いたDL先は「旧（移転済み）」にします）。'),
+      h('p', { class: 'small muted', style: 'margin:0' }, 'DL先は、作品ごとのリンク → 配布ページ（移転先）→ 移転前の順に入れます。同じ作品（作品名＋作者）がもう個人用カタログにあるときは、DL先・紹介ページを足します（移転前に書いたDL先は「旧（移転済み）」にします。作者さんのサイトは、空のときだけ入れます）。'),
       err,
       h('div', { class: 'row', style: 'justify-content:flex-end' },
         h('button', { type: 'button', class: 'btn', onclick: () => close(null) }, 'やめる'),

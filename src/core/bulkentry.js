@@ -69,7 +69,7 @@ const COMPAT = {
  * DL先の順番：その作品のリンク（新・通常）→ 移転先の配布ページ（新・通常）→ 移転前の配布ページ（旧・移転済み）
  * @param {{name: string, author?: string, version?: string, type?: string, format?: string, wsnVersion?: number|null,
  *          description?: string, rating?: string, url: string, fileName?: string, sha256?: string}} item
- * @param {{pages?: string[], oldPages?: string[], intro?: string[]}} common
+ * @param {{pages?: string[], oldPages?: string[], intro?: string[], site?: string}} common
  */
 export function bulkEntry(item, common = {}) {
   const format = ['classic', 'next', 'wsn'].includes(item.format) ? item.format : 'classic';
@@ -87,6 +87,7 @@ export function bulkEntry(item, common = {}) {
     file: { name: item.fileName || '', sha256: item.sha256 || '' }, readme: '', level: null,
     tags: [], description: String(item.description || '').trim().slice(0, 2000), requires: [], related: [], links: [],
     intro: (common.intro || []).map((url) => ({ url, label: '' })),
+    site: /^https?:\/\/\S+$/.test(common.site || '') ? common.site : '',
     rating: ['all', 'r15', 'r18'].includes(item.rating) ? item.rating : 'all', content: [],
   };
 }
@@ -94,7 +95,7 @@ export function bulkEntry(item, common = {}) {
 /**
  * もう個人用カタログにある作品に、新しく分かったことを足す。
  * DL先・紹介ページは、無いものだけ後ろに足す。今あるDL先の設定はそのままだが、「移転前」として書いたものは「旧（移転済み）」にする。
- * バージョン・ファイル・紹介文は、空のときだけ入れる
+ * バージョン・ファイル・紹介文・作者さんのサイトは、空のときだけ入れる
  */
 export function mergeEntry(cur, add) {
   const downloads = (cur.downloads || []).map((x) => (x.status !== 'closed' && (add.downloads || []).some((d) => d.url === x.url && d.status === 'old') ? { ...x, status: 'old' } : x));
@@ -106,6 +107,7 @@ export function mergeEntry(cur, add) {
     version: cur.version || add.version,
     file: cur.file?.sha256 ? cur.file : add.file,
     description: cur.description || add.description,
+    site: cur.site || add.site || '',
     downloads, intro,
   };
 }

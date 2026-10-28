@@ -343,9 +343,13 @@ async function toggleHidden(w, hide) {
 
 // ------------------------------------------------------------ 紹介ページ（HP・X・Misskeyなど）
 function introBlock(w) {
-  if (!w.intro.length) return null;
+  // 作者さんのサイト（紹介ページとは別に、1つだけ）
+  const site = w.site ? h('div', { class: 'row small' }, h('span', { class: 'muted' }, '作者さんのサイト'),
+    h('button', { class: 'btn ghost sm', title: w.site, onclick: () => S.platform.openUrl(w.site) }, w.site.replace(/^https?:\/\//, '').slice(0, 50))) : null;
+  if (!w.intro.length) return site;
   const loaded = w.intro.some((i) => S.ogp.has(i.url));
   return h('div', { class: 'intro' },
+    site,
     h('div', { class: 'row small' }, h('span', { class: 'muted' }, '紹介'),
       w.intro.map((i) => h('button', { class: 'btn ghost sm', title: i.url, onclick: () => S.platform.openUrl(i.url) },
         h('span', { class: 'badge plain' }, INTRO_LABEL[introKind(i.url)]), i.label || i.url.replace(/^https?:\/\//, '').slice(0, 40))),
@@ -642,7 +646,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
   work = work || prefill?.work || null;
   if (!ownSources().length) await createOwn('マイカタログ');
   const ownRef = work?.refs.find((r) => r.kind === 'own');
-  const base = ownRef?.entry || (work ? { ...work.refs[0].entry, downloads: work.downloads, intro: work.intro, tags: work.tags, rating: work.rating, content: work.content } : prefill?.entry) || {};
+  const base = ownRef?.entry || (work ? { ...work.refs[0].entry, downloads: work.downloads, intro: work.intro, tags: work.tags, rating: work.rating, content: work.content, site: work.site } : prefill?.entry) || {};
   // ほかのカタログから写すときは、元のカタログを「出典」として残す
   const origin = base.origin || (work && !ownRef ? (work.refs[0].entry.origin || work.refs[0].attribution || { name: work.refs[0].sourceName }) : null);
   const origKey = ownRef ? work.key : '';
@@ -656,6 +660,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       author: h('input', { type: 'text', value: base.author || '' }),
       version: h('input', { type: 'text', class: 'ver', value: base.version || '' }),
       updated: h('input', { type: 'date', value: base.updated || '' }),
+      site: h('input', { type: 'url', value: base.site || '', placeholder: 'https://（作者さんのサイトのトップページ）' }),
       type: h('select', { 'aria-label': '種類' }, [['scenario', 'シナリオ'], ['skin', 'スキン（CardWirthPy）'], ['material', '素材（画像・音など）']].map(([k, l]) => h('option', { value: k, selected: (['scenario', 'skin'].includes(base.type || 'scenario') ? base.type || 'scenario' : 'material') === k ? 'selected' : null }, l))),
       format: h('select', {}, [['classic', 'クラシック（1.50）'], ['next', 'Next仕様'], ['wsn', 'Py仕様（WSN）']].map(([k, l]) => h('option', { value: k, selected: (base.format || 'classic') === k ? 'selected' : null }, l))),
       tags: h('input', { type: 'text', value: (base.tags || []).join('、'), placeholder: '探索、短編（「、」か「,」で区切る）' }),
@@ -672,7 +677,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
     const drawIntros = () => introBox.replaceChildren(
       ...intros.map((i, n) => h('div', { class: 'row edit-row' },
         h('span', { class: 'badge plain' }, INTRO_LABEL[introKind(i.url)]),
-        h('input', { type: 'url', class: 'grow', value: i.url, placeholder: 'https://（作者さんのサイト・X・Misskeyの投稿など）', 'aria-label': '紹介ページのURL', oninput: (ev) => { i.url = ev.target.value.trim(); } }),
+        h('input', { type: 'url', class: 'grow', value: i.url, placeholder: 'https://（作品の紹介ページ・告知の投稿など）', 'aria-label': '紹介ページのURL', oninput: (ev) => { i.url = ev.target.value.trim(); } }),
         h('input', { type: 'text', value: i.label, placeholder: '表示名（任意）', style: 'width:9em', oninput: (ev) => { i.label = ev.target.value; } }),
         h('button', { type: 'button', class: 'btn ghost sm', 'aria-label': '消す', onclick: () => { intros.splice(n, 1); drawIntros(); } }, '×'))),
       h('button', { type: 'button', class: 'btn sm', onclick: () => { intros.push({ url: '', label: '' }); drawIntros(); } }, '＋紹介ページ'));
@@ -707,7 +712,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       const fail = (m) => { err.textContent = m; err.style.display = ''; };
       const name = f.name.value.trim();
       if (!name) return fail('作品名を入れてください');
-      const badUrl = [...intros.map((i) => i.url), ...dls.map((d) => d.url)].find((u) => u && !/^https?:\/\/\S+$/.test(u));
+      const badUrl = [f.site.value.trim(), ...intros.map((i) => i.url), ...dls.map((d) => d.url)].find((u) => u && !/^https?:\/\/\S+$/.test(u));
       if (badUrl) return fail(`URLは https:// から始まるものにしてください：${badUrl}`);
       const ids = targets.filter((t) => t.box.checked).map((t) => t.s.id);
       if (!ids.length && !inOwn.size) return fail('入れる個人用カタログを1つ以上選んでください');
@@ -722,6 +727,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
         tags: f.tags.value.split(/[、,，]/).map((t) => t.trim()).filter(Boolean).slice(0, 30),
         description: f.description.value.trim(), requires: [], related: [], links: base.links || [],
         intro: intros.filter((i) => i.url).map((i) => ({ url: i.url, label: i.label.trim() })),
+        site: f.site.value.trim(),
         rating: f.rating.value, content: contentBoxes.filter((c) => c.box.checked).map((c) => c.d.id),
         ...(origin ? { origin } : {}),
       };
@@ -740,9 +746,10 @@ export async function editEntry({ work = null, prefill = null } = {}) {
         h('label', { class: 'field' }, '形式（シナリオのとき）', f.format),
         h('label', { class: 'field' }, 'タグ', f.tags)),
       h('label', { class: 'field' }, '紹介文', f.description),
+      h('label', { class: 'field' }, '作者さんのサイト', f.site),
       h('div', { class: 'stack', style: 'gap:4px' }, h('div', { class: 'small muted' }, 'シナリオラベル（対象年齢と、注意のラベル）'),
         h('div', { class: 'row' }, h('label', { class: 'row small' }, '対象年齢', f.rating), contentBoxes.map((c) => h('label', { class: 'check small' }, c.box, c.d.name)))),
-      h('div', {}, h('div', { class: 'small muted' }, '紹介ページ（DLの前に見てもらう、作者さんのサイト・X・Misskeyなど）'), introBox),
+      h('div', {}, h('div', { class: 'small muted' }, '紹介ページ（サイト内の作品紹介ページ、告知のノート、X・Misskey などの投稿URL。DLの前に見てもらえます）'), introBox),
       h('div', {}, h('div', { class: 'small muted' }, 'DL先（「デフォルト」にしたところから先に取ります。取れなければ、新→予備→旧の順に試します）'), dlBox),
       h('p', { class: 'small muted', style: 'margin:0' }, '「ファイル一覧」にすると、アップローダーの一覧ページ（例：https://uu.getuploader.com/○○/）から、作品名に合うファイルのうち版がいちばん新しいものを、「更新チェック」のときに探します（アプリ版）。新しい版を上げるたびにURLが変わるアップローダーで便利です。'),
       h('p', { class: 'small muted', style: 'margin:0' }, 'DLキーは、この個人用カタログの中だけに保存します（DL一覧として書き出すときは、書き出すかどうかを選べます）。'),
