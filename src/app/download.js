@@ -376,7 +376,7 @@ function goNav(st, i) {
 }
 
 /** 同時に何件かずつ処理する（Google ドライブなどで、たくさんのファイルを速く取るため） */
-async function eachParallel(list, n, fn) {
+export async function eachParallel(list, n, fn) {
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => {
     while (i < list.length) { const k = i++; await fn(list[k], k); }
@@ -419,7 +419,7 @@ async function fetchPicked(st, hd, links, { title = '' } = {}) {
       busyProgress(0, `${links.length}件を取ってきています… 0 / ${links.length}`);
       await eachParallel(links, 6, async (l) => {
         const res = await fetchOnce(l.url, undefined, { dl: st.dl }).catch((e) => ({ kind: 'error', message: e.message }));
-        if (res.kind === 'zip') archives.push({ name: res.fileName, bytes: res.bytes, path: l.path });
+        if (res.kind === 'zip') archives.push({ name: res.fileName, bytes: res.bytes, path: l.path, url: l.url });
         else if (res.kind === 'other' && res.bytes?.length) loose.push({ name: res.fileName || l.text, bytes: res.bytes, path: l.path });
         else failed.push(l.path || l.text || l.url);
         done++;
@@ -445,7 +445,7 @@ async function fetchPicked(st, hd, links, { title = '' } = {}) {
   if (got.failed.length) toast(`取れなかったもの ${got.failed.length}件：${got.failed.slice(0, 3).join('、')}${got.failed.length > 3 ? ' …' : ''}`, { bad: true, ms: 9000 });
   if (!files.length) return;
   const { startLocalBatch } = await import('./batch.js');
-  await startLocalBatch(files, title ? `「${title}」をまるごと入れる` : `選んだ${links.length}件を入れる`);
+  await startLocalBatch(files, title ? `「${title}」をまるごと入れる` : `選んだ${links.length}件を入れる`, { pageUrl: st.folder ? '' : st.url });
   if (got.loose.length) toast(`zipなどではないファイル ${got.loose.length}件は、フォルダの形のまま1つにまとめました（素材・スキンとして入れられます）`, { ms: 9000 });
 }
 
@@ -474,7 +474,8 @@ export function pagePanel(st, hd, work = null) {
       h('span', {}, `選んだもの：${chosen.length}件`),
       h('button', { class: 'btn sm', disabled: st.pick.size === files.length, onclick: () => { files.forEach((l) => st.pick.add(l.url)); render(); } }, 'ファイルをすべて選ぶ'),
       chosen.length ? h('button', { class: 'btn ghost sm', onclick: () => { st.pick.clear(); render(); } }, '選択を解除') : null,
-      h('button', { class: 'btn primary sm', disabled: !chosen.length, onclick: () => fetchPicked(st, hd, chosen) }, `選んだ${chosen.length}件を取ってくる`));
+      h('button', { class: 'btn primary sm', disabled: !chosen.length, onclick: () => fetchPicked(st, hd, chosen) }, `選んだ${chosen.length}件を取ってくる`),
+      h('button', { class: 'btn sm', disabled: !chosen.length, title: '作品名・バージョンを読んで、個人用カタログにまとめて登録します（インストールはしません）', onclick: async () => (await import('./bulk-register.js')).bulkFromLinks(st, chosen) }, `選んだ${chosen.length}件を個人用カタログに登録`));
   };
   const navBar = st.folder && nav && nav.list.length > 1 ? h('div', { class: 'row folder-nav' },
     h('button', { class: 'btn sm', disabled: nav.at === 0, 'aria-label': '前のフォルダに戻る', onclick: () => goNav(st, nav.at - 1) }, '← 戻る'),

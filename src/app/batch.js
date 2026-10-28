@@ -39,15 +39,16 @@ export function startBatch(list, title = 'まとめてDL') {
 
 /**
  * 手元のファイル（ダウンロードフォルダ・複数選んだファイル）をまとめて入れる
- * @param {{name: string, bytes: Uint8Array, zone?: object}[]} files
+ * @param {{name: string, bytes: Uint8Array, zone?: object, url?: string}[]} files url＝配布ページから取ってきたときの、そのファイルのURL
+ * @param {{pageUrl?: string}} opts pageUrl＝取ってきた配布ページ（個人用カタログにまとめて登録するときに使う）
  */
-export async function startLocalBatch(files, title = '選んだファイルをまとめて入れる') {
+export async function startLocalBatch(files, title = '選んだファイルをまとめて入れる', { pageUrl = '' } = {}) {
   if (S.batch?.running || S.batch?.installing) { toast('まとめてDLの途中です。終わってから、もう一度押してください', { bad: true }); return; }
   const items = files.map((f) => ({
     id: ++seq, work: null, name: f.name, status: 'fetch', message: '読み込み中…', include: true, ack: false, pick: 0, force: false,
-    target: null, engineId: null, folderName: '', zone: f.zone || null,
+    target: null, engineId: null, folderName: '', zone: f.zone || null, srcUrl: f.url || '',
   }));
-  S.batch = { title, items, engineId: S.engineId, cat: '', newCat: '', running: true, installing: false, stop: false, done: false };
+  S.batch = { title, items, engineId: S.engineId, cat: '', newCat: '', running: true, installing: false, stop: false, done: false, pageUrl };
   goTab('add');
   for (const [i, it] of items.entries()) {
     await analyze(it, files[i].bytes, files[i].name);
@@ -235,6 +236,8 @@ export function viewBatch() {
   const hasNew = b.items.some((i) => !i.target && !i.material && live(i));
   const hasScenario = b.items.some((i) => !i.material && live(i));
   const mats = b.items.filter((i) => i.material && live(i));
+  // 配布ページから取ってきたもの（カタログの作品ではないもの）は、個人用カタログにまとめて登録できる
+  const regs = b.running ? [] : b.items.filter((i) => i.srcUrl && i.opened && !i.work && i.status !== 'error');
   b.catState ||= {};
   const dest = destFields(b.engineId, { state: b.catState, name: null, idPrefix: 'batch' });
   b.catValue = dest.value;
@@ -250,6 +253,9 @@ export function viewBatch() {
     safetyNote({ id: 'batch-safety' }),
     b.running ? h('p', { class: 'small muted', style: 'margin:0' }, '直接DLできるものから順に取ってきています。同意やDLキーが必要なものは「操作待ち」になります。') : null,
     h('div', { class: 'list' }, b.items.map(itemCard)),
+    regs.length ? h('div', { class: 'row' },
+      h('button', { class: 'btn sm', disabled: b.installing, onclick: async () => (await import('./bulk-register.js')).bulkFromBatch(regs, b.pageUrl) }, `個人用カタログにまとめて登録（${regs.length}件）`),
+      h('span', { class: 'small muted' }, '作品名・バージョンを読んで、DL先（このファイルのURLと配布ページ）と一緒に登録します。インストールとは別です')) : null,
     !b.done ? h('div', { class: 'card soft stack', style: 'margin:0' },
       h('h3', {}, '入れ先'),
       hasNew ? (S.engines.length ? h('div', { class: 'grid2' },

@@ -681,3 +681,47 @@ test('更新履歴：CHANGELOG.md を読む・更新したあとに出す版（�
   assert.deepEqual(newSince(l, '', '1.0.2'), []); // 初めて使うときは出さない
   assert.deepEqual(newSince(l, '1.0.2', '1.0.2'), []);
 });
+
+import { guessFromLink, urlLines, bulkEntry, mergeEntry } from '../src/core/bulkentry.js';
+
+test('まとめて登録：リンクから作品名とバージョンを推測する', () => {
+  // リンクの文字が作品名なら、それを使う（バージョンは外す）
+  assert.deepEqual(guessFromLink({ url: 'https://example.com/dl/torikago_v1_01.zip', text: '開けられた鳥籠 ver1.01' }),
+    { name: '開けられた鳥籠', version: '1.01', fileName: 'torikago_v1_01.zip' });
+  // 「ダウンロード」などのときは、ファイル名から
+  assert.deepEqual(guessFromLink({ url: 'https://example.com/files/%E3%81%86%E3%81%95%E3%81%8E%E5%B0%8F%E5%B1%8BVer1.12.zip', text: 'ダウンロード' }),
+    { name: 'うさぎ小屋', version: '1.12', fileName: 'うさぎ小屋Ver1.12.zip' });
+  assert.equal(guessFromLink({ url: 'https://example.com/sayonara_230124.wsn', text: 'DL' }).version, '230124');
+  assert.equal(guessFromLink({ url: 'https://example.com/sayonara_230124.wsn', text: 'DL' }).name, 'sayonara');
+  assert.equal(guessFromLink({ url: 'https://example.com/a/b.zip', text: 'b.zip' }).name, 'b');
+});
+
+test('まとめて登録：URLの行・作品のデータ・すでにある作品に足す', () => {
+  assert.deepEqual(urlLines('https://a.example/\n\n https://b.example/x \nhttps://a.example/'), ['https://a.example/', 'https://b.example/x']);
+  assert.throws(() => urlLines('javascript:alert(1)'), /https:\/\//);
+  const e = bulkEntry({ name: ' 森 ', author: '作者', version: '1.0', format: 'wsn', wsnVersion: 5, url: 'https://new.example/mori.zip', rating: 'r18' },
+    { pages: ['https://new.example/'], oldPages: ['https://old.example/dl.html', 'https://new.example/'], intro: ['https://site.example/'] });
+  assert.equal(e.name, '森');
+  assert.equal(e.wsn_version, 5);
+  assert.equal(e.rating, 'r18');
+  assert.deepEqual(e.downloads.map((d) => [d.url, d.kind, d.status]), [
+    ['https://new.example/mori.zip', 'direct', 'active'],
+    ['https://new.example/', 'page', 'active'],
+    ['https://old.example/dl.html', 'page', 'old'],
+  ]);
+  assert.deepEqual(e.intro, [{ url: 'https://site.example/', label: '' }]);
+  assert.equal(bulkEntry({ name: 'x', url: 'https://a.example/page', format: 'none', rating: '??' }).downloads[0].kind, 'page');
+  assert.equal(bulkEntry({ name: 'x', url: 'https://a.example/page', format: 'none', rating: '??' }).rating, 'all');
+  const cur = { name: '森', author: '作者', version: '0.9', downloads: [{ url: 'https://old.example/dl.html', kind: 'page', status: 'active' }], intro: [], file: {}, note: 'そのまま' };
+  const m = mergeEntry(cur, e);
+  assert.equal(m.version, '0.9'); // 今ある値はそのまま
+  assert.equal(m.note, 'そのまま');
+  assert.deepEqual(m.downloads.map((d) => [d.url, d.status]), [
+    ['https://old.example/dl.html', 'old'], // 「移転前」に書いたものは、旧（移転済み）にする
+    ['https://new.example/mori.zip', 'active'],
+    ['https://new.example/', 'active'],
+  ]);
+  assert.equal(m.intro.length, 1);
+  // 移転前に書いていないDL先は、今の設定のまま
+  assert.equal(mergeEntry({ ...cur, downloads: [{ url: 'https://keep.example/', kind: 'page', status: 'mirror' }] }, e).downloads[0].status, 'mirror');
+});
