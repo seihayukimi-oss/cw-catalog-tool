@@ -697,7 +697,7 @@ test('更新履歴：CHANGELOG.md を読む・更新したあとに出す版（�
 
 import { guessFromLink, urlLines, bulkEntry, mergeEntry } from '../src/core/bulkentry.js';
 
-test('まとめて登録：リンクから作品名とバージョンを推測する', () => {
+test('一括登録：リンクから作品名とバージョンを推測する', () => {
   // リンクの文字が作品名なら、それを使う（バージョンは外す）
   assert.deepEqual(guessFromLink({ url: 'https://example.com/dl/sample_v1_01.zip', text: 'サンプル店 ver1.01' }),
     { name: 'サンプル店', version: '1.01', fileName: 'sample_v1_01.zip' });
@@ -709,7 +709,7 @@ test('まとめて登録：リンクから作品名とバージョンを推測�
   assert.equal(guessFromLink({ url: 'https://example.com/a/b.zip', text: 'b.zip' }).name, 'b');
 });
 
-test('まとめて登録：URLの行・作品のデータ・すでにある作品に足す', () => {
+test('一括登録：URLの行・作品のデータ・すでにある作品に足す', () => {
   assert.deepEqual(urlLines('https://a.example/\n\n https://b.example/x \nhttps://a.example/'), ['https://a.example/', 'https://b.example/x']);
   assert.throws(() => urlLines('javascript:alert(1)'), /https:\/\//);
   const e = bulkEntry({ name: ' 森 ', author: '作者', version: '1.0', format: 'wsn', wsnVersion: 5, url: 'https://new.example/mori.zip', rating: 'r18' },

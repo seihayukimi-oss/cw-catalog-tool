@@ -2,7 +2,7 @@
 // 画面ごとのファイル：
 //   add.js          … シナリオ・素材・スキンをDLする（中身の確認・インストール）
 //   download.js     … URL・配布ページ・カタログの配布元から取ってくる
-//   batch.js        … まとめてDL
+//   batch.js        … 一括ダウンロード
 //   catalog-view.js … カタログ（管理・一覧・紹介・個人用カタログの編集）
 //   catalog-data.js … カタログの保存と読み込み
 
@@ -174,7 +174,7 @@ function viewMine() {
           ? h('button', { class: 'btn', onclick: () => scanEngine(e.id) }, '読み取る')
           : h('button', { class: 'btn primary', onclick: () => connectEngine(e.id) }, 'フォルダに接続'),
         h('button', { class: 'btn', onclick: checkUpdates }, '更新チェック'),
-        updates.length ? h('button', { class: 'btn primary', onclick: () => startBatch(updates.map((r) => ({ work: workOf(r), record: r })), '更新ありをまとめてDL') }, `更新ありをまとめてDL（${updates.length}件）`) : null,
+        updates.length ? h('button', { class: 'btn primary', onclick: () => startBatch(updates.map((r) => ({ work: workOf(r), record: r })), '更新ありを一括ダウンロード') }, `更新ありを一括ダウンロード（${updates.length}件）`) : null,
         h('button', { class: 'btn', onclick: openTidy, title: 'Scenarioフォルダとzipの保存場所の、二重に入っているもの・まだ入れていないもの（積みシナ）を調べます' }, '整理・二重チェック'),
         h('button', { class: 'btn', onclick: addBookmark }, 'カタログ外を登録'),
         outside.length ? h('button', { class: 'btn', onclick: () => registerOutside(outside) }, `カタログ外を個人用カタログにまとめて登録（${outside.length}件）`) : null,

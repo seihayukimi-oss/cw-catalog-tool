@@ -139,12 +139,12 @@ function batchBar(works) {
   return h('div', { class: 'card batch-bar', id: 'batch-bar' },
     h('div', { class: 'row' },
       h('span', { class: 'small' }, `${works.length}件${filtering() ? '（絞り込み中）' : ''}`),
-      filtering() && works.length ? h('button', { class: 'btn primary sm', onclick: async () => { if (await okToTake(works)) startBatch(works.map((work) => ({ work })), '検索結果をまとめてDL'); } }, `検索結果${works.length}件をまとめてDL`) : null,
+      filtering() && works.length ? h('button', { class: 'btn primary sm', onclick: async () => { if (await okToTake(works)) startBatch(works.map((work) => ({ work })), '検索結果を一括ダウンロード'); } }, `検索結果${works.length}件を一括ダウンロード`) : null,
       h('button', { class: 'btn sm', disabled: !works.length || visibleSel === works.length, onclick: () => { works.forEach((w) => S.selected.add(w.key)); render(); } }, '表示中をすべて選ぶ'),
       sel.length ? h('button', { class: 'btn ghost sm', onclick: () => { S.selected.clear(); render(); } }, '選択を解除') : null),
     sel.length ? h('div', { class: 'row sel-actions' },
       h('b', { class: 'small' }, `選んだ${sel.length}件を：`),
-      h('button', { class: 'btn primary sm', onclick: async () => { if (!(await okToTake(sel))) return; startBatch(sel.map((work) => ({ work })), '選んだ作品をまとめてDL'); S.selected.clear(); } }, 'まとめてDL'),
+      h('button', { class: 'btn primary sm', onclick: async () => { if (!(await okToTake(sel))) return; startBatch(sel.map((work) => ({ work })), '選んだ作品を一括ダウンロード'); S.selected.clear(); } }, '一括ダウンロード'),
       h('button', { class: 'btn sm', onclick: () => putSelectedInFolder(sel) }, 'フォルダに入れる'),
       S.platform.checkLink ? h('button', { class: 'btn sm', id: 'sel-linkcheck', onclick: () => checkWorksLinks(sel) }, 'リンク切れを確かめる') : null,
       sel.some((w) => !isFavWork(w.key)) ? h('button', { class: 'btn sm', onclick: async () => { await setFavWorks(sel.map((w) => w.key), true); toast(`${sel.length}件をお気に入りにしました`); S.selected.clear(); render(); } }, '★お気に入りにする') : null,
@@ -344,7 +344,7 @@ async function toggleHidden(w, hide) {
 // ------------------------------------------------------------ 紹介ページ（HP・X・Misskeyなど）
 function introBlock(w) {
   // 作者さんのサイト（紹介ページとは別に、1つだけ）
-  const site = w.site ? h('div', { class: 'row small' }, h('span', { class: 'muted' }, '作者さんのサイト'),
+  const site = w.site ? h('div', { class: 'row small' }, h('span', { class: 'muted' }, '作者公式サイト'),
     h('button', { class: 'btn ghost sm', title: w.site, onclick: () => S.platform.openUrl(w.site) }, w.site.replace(/^https?:\/\//, '').slice(0, 50))) : null;
   if (!w.intro.length) return site;
   const loaded = w.intro.some((i) => S.ogp.has(i.url));
@@ -437,7 +437,7 @@ export function viewManage(open) {
       h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: addCatalogDialog }, '＋ カタログを追加'),
         S.combined ? h('button', { class: 'btn ghost sm', onclick: () => { S.manageOpen = false; render(); } }, '▲ たたむ') : null)),
-    h('p', { class: 'small muted', style: 'margin:0' }, 'チェックを外したカタログの作品は、一覧・更新チェック・まとめてDLに出なくなります。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'チェックを外したカタログの作品は、一覧・更新チェック・一括ダウンロードに出なくなります。'),
     section('共用カタログ', '作者さんが登録フォームから登録した作品のカタログです。', shared),
     section('個人用カタログ', '自分で作るカタログと、有志作成のDLリストです。いくつでも持てます。', personal),
     h('p', { class: 'small muted', style: 'margin:0' }, '作品を登録するときの入れ先や、デフォルトのDL先の確認は ',
@@ -656,7 +656,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       author: h('input', { type: 'text', value: base.author || '' }),
       version: h('input', { type: 'text', class: 'ver', value: base.version || '' }),
       updated: h('input', { type: 'date', value: base.updated || '' }),
-      site: h('input', { type: 'url', value: base.site || '', placeholder: 'https://（作者さんのサイトのトップページ）' }),
+      site: h('input', { type: 'url', value: base.site || '', placeholder: 'https://（作者公式サイトのトップページ）' }),
       type: h('select', { 'aria-label': '種類' }, [['scenario', 'シナリオ'], ['skin', 'スキン（CardWirthPy）'], ['material', '素材（画像・音など）']].map(([k, l]) => h('option', { value: k, selected: (['scenario', 'skin'].includes(base.type || 'scenario') ? base.type || 'scenario' : 'material') === k ? 'selected' : null }, l))),
       format: h('select', {}, [['classic', 'クラシック（1.50）'], ['next', 'Next仕様'], ['wsn', 'Py仕様（WSN）']].map(([k, l]) => h('option', { value: k, selected: (base.format || 'classic') === k ? 'selected' : null }, l))),
       tags: h('input', { type: 'text', value: (base.tags || []).join('、'), placeholder: '探索、短編（「、」か「,」で区切る）' }),
@@ -742,10 +742,10 @@ export async function editEntry({ work = null, prefill = null } = {}) {
         h('label', { class: 'field' }, '形式（シナリオのとき）', f.format),
         h('label', { class: 'field' }, 'タグ', f.tags)),
       h('label', { class: 'field' }, '紹介文', f.description),
-      h('label', { class: 'field' }, '作者さんのサイト', f.site),
+      h('label', { class: 'field' }, '作者公式サイト', f.site),
       h('div', { class: 'stack', style: 'gap:4px' }, h('div', { class: 'small muted' }, 'シナリオラベル（対象年齢と、注意のラベル）'),
         h('div', { class: 'row' }, h('label', { class: 'row small' }, '対象年齢', f.rating), contentBoxes.map((c) => h('label', { class: 'check small' }, c.box, c.d.name)))),
-      h('div', {}, h('div', { class: 'small muted' }, '紹介ページ（サイト内の作品紹介ページ、告知のノート、X・Misskey などの投稿URL。DLの前に見てもらえます）'), introBox),
+      h('div', {}, h('div', { class: 'small muted' }, '紹介ページ（サイト内の作品紹介ページ、告知投稿、X・Misskey などの投稿URL。DLの前に見てもらえます）'), introBox),
       h('div', {}, h('div', { class: 'small muted' }, 'DL先（「デフォルト」にしたところから先に取ります。取れなければ、新→予備→旧の順に試します）'), dlBox),
       h('p', { class: 'small muted', style: 'margin:0' }, '「ファイル一覧」にすると、アップローダーの一覧ページ（例：https://uu.getuploader.com/○○/）から、作品名に合うファイルのうち版がいちばん新しいものを、「更新チェック」のときに探します（アプリ版）。新しい版を上げるたびにURLが変わるアップローダーで便利です。'),
       h('p', { class: 'small muted', style: 'margin:0' }, 'DLキーは、このパソコンの個人用カタログの中だけに保存します。DL一覧として書き出しても入りません（「設定」の「DLキー」で一覧にできます）。'),

@@ -380,10 +380,10 @@ async function run(colorScheme, width) {
   ok('リンク切れの印（作品とDL先）', await birdCard.locator('.item-title ~ .link-dead').isVisible() && await birdCard.locator('.dl li', { hasText: '旧サイト' }).locator('.link-dead').isVisible());
   ok('生きているDL先は「リンクあり」', !(await birdCard.locator('.dl li', { hasText: '新サイト' }).locator('.link-dead').count()));
 
-  // 7d. 検索したら「検索結果をまとめてDL」
+  // 7d. 検索したら「検索結果を一括ダウンロード」
   await page.locator('#cat-q').fill('テスト作者'); // 作者名で探す（この時点では2件）
-  await page.getByRole('button', { name: '検索結果2件をまとめてDL' }).waitFor();
-  ok('検索結果をまとめてDLのボタン', true);
+  await page.getByRole('button', { name: '検索結果2件を一括ダウンロード' }).waitFor();
+  ok('検索結果を一括ダウンロードのボタン', true);
   if (width > 600) await page.screenshot({ path: join(OUT, `catalog-${colorScheme}.png`), fullPage: true });
   await page.locator('#cat-q').fill('');
 
@@ -393,11 +393,11 @@ async function run(colorScheme, width) {
   await page.getByText(/に保存するようにしました/).waitFor();
   ok('zipの保存場所を設定するとオンになる', await page.getByLabel('インストールしたときにzipも保存する').isChecked());
 
-  // 8. 選んでまとめてDL：1つ目はデフォルトが取れず別の配布元から、2つ目は同意ページで操作待ち
+  // 8. 選んで一括ダウンロード：1つ目はデフォルトが取れず別の配布元から、2つ目は同意ページで操作待ち
   await page.getByRole('tab', { name: 'カタログ' }).click();
   await page.getByLabel(`${CL.name}を選ぶ`).check();
   await page.getByLabel('サンプル店のuploader版を選ぶ').check();
-  await page.locator('.sel-actions').getByRole('button', { name: 'まとめてDL' }).click();
+  await page.locator('.sel-actions').getByRole('button', { name: '一括ダウンロード' }).click();
   await page.getByText('デフォルトのDL先を変えますか？').waitFor();
   ok('取れなかったら別の配布元から取り、デフォルトを変えるか聞く', await page.locator('dialog').getByText('旧サイト → 新サイト').isVisible());
   await page.getByRole('button', { name: '選んだものを変更する' }).click();
@@ -425,7 +425,7 @@ async function run(colorScheme, width) {
   await addWork('サンプル続編', [{ url: 'http://localhost:8767/keyup/6', label: 'おまけuploader', kind: 'page', dlkey: 'mizu' }]);
   ok('DLキーありの印', await page.locator('.card.work', { hasText: 'サンプル続編' }).getByText('DLキーあり').isVisible());
   await page.getByLabel('サンプル続編を選ぶ').check();
-  await page.locator('.sel-actions').getByRole('button', { name: 'まとめてDL' }).click();
+  await page.locator('.sel-actions').getByRole('button', { name: '一括ダウンロード' }).click();
   await page.locator('#batch .batch-item', { hasText: 'サンプル続編' }).getByText('準備OK').waitFor();
   ok('登録したDLキーと覚えた同意で、止まらずに取得', !(await page.locator('#batch .badge', { hasText: '操作待ち' }).count()));
   await page.locator('#batch').getByRole('button', { name: 'やめる' }).click();
@@ -542,7 +542,7 @@ async function run(colorScheme, width) {
   ok('候補に含めるを外せる', !(await page.locator('.src-row', { hasText: '読み込み（ファイル）' }).getByLabel(/を候補に含める/).isChecked()));
   if (width > 600) await page.locator('#manage').screenshot({ path: join(OUT, `manage-${colorScheme}.png`) }).catch(() => {});
 
-  // 11. 自分のフォルダ一覧：バージョン・タグ・更新ありをまとめてDL
+  // 11. 自分のフォルダ一覧：バージョン・タグ・更新ありを一括ダウンロード
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
   await page.getByRole('button', { name: '読み取る' }).click();
   await page.getByText(/件を読み取りました/).waitFor();
@@ -561,7 +561,7 @@ async function run(colorScheme, width) {
   ok('バージョンの手入力', (await cards.filter({ hasText: 'Scenario/既存' }).getByText('（手入力）').count()) === 1);
   ok('カタログより古い版は「更新あり」', await cards.filter({ hasText: 'Scenario/既存' }).getByText('新しい版 1.01 があります').isVisible());
   await page.screenshot({ path: join(OUT, `mine-${colorScheme}-${width}.png`), fullPage: true });
-  await page.getByRole('button', { name: '更新ありをまとめてDL（1件）' }).click();
+  await page.getByRole('button', { name: '更新ありを一括ダウンロード（1件）' }).click();
   const up = page.locator('#batch .batch-item');
   await up.getByText('準備OK').waitFor();
   ok('更新は今の場所に置き換える', await up.getByText('置き換える場所：Scenario/既存').isVisible());

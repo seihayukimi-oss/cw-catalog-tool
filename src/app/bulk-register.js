@@ -1,6 +1,6 @@
 // 個人用カタログに、何作品かをまとめて登録する。
 //  ・配布ページのリンク一覧で選んだもの：ファイルを取ってきて中身から読む／取ってこないでリンクから推測する、を選べる
-//  ・まとめてDLの一覧（配布ページから取ってきたもの）：取ってきた中身から読む
+//  ・一括ダウンロードの一覧（配布ページから取ってきたもの）：取ってきた中身から読む
 //  全部に共通で、移転先・移転前の配布ページと、作者さんのサイト・紹介ページを入れられる。
 //  同じ作品（作品名＋作者）がもう個人用カタログにあるときは、DL先・紹介ページを足す（core/bulkentry.js）
 
@@ -57,7 +57,7 @@ async function askCommon({ count, pageUrl = '', canFetch = false }) {
   const pages = h('textarea', { rows: 2, style: 'width:100%' });
   pages.value = pageUrl;
   const oldPages = h('textarea', { rows: 2, style: 'width:100%', placeholder: 'https://… （1行に1つ）' });
-  const site = h('input', { type: 'url', placeholder: 'https://（作者さんのサイトのトップページ）' });
+  const site = h('input', { type: 'url', placeholder: 'https://（作者公式サイトのトップページ）' });
   const intro = h('textarea', { rows: 2, style: 'width:100%', placeholder: 'https://… （1行に1つ）' });
   const rating = h('select', { 'aria-label': '対象年齢' }, RATINGS.map(([k, l]) => h('option', { value: k }, l)));
   const err = h('p', { class: 'note bad small', style: 'display:none' });
@@ -75,7 +75,7 @@ async function askCommon({ count, pageUrl = '', canFetch = false }) {
       } catch (e) { err.textContent = e.message; err.style.display = ''; }
     };
     return h('form', { class: 'stack entry-edit', onsubmit: submit },
-      h('h2', {}, '個人用カタログにまとめて登録'),
+      h('h2', {}, '個人用カタログに一括登録'),
       h('p', { style: 'margin:0' }, `${count}件を、個人用カタログに登録します。次の画面で、作品ごとの名前・バージョンを確かめてから保存します。`),
       canFetch ? h('div', { class: 'stack', style: 'gap:4px' },
         h('div', { class: 'small muted' }, '作品名・作者・バージョンの読み取り方'),
@@ -85,12 +85,12 @@ async function askCommon({ count, pageUrl = '', canFetch = false }) {
       h('label', { class: 'field' }, '作者名（全部同じ作者さんのとき）', author),
       h('label', { class: 'field' }, '配布ページ（移転先。新しい配布ページ・作者さんのページ。1行に1つ）', pages),
       h('label', { class: 'field' }, '移転前の配布ページ・DL先（「旧（移転済み）」として残します。1行に1つ）', oldPages),
-      h('label', { class: 'field' }, '作者さんのサイト', site),
-      h('label', { class: 'field' }, '紹介ページ（サイト内の作品紹介ページ、告知のノート、X・Misskey などの投稿URL。全部の作品に入れます。1行に1つ）', intro),
+      h('label', { class: 'field' }, '作者公式サイト', site),
+      h('label', { class: 'field' }, '紹介ページ（サイト内の作品紹介ページ、告知投稿、X・Misskey などの投稿URL。全部の作品に入れます。1行に1つ）', intro),
       h('label', { class: 'field' }, '対象年齢', rating),
       own.length ? h('div', {}, h('div', { class: 'small muted' }, '入れる個人用カタログ'), h('div', { class: 'row' }, boxes.map((b) => h('label', { class: 'check' }, b.box, b.s.name))))
         : h('p', { class: 'small muted', style: 'margin:0' }, '個人用カタログ「マイカタログ」を作って入れます。'),
-      h('p', { class: 'small muted', style: 'margin:0' }, 'DL先は、作品ごとのリンク → 配布ページ（移転先）→ 移転前の順に入れます。同じ作品（作品名＋作者）がもう個人用カタログにあるときは、DL先・紹介ページを足します（移転前に書いたDL先は「旧（移転済み）」にします。作者さんのサイトは、空のときだけ入れます）。'),
+      h('p', { class: 'small muted', style: 'margin:0' }, 'DL先は、作品ごとのリンク → 配布ページ（移転先）→ 移転前の順に入れます。同じ作品（作品名＋作者）がもう個人用カタログにあるときは、DL先・紹介ページを足します（移転前に書いたDL先は「旧（移転済み）」にします。作者公式サイトは、空のときだけ入れます）。'),
       err,
       h('div', { class: 'row', style: 'justify-content:flex-end' },
         h('button', { type: 'button', class: 'btn', onclick: () => close(null) }, 'やめる'),
@@ -199,7 +199,7 @@ export async function bulkFromLinks(st, links) {
 }
 
 /**
- * まとめてDLの一覧（配布ページから取ってきたもの）を、まとめて登録する
+ * 一括ダウンロードの一覧（配布ページから取ってきたもの）を、まとめて登録する
  * @param {{srcUrl: string, opened: object}[]} batchItems
  * @param {string} pageUrl 取ってきた配布ページ
  */

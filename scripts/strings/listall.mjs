@@ -6,7 +6,7 @@ const GROUPS = [
   ['共通：画面の枠・タブ・自分のフォルダ一覧・設定', ['src/app/app.js', 'src/app/state.js', 'src/app/ui.js', 'src/app/credits.js']],
   ['「シナリオ・素材・スキンをDLする」タブ：開いたファイル・インストール', ['src/app/add.js', 'src/app/localfiles.js', 'src/app/catpick.js']],
   ['URLから取得・同意ページ・DLキー・アプリ内ブラウザ・作者さん向けリンク', ['src/app/download.js']],
-  ['まとめてDL', ['src/app/batch.js']],
+  ['一括ダウンロード', ['src/app/batch.js']],
   ['素材・スキン（置き場所・インストール・一覧）', ['src/app/materials.js', 'src/app/place.js']],
   ['カタログ（一覧・作品カード・管理・登録・書き出し）', ['src/app/catalog-view.js', 'src/app/catalog-data.js', 'src/app/sample-catalog.js']],
   ['安全（実行ファイルの警告・中身の一覧・中身を見る・安全のしくみ）', ['src/app/safety-view.js', 'src/app/linkcheck.js']],

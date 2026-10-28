@@ -32,7 +32,7 @@ export function setupDrop() {
   window.addEventListener('dragover', (e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
   window.addEventListener('drop', async (e) => {
     if (!e.dataTransfer?.files?.length) return;
-    // まとめてDLの「操作待ち」の欄に落としたときは、そちらで受け取る
+    // 一括ダウンロードの「操作待ち」の欄に落としたときは、そちらで受け取る
     if (e.target?.closest?.('[data-batch-drop]')) return;
     e.preventDefault();
     depth = 0;
@@ -123,7 +123,7 @@ export function viewAdd() {
       h('div', { class: 'card soft small' },
         h('h3', {}, 'できること'),
         h('ul', { style: 'margin:0;padding-left:1.2em' },
-          h('li', {}, '「カタログ」タブで作品を選ぶと、まとめてDLしてまとめて入れられます'),
+          h('li', {}, '「カタログ」タブで作品を選ぶと、一括ダウンロードしてまとめて入れられます'),
           h('li', {}, '素材・スキン（Skin.xml）は、それぞれの置き場所に分類フォルダを分けて入れます'),
           h('li', {}, '文字化けしたファイル名を正しく読み直します（UTF-8・Shift_JISを自動判定）'),
           h('li', {}, 'シナリオの範囲・形式（クラシック／Next／Py）・暗号化の有無を判定します'),
@@ -306,7 +306,7 @@ function authorReadme(work) {
   return box;
 }
 
-/** Readmeを別の窓で読む（まとめてDLのとき）。「読みました」を押すと true */
+/** Readmeを別の窓で読む（一括ダウンロードのとき）。「読みました」を押すと true */
 export function readmeModal(opened, title, { next = false } = {}) {
   return modal((close) => {
     let idx = 0, enc = '';

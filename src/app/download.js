@@ -94,7 +94,7 @@ function classify(r, url) {
 }
 
 /**
- * 結果の受け取り方（ひとつずつDLするときと、まとめてDLするときで変える）
+ * 結果の受け取り方（ひとつずつDLするときと、一括ダウンロードするときで変える）
  * @typedef {{got: Function, page: Function, blocked: Function, error: Function, inapp?: Function}} Handler
  */
 
@@ -435,7 +435,7 @@ async function listFolderTree(st, onStep) {
 
 /**
  * 選んだファイルをまとめて取ってくる（同時に6件ずつ）。
- * zipなどはそのまま「まとめてDL」の一覧へ。そうでないファイル（画像・音など）は、フォルダの形のまま1つのzipにまとめて素材（スキン）として入れる
+ * zipなどはそのまま「一括ダウンロード」の一覧へ。そうでないファイル（画像・音など）は、フォルダの形のまま1つのzipにまとめて素材（スキン）として入れる
  * @param {{url, text, path?}[]} links
  */
 async function fetchPicked(st, hd, links, { title = '' } = {}) {
@@ -505,7 +505,7 @@ export function pagePanel(st, hd, work = null) {
       h('button', { class: 'btn sm', disabled: st.pick.size === files.length, onclick: () => { files.forEach((l) => st.pick.add(l.url)); render(); } }, 'ファイルをすべて選ぶ'),
       chosen.length ? h('button', { class: 'btn ghost sm', onclick: () => { st.pick.clear(); render(); } }, '選択を解除') : null,
       h('button', { class: 'btn primary sm', disabled: !chosen.length, onclick: () => fetchPicked(st, hd, chosen) }, `選んだ${chosen.length}件を取ってくる`),
-      h('button', { class: 'btn sm', disabled: !chosen.length, title: '作品名・バージョンを読んで、個人用カタログにまとめて登録します（インストールはしません）', onclick: async () => (await import('./bulk-register.js')).bulkFromLinks(st, chosen) }, `選んだ${chosen.length}件を個人用カタログに登録`));
+      h('button', { class: 'btn sm', disabled: !chosen.length, title: '作品名・バージョンを読んで、個人用カタログに一括登録します（インストールはしません）', onclick: async () => (await import('./bulk-register.js')).bulkFromLinks(st, chosen) }, `選んだ${chosen.length}件を個人用カタログに一括登録`));
   };
   const navBar = st.folder && nav && nav.list.length > 1 ? h('div', { class: 'row folder-nav' },
     h('button', { class: 'btn sm', disabled: nav.at === 0, 'aria-label': '前のフォルダに戻る', onclick: () => goNav(st, nav.at - 1) }, '← 戻る'),
@@ -688,7 +688,7 @@ export function viewLinkMaker() {
 export function viewConsents() {
   const hosts = Object.entries(S.consents || {}).sort((a, b) => (b[1].at || '').localeCompare(a[1].at || ''));
   return h('div', { class: 'card stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, '同意画面で「このサイトの同意を覚える」にしたサイトです。規約・注意書きの文章が前と同じなら、まとめてDLのときも止まらずに取ってきます（文章が変わったら、もう一度聞きます）。Readmeの確認は、今までどおり必ず出ます。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, '同意画面で「このサイトの同意を覚える」にしたサイトです。規約・注意書きの文章が前と同じなら、一括ダウンロードのときも止まらずに取ってきます（文章が変わったら、もう一度聞きます）。Readmeの確認は、今までどおり必ず出ます。'),
     hosts.length ? h('ul', { class: 'dl' }, hosts.map(([host, rec]) => h('li', {},
       h('b', {}, host), h('span', { class: 'small muted grow' }, rec.at ? `覚えた日時：${fmtDate(rec.at)}` : ''),
       h('button', {

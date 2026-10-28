@@ -1,4 +1,4 @@
-// まとめてDL：カタログで選んだ作品・検索結果・更新ありの作品を、順番に取ってきて、まとめて入れる。
+// 一括ダウンロード：カタログで選んだ作品・検索結果・更新ありの作品を、順番に取ってきて、まとめて入れる。
 //  ① 取得：直接DLできるものは自動で。同意やDLキーが必要なページ・ブラウザの制限で取れないものは「操作待ち」に
 //  ② 確認：Readmeを読む・入れ先を決める
 //  ③ まとめてインストール
@@ -25,13 +25,13 @@ const STATUS = {
 let seq = 0;
 
 /**
- * まとめてDLを始める。
+ * 一括ダウンロードを始める。
  * @param {{work: object, record?: object}[]} list record があれば「更新」として、その場所に置き換える
  */
-export function startBatch(list, title = 'まとめてDL') {
-  // R18 の作品は、まとめてDLには入れない（配布元をブラウザで開いて、1つずつ取ってもらう）
+export function startBatch(list, title = '一括ダウンロード') {
+  // R18 の作品は、一括ダウンロードには入れない（配布元をブラウザで開いて、1つずつ取ってもらう）
   const r18 = list.filter((x) => x.work?.rating === 'r18');
-  if (r18.length) toast(`R18の作品（${r18.length}件：${r18.slice(0, 3).map((x) => `「${x.work.name}」`).join('')}${r18.length > 3 ? '…' : ''}）は、まとめてDLには入れません。作品の「ダウンロード」から、配布元をブラウザで開いてください`, { ms: 12000 });
+  if (r18.length) toast(`R18の作品（${r18.length}件：${r18.slice(0, 3).map((x) => `「${x.work.name}」`).join('')}${r18.length > 3 ? '…' : ''}）は、一括ダウンロードには入れません。作品の「ダウンロード」から、配布元をブラウザで開いてください`, { ms: 12000 });
   const rest = list.filter((x) => x.work?.rating !== 'r18');
   if (!rest.length) return null;
   return startItems(rest, title);
@@ -43,7 +43,7 @@ export function startBatch(list, title = 'まとめてDL') {
  * @param {{pageUrl?: string}} opts pageUrl＝取ってきた配布ページ（個人用カタログにまとめて登録するときに使う）
  */
 export async function startLocalBatch(files, title = '選んだファイルをまとめて入れる', { pageUrl = '' } = {}) {
-  if (S.batch?.running || S.batch?.installing) { toast('まとめてDLの途中です。終わってから、もう一度押してください', { bad: true }); return; }
+  if (S.batch?.running || S.batch?.installing) { toast('一括ダウンロードの途中です。終わってから、もう一度押してください', { bad: true }); return; }
   const items = files.map((f) => ({
     id: ++seq, work: null, name: f.name, status: 'fetch', message: '読み込み中…', include: true, ack: false, pick: 0, force: false,
     target: null, engineId: null, folderName: '', zone: f.zone || null, srcUrl: f.url || '',
@@ -59,7 +59,7 @@ export async function startLocalBatch(files, title = '選んだファイルを�
 }
 
 function startItems(list, title) {
-  if (S.batch?.running || S.batch?.installing) { toast('まとめてDLの途中です。終わってから、もう一度押してください', { bad: true }); return; }
+  if (S.batch?.running || S.batch?.installing) { toast('一括ダウンロードの途中です。終わってから、もう一度押してください', { bad: true }); return; }
   const seen = new Set();
   const items = [];
   for (const { work, record } of list) {
@@ -254,7 +254,7 @@ export function viewBatch() {
     b.running ? h('p', { class: 'small muted', style: 'margin:0' }, '直接DLできるものから順に取ってきています。同意やDLキーが必要なものは「操作待ち」になります。') : null,
     h('div', { class: 'list' }, b.items.map(itemCard)),
     regs.length ? h('div', { class: 'row' },
-      h('button', { class: 'btn sm', disabled: b.installing, onclick: async () => (await import('./bulk-register.js')).bulkFromBatch(regs, b.pageUrl) }, `個人用カタログにまとめて登録（${regs.length}件）`),
+      h('button', { class: 'btn sm', disabled: b.installing, onclick: async () => (await import('./bulk-register.js')).bulkFromBatch(regs, b.pageUrl) }, `個人用カタログに一括登録（${regs.length}件）`),
       h('span', { class: 'small muted' }, '作品名・バージョンを読んで、DL先（このファイルのURLと配布ページ）と一緒に登録します。インストールとは別です')) : null,
     !b.done ? h('div', { class: 'card soft stack', style: 'margin:0' },
       h('h3', {}, '入れ先'),

@@ -133,7 +133,7 @@ progress { width: 100%; accent-color: var(--accent); }
 .badge.src.own, .badge.src.sub { color: var(--wsn); }
 .hidden-work { opacity: .65; }
 
-/* まとめてDL */
+/* 一括ダウンロード */
 .batch-bar { position: sticky; top: 92px; z-index: 3; padding: 8px 12px; }
 .batch { border-color: var(--accent); }
 .batch-item { margin-bottom: 8px; }
