@@ -46,7 +46,12 @@ export function combine(sources) {
       for (const i of e.intro || []) if (!w.intro.some((x) => x.url === i.url)) w.intro.push(i);
       for (const l of e.links || []) if (!w.links.includes(l)) w.links.push(l);
       for (const d of e.downloads || []) {
-        if (!w.downloads.some((x) => x.url === d.url)) w.downloads.push({ ...d, sourceId: src.id });
+        // DLキーは、自分の個人用カタログに入れたものだけ使う（人から受け取ったDL一覧に入っていても使わない）
+        const { dlkey, ...rest } = d;
+        const mine = src.kind === 'own' && dlkey ? { dlkey } : {};
+        const same = w.downloads.find((x) => x.url === d.url);
+        if (!same) w.downloads.push({ ...rest, ...mine, sourceId: src.id });
+        else if (mine.dlkey && !same.dlkey) same.dlkey = mine.dlkey; // 共用カタログと同じ DL先 でも、自分のDLキーは使う
       }
     }
   }

@@ -729,3 +729,24 @@ test('まとめて登録：URLの行・作品のデータ・すでにある作�
   // 移転前に書いていないDL先は、今の設定のまま
   assert.equal(mergeEntry({ ...cur, downloads: [{ url: 'https://keep.example/', kind: 'page', status: 'mirror' }] }, e).downloads[0].status, 'mirror');
 });
+
+test('DLキー：自分の個人用カタログのものだけ使う（受け取ったDL一覧・共用カタログのDLキーは使わない）', () => {
+  const entry = (dlkey) => ({ name: '森', author: '作者', version: '1.0', downloads: [{ url: 'https://a.example/dl', kind: 'page', status: 'active', ...(dlkey ? { dlkey } : {}) }] });
+  const cat = (e) => ({ entries: [e], authors: {} });
+  const fromSub = combine([{ id: 's', kind: 'sub', name: 'もらった一覧', catalog: cat(entry('KEY-FROM-LIST')) }]);
+  assert.equal(fromSub.works[0].downloads[0].dlkey, undefined);
+  const fromShared = combine([{ id: 'c', kind: 'shared', name: '共用', catalog: cat(entry('KEY-SHARED')) }]);
+  assert.equal(fromShared.works[0].downloads[0].dlkey, undefined);
+  const own = combine([
+    { id: 's', kind: 'sub', name: 'もらった一覧', catalog: cat(entry('KEY-FROM-LIST')) },
+    { id: 'o', kind: 'own', name: 'マイカタログ', catalog: cat(entry('MY-KEY')) },
+  ]);
+  assert.equal(own.works[0].downloads[0].dlkey, 'MY-KEY');
+  // 共用カタログと同じ DL先 でも、自分の個人用カタログのDLキーを使う
+  const both = combine([
+    { id: 'c', kind: 'shared', name: '共用', catalog: cat(entry('')) },
+    { id: 'o', kind: 'own', name: 'マイカタログ', catalog: cat(entry('MY-KEY')) },
+  ]);
+  assert.equal(both.works[0].downloads.length, 1);
+  assert.equal(both.works[0].downloads[0].dlkey, 'MY-KEY');
+});

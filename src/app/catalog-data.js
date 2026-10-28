@@ -367,7 +367,7 @@ export async function saveOwnEntry(entry, { origKey = '', targetIds = [] }) {
 }
 
 /** 人に渡せるDL一覧（JSON）にする */
-export function exportSource(src, { includeKeys = false, labels = null, includeR18 = false } = {}) {
+export function exportSource(src, { labels = null, includeR18 = false } = {}) {
   const cat = S.catalogs.get(src.id);
   // R18 の作品は、「R18を含める」にチェックしたときだけ
   const entries = includeR18 ? cat.entries : cat.entries.filter((e) => e.rating !== 'r18');
@@ -378,8 +378,8 @@ export function exportSource(src, { includeKeys = false, labels = null, includeR
   out.entries = out.entries.map((e) => {
     const d = def(e);
     let dl = d ? [...e.downloads].sort((a, b) => (b.url === d) - (a.url === d)) : e.downloads;
-    // DLキーは、選んだときだけ書き出す
-    if (!includeKeys) dl = dl.map(({ dlkey, ...rest }) => rest);
+    // DLキーは、決して書き出さない（人に伝えるときは、設定の「DLキー」から1つずつコピーしてもらう）
+    dl = dl.map(({ dlkey, ...rest }) => rest);
     // 分類名：選んだフォルダの名前を付ける（選ばなければ付けない）
     const { labels: _old, ...rest } = e;
     const names = labels ? foldersOf(workKey(e)).filter((f) => labels.has(f.id)).map((f) => f.name) : [];

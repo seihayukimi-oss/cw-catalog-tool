@@ -548,12 +548,10 @@ async function exportList(s) {
   // このカタログの作品が入っているフォルダ（分類名として書き出せる）
   const keys = new Set(entries.map((e) => workKey(e)));
   const folders = S.folders.list.map((f) => ({ f, n: [...keys].filter((k) => (S.folders.map[k] || []).includes(f.id)).length })).filter((x) => x.n);
-  let includeKeys = false;
   let labels = null;
   let includeR18 = false;
   const r18n = entries.filter((e) => e.rating === 'r18').length;
   if (hasKeys || folders.length || r18n) {
-    const box = h('input', { type: 'checkbox', 'aria-label': 'DLキーも書き出す' });
     const r18Box = h('input', { type: 'checkbox', id: 'export-r18', 'aria-label': 'R18の作品も含める' });
     const labelOn = h('input', { type: 'checkbox', checked: true, id: 'export-labels', 'aria-label': 'フォルダを分類名として書き出す' });
     const picks = folders.map((x) => ({ ...x, box: h('input', { type: 'checkbox', checked: true, 'aria-label': `${x.f.name}を書き出す` }) }));
@@ -566,9 +564,8 @@ async function exportList(s) {
         pickBox,
         h('p', { class: 'small muted', style: 'margin:0' }, '受け取った人は、分類名を取り込むかどうか、どの分類名を取り込むかを選べます。')) : null,
       hasKeys ? h('div', { class: 'stack' },
-        h('p', { style: 'margin:0' }, `「${s.name}」には、DLキーを入れた作品があります。`),
-        h('label', { class: 'check' }, box, 'DLキーも書き出す'),
-        h('p', { class: 'small muted', style: 'margin:0' }, '作者さんによっては、サイトに来てDLキーと注意書きを見てほしいと考えています。人に渡すときは、書き出さないのがおすすめです。')) : null,
+        h('p', { style: 'margin:0' }, `「${s.name}」には、DLキーを入れた作品がありますが、DLキーは書き出しません。`),
+        h('p', { class: 'small muted', style: 'margin:0' }, '作者さんによっては、サイトに来てDLキーと注意書きを見てほしいと考えています。人に伝えたいときは、「設定」の「DLキー」から1つずつコピーしてください。')) : null,
       r18n ? h('div', { class: 'stack' },
         h('label', { class: 'check' }, r18Box, `R18の作品（${r18n}件）も含める`),
         h('p', { class: 'small muted', style: 'margin:0' }, 'チェックしなければ、R18の作品は書き出しません。受け取った側でも、R18は初期状態では非表示になっています。')) : null,
@@ -576,11 +573,10 @@ async function exportList(s) {
         h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
         h('button', { class: 'btn primary', onclick: () => close(true) }, '書き出す'))));
     if (!go) return;
-    includeKeys = box.checked;
     includeR18 = r18Box.checked;
     if (folders.length && labelOn.checked) labels = new Set(picks.filter((p) => p.box.checked).map((p) => p.f.id));
   }
-  const json = exportSource(s, { includeKeys, labels, includeR18 });
+  const json = exportSource(s, { labels, includeR18 });
   const safe = s.name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60) || 'dl-list';
   await S.platform.saveFile(`${safe}.json`, new TextEncoder().encode(JSON.stringify(json, null, 2)));
   toast(`${json.entries.length}件を「${safe}.json」に書き出しました。受け取った人は「DL一覧を読み込む」で使えます`, { ms: 9000 });
@@ -752,7 +748,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       h('div', {}, h('div', { class: 'small muted' }, '紹介ページ（サイト内の作品紹介ページ、告知のノート、X・Misskey などの投稿URL。DLの前に見てもらえます）'), introBox),
       h('div', {}, h('div', { class: 'small muted' }, 'DL先（「デフォルト」にしたところから先に取ります。取れなければ、新→予備→旧の順に試します）'), dlBox),
       h('p', { class: 'small muted', style: 'margin:0' }, '「ファイル一覧」にすると、アップローダーの一覧ページ（例：https://uu.getuploader.com/○○/）から、作品名に合うファイルのうち版がいちばん新しいものを、「更新チェック」のときに探します（アプリ版）。新しい版を上げるたびにURLが変わるアップローダーで便利です。'),
-      h('p', { class: 'small muted', style: 'margin:0' }, 'DLキーは、この個人用カタログの中だけに保存します（DL一覧として書き出すときは、書き出すかどうかを選べます）。'),
+      h('p', { class: 'small muted', style: 'margin:0' }, 'DLキーは、このパソコンの個人用カタログの中だけに保存します。DL一覧として書き出しても入りません（「設定」の「DLキー」で一覧にできます）。'),
       h('div', {}, h('div', { class: 'small muted' }, `入れる個人用カタログ${inOwn.size ? '（チェックを外すと、そのカタログから抜けます）' : ''}`),
         h('div', { class: 'row' }, targets.map((t) => h('label', { class: 'check' }, t.box, t.s.name)))),
       err,

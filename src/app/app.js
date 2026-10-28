@@ -17,6 +17,7 @@ import { loadCatalogs, applyCatalog, workOf, refreshSource, refreshStates, check
 import { chooseDownloads } from '../core/catalogs.js';
 import { viewAdd, setupDrop, VERSION_SOURCE } from './add.js';
 import { downloadWork, handleInstallLink, viewLinkMaker, loadConsents, viewConsents } from './download.js';
+import { loadDlKeys, viewDlKeys } from './dlkeys.js';
 import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
 import { startBatch } from './batch.js';
 import { setupShell, startShell, viewAppSettings } from './appshell.js';
@@ -67,6 +68,7 @@ export async function startApp(platform) {
   await loadCatalogs();
   await loadRatingPrefs();
   await loadConsents();
+  await loadDlKeys();
   await setupShell();
   S.records = await store.records();
   if (S.records.some((r) => r.entryId && !('workKey' in r))) await refreshStates(); // 0.1.4 までの記録を新しい形に
@@ -588,6 +590,9 @@ function viewSettings() {
 
     h('h2', {}, '同意を覚えているサイト'),
     viewConsents(),
+
+    h('h2', {}, 'DLキー（パスワード）'),
+    viewDlKeys(),
 
     h('h2', {}, '作品ページに置く「CWカタログで入れる」ボタンを作る（作者さん向け）'),
     viewLinkMaker(),

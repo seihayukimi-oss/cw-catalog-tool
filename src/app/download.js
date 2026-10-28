@@ -17,6 +17,7 @@ import { store } from './store.js';
 import { h, toast, modal, fmtDate } from './ui.js';
 import { defaultUrlOf, setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { openSource } from './add.js';
+import { pageKeyOf, rememberedKey, rememberKey, forgetKey } from './dlkeys.js';
 
 export const dlLabel = (d) => d.label || d.url.replace(/^https?:\/\//, '').split('/')[0];
 const hostOf = (u) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ''; } };
@@ -228,10 +229,18 @@ async function rememberConsent(st) {
   await store.set('consents', S.consents);
 }
 
+/** このページで使えるDLキー：個人用カタログの DL先 に入れたもの → DLキーの画面で覚えたもの（そのページだけ） */
+const knownKey = (st) => st.dl?.dlkey || rememberedKey(st.finalUrl || st.url);
+/** DLキーの欄（パスワードの欄、なければ1つだけの欄）に入れた値 */
+function keyValue(form, values) {
+  const i = form.inputs.find((x) => x.type === 'password') || (form.inputs.length === 1 ? form.inputs[0] : null);
+  return i ? String(values[i.name] || '').trim() : '';
+}
+
 /** 入力欄に入れる値。DLキーが分からない欄があれば null（本人に入れてもらう） */
 function fillValues(form, st) {
   const v = {};
-  const key = st.dl?.dlkey || '';
+  const key = knownKey(st);
   for (const i of form.inputs) {
     if (st.values?.[i.name]) v[i.name] = st.values[i.name];
     else if (key && (form.inputs.length === 1 || i.type === 'password')) v[i.name] = key;
@@ -273,6 +282,14 @@ function submitForm(form, values, referer) {
  */
 export async function agreeAndDownload(st, form, values, hd) {
   if (st.remember) await rememberConsent(st);
+  // DLキーを覚える・忘れるのは、キーが通って先に進めたときだけ（まちがったキーを覚えないように）
+  const keyPage = form.kind === 'key' ? pageKeyOf(st.finalUrl || st.url) : '';
+  const typedKey = keyPage ? keyValue(form, values) : '';
+  const passed = async () => {
+    if (!keyPage || st.rememberKey === undefined) return;
+    if (st.rememberKey && typedKey) await rememberKey(keyPage, typedKey);
+    else if (!st.rememberKey) await forgetKey(keyPage);
+  };
   const res = await busy(st.auto ? '同意を覚えているサイトなので、そのまま取得中' : '同意して取得中', async () => {
     let r = await submitForm(form, values, st.finalUrl || st.url);
     for (let hop = 0; hop < 2 && r && !r.blocked && !archiveKind(r.bytes); hop++) {
@@ -287,8 +304,16 @@ export async function agreeAndDownload(st, form, values, hd) {
   if (!res) return;
   if (res.blocked) return hd.blocked(st.url);
   const c = classify(res, st.url);
-  if (c.kind === 'zip') return deliver(c, hd);
+  if (c.kind === 'zip') { await passed(); return deliver(c, hd); }
+  // DLキーを送ったのに、またDLキーのページが出たら、キーが通らなかったということ（次の段階ではない）
+  if (form.kind === 'key' && c.kind === 'page' && c.st.forms[0]?.kind === 'key') {
+    st.auto = false;
+    st.noAuto = true;
+    toast('DLキーが通りませんでした。DLキーが違うのかもしれません。もう一度確かめてください', { bad: true, ms: 9000 });
+    return hd.page(st);
+  }
   if (c.kind === 'page' && c.st.forms.length && (st.step || 1) < 4) {
+    await passed();
     const next = { ...c.st, dl: st.dl, step: (st.step || 1) + 1, url: st.url, remember: !!st.remember, agreed: false, values: {} };
     delete next.html;
     next.stepNote = form.kind === 'key' ? 'DLキーが通りました。続けて、次の画面の内容に同意してください。' : '続けて、次の画面の内容に同意してください。';
@@ -326,12 +351,16 @@ export function viewAgree(st, hd) {
   const isKey = form.kind === 'key';
   // 画面を描き直しても、入れたDLキーや同意のチェックが消えないよう、ページの情報に覚えておく
   st.values ||= {};
-  let prefilled = false;
-  if (st.dl?.dlkey) {
+  let prefilled = '';
+  const known = isKey ? knownKey(st) : '';
+  if (known) {
     for (const i of form.inputs) {
-      if (!st.values[i.name] && (form.inputs.length === 1 || i.type === 'password')) { st.values[i.name] = st.dl.dlkey; prefilled = true; }
+      if (!st.values[i.name] && (form.inputs.length === 1 || i.type === 'password')) { st.values[i.name] = known; prefilled = st.dl?.dlkey ? '個人用カタログに登録したDLキーを入れてあります' : 'このページで覚えたDLキーを入れてあります'; }
     }
   }
+  // 「このDLキーを覚える」：前に覚えたページなら、最初からチェックを入れておく
+  if (isKey && st.rememberKey === undefined && rememberedKey(st.finalUrl || st.url)) st.rememberKey = true;
+  const rememberKeyBox = isKey ? h('input', { type: 'checkbox', checked: !!st.rememberKey, onchange: (ev) => { st.rememberKey = ev.target.checked; } }) : null;
   const keyInputs = form.inputs.map((i) => h('label', { class: 'field' }, i.label === i.name ? (isKey ? 'DLキー' : `入力欄（${i.name}）`) : i.label,
     h('input', { type: i.type, 'data-name': i.name, autocomplete: 'off', value: st.values[i.name] || '', oninput: (ev) => { st.values[i.name] = ev.target.value; } })));
   const check = h('input', { type: 'checkbox', checked: !!st.agreed });
@@ -349,7 +378,8 @@ export function viewAgree(st, hd) {
     h('div', {}, h('b', {}, isKey ? 'このページは、DLキー（パスワード）を入れてからダウンロードする形式です' : 'このページは、内容に同意してからダウンロードする形式です')),
     h('pre', { class: 'readme', style: 'max-height:220px' }, st.text || '（本文を読み取れませんでした。「ブラウザで開く」で確かめてください）'),
     keyInputs,
-    prefilled ? h('div', { class: 'small muted' }, '個人用カタログに登録したDLキーを入れてあります') : null,
+    prefilled ? h('div', { class: 'small muted' }, prefilled) : null,
+    rememberKeyBox ? h('label', { class: 'check small' }, rememberKeyBox, 'このDLキーを覚える（このページだけで使います。このパソコンの中だけに保存し、DL一覧の書き出しなどには入りません。「設定」の「DLキー」で見る・忘れるができます）') : null,
     h('label', { class: 'check' }, check, 'ページの内容・規約を読んで、同意します'),
     h('label', { class: 'check small' }, remember, `このサイト（${hostOf(st.finalUrl || st.url)}）の同意を覚える（規約の文章が変わったら、もう一度聞きます）`),
     h('div', { class: 'row' }, btn,
