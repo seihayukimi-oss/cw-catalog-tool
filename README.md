@@ -9,6 +9,23 @@ CardWirth（1.50／Next 1.60／Py）のシナリオを、**一括ダウンロー
 
 どちらも中身（画面と処理）は同じです。
 
+## 入手方法（ダウンロード）
+
+**アプリ版（Windows）**
+
+1. [最新のリリース](https://github.com/seihayukimi-oss/cw-catalog-tool/releases/latest) を開く
+2. ページの下のほうの「Assets」（ファイルの一覧）から、`CWCatalog-v○.○.○-portable.zip` を押してダウンロードする
+3. 好きなフォルダに展開して、中の `CWCatalog.exe` を起動する（インストールは要りません）
+
+- すでに使っている方は、アプリの「設定」→「アプリの更新」→「更新を確認」で新しい版に入れ替えられます
+- 同じ場所にある `CWCatalog.exe`・`latest-portable.json` は、アプリの自動更新が使うファイルです。はじめての方は zip のほうを選んでください
+- 起動のときに Windows の警告が出たときは、下の「起動時に警告・ブロックの画面が表示された場合」を見てください
+
+**HTML版（Chrome・Edge）**
+
+- [公開ページ](https://seihayukimi-oss.github.io/cw-catalog-tool/cw-catalog.html) を開くだけで使えます（開くたびに最新。まだリリースしていない直しも入っていることがあります）
+- 手元に置きたいときは、[最新のリリース](https://github.com/seihayukimi-oss/cw-catalog-tool/releases/latest) の「Assets」から `cw-catalog-v○.○.○.html` をダウンロードして、ブラウザで開きます（アプリ版の zip にも入っています）
+
 ## できること
 
 | | アプリ版 | HTML版 |
