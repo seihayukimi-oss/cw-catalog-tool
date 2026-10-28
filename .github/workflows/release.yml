@@ -122,6 +122,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="${TAG#v}"
-          gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "CWカタログ $TAG" \
-            --notes "ポータブル版：CWCatalog-v${V}-portable.zip をダウンロードして、好きなフォルダに展開し、CWCatalog.exe を起動してください（インストール不要）。すでに使っている人は、アプリの「設定」→「更新を確認」で更新できます。HTML版：cw-catalog-v${V}.html をブラウザ（Chrome・Edge）で開くだけで使えます。" \
-            release/*
+          # リリースのページに出す説明（運営者の文）。版の番号は自動で入る
+          NOTES="【ダウンロード・使用方法】
+
+          ■ ポータブル版
+          \`CWCatalog-v${V}-portable.zip\` をダウンロードし、任意のフォルダへ解凍（展開）の上、\`CWCatalog.exe\` を起動してください（※インストール作業は不要です）。
+          ※旧バージョンをお使いの方は、アプリ内の「設定 ＞ アプリの更新 ＞ 更新を確認」から最新版へ更新いただけます。
+
+          ■ HTML版
+          \`cw-catalog-v${V}.html\` をお使いのWebブラウザ（Google Chrome / Microsoft Edge 等）で開いてご利用いただけます。"
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "CWカタログ $TAG" --notes "$NOTES" release/*
