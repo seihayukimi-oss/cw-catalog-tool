@@ -29,7 +29,7 @@ export function readmeScore(path, insideRoot) {
 
 /**
  * 名前からバージョンらしき表記を探す（作品のバージョンはファイルの中に無いため）。
- * 例：「開けられた鳥籠ver1_01」→ 1.01、「星暦堂Ver1.12」→ 1.12、「さよならの森へ_230124」→ 230124
+ * 例：「サンプル店ver1_01」→ 1.01、「テスト冒険譚Ver1.12」→ 1.12、「デバッグ読みシナ_230124」→ 230124
  */
 export function guessVersion(name) {
   const n = name.normalize('NFKC');

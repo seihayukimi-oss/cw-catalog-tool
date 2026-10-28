@@ -18,6 +18,8 @@ import { parseCatalog, matchEntry, compareVersions, updateState, usableDownloads
 const FX = process.env.CW_FIXTURES;
 const fx = (n) => new Uint8Array(readFileSync(join(FX, n)));
 const hasFx = FX && existsSync(FX);
+// 実物の作品名・作者名は書かない。日本語の文字として読めているかを見る（文字化けすると、ここに当たらない）
+const JP_TEXT = /^[^\uFFFD]*[\u3040-\u30ff\u3400-\u9fff][^\uFFFD]*$/;
 
 test('文字コード判定：UTF-8・CP932・BOM', () => {
   assert.equal(decodeText(new TextEncoder().encode('りどみ①')).encoding, 'utf-8');
@@ -58,12 +60,12 @@ test('危険なパスを拒否・Windowsで使えない名前を直す', () => {
 });
 
 test('バージョンの推測と比較', () => {
-  assert.equal(guessVersion('開けられた鳥籠ver1_01'), '1.01');
-  assert.equal(guessVersion('星暦堂Ver1.12'), '1.12');
-  assert.equal(guessVersion('うつろい森のあなた(Next)ver1.00'), '1.00');
-  assert.equal(guessVersion('さよならの森へ_230124'), '230124');
-  assert.equal(guessVersion('ある風刺画家の一室(NEXT専用)1.02'), '1.02');
-  assert.equal(guessVersion('うさぎ小屋'), null);
+  assert.equal(guessVersion('サンプル店ver1_01'), '1.01');
+  assert.equal(guessVersion('テスト冒険譚Ver1.12'), '1.12');
+  assert.equal(guessVersion('デバッグ読みシナ(Next)ver1.00'), '1.00');
+  assert.equal(guessVersion('サンプル短編_230124'), '230124');
+  assert.equal(guessVersion('テスト用シナリオ(NEXT専用)1.02'), '1.02');
+  assert.equal(guessVersion('サンプル店'), null);
   assert.equal(compareVersions('1.10', '1.9'), 1);
   assert.equal(compareVersions('1.09', '1.10'), -1);
   assert.equal(compareVersions('ver1.0', '1.0.0'), 0);
@@ -126,13 +128,15 @@ test('実物：クラシック（CP932の名前・トップにりどみ）', { s
   const o = await openArchive(fx('classic_cp932.zip'), 'classic_cp932.zip');
   assert.equal(o.scenarios.length, 1);
   const s = o.scenarios[0];
-  assert.equal(s.name, '開けられた鳥籠');
-  assert.equal(s.author, '清葉雪見');
+  // 作品名・作者名は書かない。Summary.wsm から読んだ名前と、zip のフォルダ名（別の読み方）がそろうかで確かめる
+  assert.match(s.name, JP_TEXT);
+  assert.match(s.author, JP_TEXT);
   assert.equal(s.format, 'classic');
   assert.equal(s.dataVersion, 4);
   assert.equal(s.encrypted, false);
-  assert.equal(s.folderName, '開けられた鳥籠ver1_01');
-  assert.equal(s.versionGuess, '1.01');
+  assert.ok(s.folderName.startsWith(s.name), `${s.folderName} / ${s.name}`);
+  assert.equal(s.versionGuess, guessVersion(s.folderName));
+  assert.ok(s.versionGuess);
   assert.equal(o.readmes[0].path, 'りどみ.txt', 'トップのりどみが一番');
   const rd = o.files.find((f) => f.path === 'りどみ.txt');
   const t = decodeText(await rd.read());
@@ -144,19 +148,24 @@ test('実物：クラシック（CP932の名前・トップにりどみ）', { s
 test('実物：Next（二重フォルダ・暗号化なし）', { skip: !hasFx }, async () => {
   const o = await openArchive(fx('next_nested.zip'), 'next_nested.zip');
   const s = o.scenarios[0];
-  assert.equal(s.name, 'うつろい森のあなた');
-  assert.equal(s.author, '水雲');
+  assert.match(s.name, JP_TEXT);
+  assert.match(s.author, JP_TEXT);
   assert.equal(s.format, 'next');
   assert.equal(s.dataVersion, 7);
   assert.equal(s.encrypted, false);
-  assert.equal(s.root, 'うつろい森のあなた(Next)ver1.00/うつろい森のあなた');
-  assert.equal(s.versionGuess, '1.00', '内側のフォルダ名に版が無ければzip名から');
+  // 二重フォルダ：外側（版つき）/内側（作品名）
+  const [outer, inner, ...rest] = s.root.split('/');
+  assert.equal(rest.length, 0);
+  assert.equal(inner, s.name);
+  assert.ok(outer.startsWith(s.name) && outer !== inner, s.root);
+  assert.equal(s.versionGuess, guessVersion(outer), '内側のフォルダ名に版が無ければ外側から');
+  assert.ok(s.versionGuess);
 });
 
 test('実物：Next（WDP暗号化あり）', { skip: !hasFx }, async () => {
   const o = await openArchive(fx('next_wdp.zip'), 'next_wdp.zip');
   const s = o.scenarios[0];
-  assert.equal(s.name, 'ある風刺画家の一室');
+  assert.match(s.name, JP_TEXT);
   assert.equal(s.format, 'next');
   assert.equal(s.encrypted, true);
   assert.equal(o.readmes[0].path.endsWith('!readme.txt'), true);
@@ -164,7 +173,7 @@ test('実物：Next（WDP暗号化あり）', { skip: !hasFx }, async () => {
 
 test('実物：UTF-8なのに目印の無いzip', { skip: !hasFx }, async () => {
   const o = await openArchive(fx('utf8_noflag.zip'), 'x.zip');
-  assert.ok(o.files.some((f) => f.path === 'さよなら/02_著作権.txt'));
+  assert.ok(o.files.some((f) => /^[^/]+\/02_著作権\.txt$/.test(f.path)), '目印が無くても UTF-8 として読めている');
 });
 
 test('実物：危険なパスは無視される', { skip: !hasFx }, async () => {
@@ -180,10 +189,10 @@ test('実物：壊れたzipは止まる', { skip: !hasFx }, async () => {
 });
 
 test('実物：WSN（.wsn）', { skip: !hasFx }, async () => {
-  const o = await openArchive(fx('alice.wsn'), 'アリスの洞窟Py.wsn');
+  const o = await openArchive(fx('alice.wsn'), 'テスト冒険譚Py.wsn');
   const s = o.scenarios[0];
-  assert.equal(s.name, 'アリスの洞窟');
-  assert.equal(s.author, '飛鳥');
+  assert.match(s.name, JP_TEXT);
+  assert.match(s.author, JP_TEXT);
   assert.equal(s.format, 'wsn');
   assert.equal(s.wsnVersion, 5);
   assert.equal(s.root, '');
@@ -198,14 +207,16 @@ test('実物：インストール→再インストールでバックアップ�
   assert.equal(await detectEngineKind(next), 'next');
 
   const o = await openArchive(fx('next_nested.zip'), 'next_nested.zip');
-  const plan = planInstall(o, 0, { kind: 'next' }, '_店');
-  assert.equal(plan.dest, 'Scenario/_店/うつろい森のあなた');
+  const nextName = o.scenarios[0].name;
+  const plan = planInstall(o, 0, { kind: 'next' }, '_サンプル分類');
+  assert.equal(plan.dest, `Scenario/_サンプル分類/${nextName}`);
   assert.equal(plan.play.level, 'ok');
   const r1 = await performInstall(next, plan);
   assert.equal(r1.backup, null);
-  assert.ok(await existsAt(next, 'Scenario/_店/うつろい森のあなた/Summary.wsm'));
+  assert.ok(await existsAt(next, `Scenario/_サンプル分類/${nextName}/Summary.wsm`));
   const r2 = await performInstall(next, plan);
-  assert.match(r2.backup, /^CWCatalog_backup\/\d{8}_\d{6}_うつろい森のあなた$/);
+  assert.match(r2.backup, /^CWCatalog_backup\/\d{8}_\d{6}_/);
+  assert.ok(r2.backup.endsWith(`_${nextName}`), r2.backup);
   assert.ok(await existsAt(next, `${r2.backup}/Summary.wsm`));
 
   // 1.50形式も同じフォルダに入れて、スキャン
@@ -213,19 +224,19 @@ test('実物：インストール→再インストールでバックアップ�
   await performInstall(next, planInstall(c, 0, { kind: 'next' }, ''));
   const scan = await scanScenarioFolder(next);
   const names = scan.items.map((i) => `${i.name}:${i.format}`).sort();
-  assert.deepEqual(names, ['うつろい森のあなた:next', '開けられた鳥籠:classic']);
-  assert.deepEqual(scan.categories, ['_店']);
+  assert.deepEqual(names, [`${nextName}:next`, `${c.scenarios[0].name}:classic`].sort());
+  assert.deepEqual(scan.categories, ['_サンプル分類']);
 
   // Next仕様はPyに入れると「変換が必要」と出る
   const py = new MemDir('CardWirthPy');
   assert.equal(planInstall(o, 0, { kind: 'py' }, '').play.level, 'convert');
 
   // .wsn は Py には解凍せずにファイルのまま置く
-  const w = await openArchive(fx('alice.wsn'), 'アリスの洞窟Py.wsn');
+  const w = await openArchive(fx('alice.wsn'), 'テスト冒険譚Py.wsn');
   const wp = planInstall(w, 0, { kind: 'py' }, '');
   assert.equal(wp.passthrough, true);
   await performInstall(py, wp);
-  assert.equal((await readAt(py, 'Scenario/アリスの洞窟Py.wsn')).length, w.bytes.length);
+  assert.equal((await readAt(py, 'Scenario/テスト冒険譚Py.wsn')).length, w.bytes.length);
   const pscan = await scanScenarioFolder(py);
   assert.equal(pscan.items[0].format, 'wsn');
   assert.equal(pscan.items[0].wsnVersion, 5);
@@ -234,10 +245,11 @@ test('実物：インストール→再インストールでバックアップ�
 test('実物：WebCardWirth用の書き出し', { skip: !hasFx }, async () => {
   const o = await openArchive(fx('classic_cp932.zip'), 'classic_cp932.zip');
   const out = await exportForWeb(o, 0);
-  assert.equal(out.fileName, '開けられた鳥籠ver1_01.zip');
+  const folder = o.scenarios[0].folderName;
+  assert.equal(out.fileName, `${folder}.zip`);
   const back = readZip(out.data).entries;
   assert.ok(back.every((e) => e.utf8Flag || !/[^\x00-\x7f]/.test(e.path)));
-  assert.ok(back.some((e) => e.path === '開けられた鳥籠ver1_01/Summary.wsm'));
+  assert.ok(back.some((e) => e.path === `${folder}/Summary.wsm`));
   assert.ok(!back.some((e) => e.path.includes('りどみ.txt')), 'シナリオ外のりどみは入れない');
 });
 
@@ -247,31 +259,32 @@ import { decodeHtml, extractDownloadLinks, fileNameFrom, siteNotice, pageTitle }
 test('HTMLの文字コード（EUC-JP・Shift_JISの個人サイト）', () => {
   const euc = new Uint8Array([0x3c, 0x6d, 0x65, 0x74, 0x61, 0x20, 0x63, 0x68, 0x61, 0x72, 0x73, 0x65, 0x74, 0x3d, 0x22, 0x45, 0x55, 0x43, 0x2d, 0x4a, 0x50, 0x22, 0x3e, 0xb3, 0xab, 0xa4, 0xb1]); // 開け
   assert.match(decodeHtml(euc), /開け/);
-  assert.equal(decodeHtml(encodeCp932('鳥籠'), 'text/html; charset=Shift_JIS'), '鳥籠');
-  assert.equal(decodeHtml(new TextEncoder().encode('鳥籠')), '鳥籠');
+  assert.equal(decodeHtml(encodeCp932('サンプル店'), 'text/html; charset=Shift_JIS'), 'サンプル店');
+  assert.equal(decodeHtml(new TextEncoder().encode('サンプル店')), 'サンプル店');
 });
 
 test('ページからダウンロードのリンクを探す', () => {
-  const html = `<title>開けられた鳥籠 - 清葉雪見ワールド</title>
-    <a href="https://ux.getuploader.com/seiha_yukimiCW/download/12">開けられた鳥籠ver1_01.zip</a>
-    <a href="/files/%E9%B3%A5%E7%B1%A0_v1.zip">こちら</a>
-    <a href="https://uu.getuploader.com/seiha_yukimiCW/ranking">ランキング</a>
+  const enc = encodeURIComponent('サンプル店');
+  const html = `<title>サンプル店 - テスト用サイト</title>
+    <a href="https://ux.getuploader.com/sample_account/download/12">サンプル店ver1_01.zip</a>
+    <a href="/files/${enc}_v1.zip">こちら</a>
+    <a href="https://uu.getuploader.com/sample_account/ranking">ランキング</a>
     <a href="other.html">ダウンロードはこちら</a>
     <a href="javascript:void(0)">DL</a>
     <a href="https://example.com/about">作者について</a>`;
-  const links = extractDownloadLinks(html, 'https://seesaawiki.jp/seihayukimicw/d/page');
+  const links = extractDownloadLinks(html, 'https://sample.example/wiki/d/page');
   assert.deepEqual(links.map((l) => [l.kind, l.url]), [
-    ['file', 'https://seesaawiki.jp/files/%E9%B3%A5%E7%B1%A0_v1.zip'],
-    ['page', 'https://ux.getuploader.com/seiha_yukimiCW/download/12'],
-    ['page', 'https://seesaawiki.jp/seihayukimicw/d/other.html'],
+    ['file', `https://sample.example/files/${enc}_v1.zip`],
+    ['page', 'https://ux.getuploader.com/sample_account/download/12'],
+    ['page', 'https://sample.example/wiki/d/other.html'],
   ]);
-  assert.equal(pageTitle(html), '開けられた鳥籠 - 清葉雪見ワールド');
+  assert.equal(pageTitle(html), 'サンプル店 - テスト用サイト');
 });
 
 test('ファイル名の取り出しと、終了するサイトの注意', () => {
-  assert.equal(fileNameFrom('https://x/a', "attachment; filename*=UTF-8''%E9%B3%A5.zip"), '鳥.zip');
-  assert.equal(fileNameFrom('https://x/a', 'attachment; filename="tori.zip"'), 'tori.zip');
-  assert.equal(fileNameFrom('https://x/dl/%E9%B3%A5%E7%B1%A0.zip?x=1'), '鳥籠.zip');
+  assert.equal(fileNameFrom('https://x/a', `attachment; filename*=UTF-8''${encodeURIComponent('サンプル')}.zip`), 'サンプル.zip');
+  assert.equal(fileNameFrom('https://x/a', 'attachment; filename="sample.zip"'), 'sample.zip');
+  assert.equal(fileNameFrom(`https://x/dl/${encodeURIComponent('サンプル店')}.zip?x=1`), 'サンプル店.zip');
   assert.match(siteNotice('https://ux.getuploader.com/a/download/1'), /2026年11月25日/);
   assert.equal(siteNotice('https://github.com/a/b'), '');
 });
@@ -502,13 +515,13 @@ test('スキン（Skin.xml）を見分ける', async () => {
 
 test('アップローダーの一覧から、作品の最新のファイルを探す', async () => {
   const { extractFileList, findNewest } = await import('../src/core/filelist.js');
-  const html = `<table><tr><td><a href="https://uu.getuploader.com/u/download/17" title="水の都_ver1_02.zip">水の都_ver1_02.zip</a></td><td><a href="https://uu.getuploader.com/u/edit/17" title="編集">編集</a></td></tr>
-    <tr><td><a href="https://uu.getuploader.com/u/download/9" title="水の都_ver1_01.zip">水の都_ver1_01.zip</a></td></tr>
+  const html = `<table><tr><td><a href="https://uu.getuploader.com/u/download/17" title="デバッグ読みシナ_ver1_02.zip">デバッグ読みシナ_ver1_02.zip</a></td><td><a href="https://uu.getuploader.com/u/edit/17" title="編集">編集</a></td></tr>
+    <tr><td><a href="https://uu.getuploader.com/u/download/9" title="デバッグ読みシナ_ver1_01.zip">デバッグ読みシナ_ver1_01.zip</a></td></tr>
     <tr><td><a href="https://uu.getuploader.com/u/download/13" title="星間列車の相席屋ver1.0.0.zip">星間列車の相席屋ver1.0.0.zip</a></td></tr>
     <tr><td><a href="https://uu.getuploader.com/u/index/date/asc/1" title="日時">日時</a></td></tr></table>`;
   const list = extractFileList(html, 'https://uu.getuploader.com/u/');
   assert.equal(list.length, 3);
-  const n = findNewest(list, '水の都');
+  const n = findNewest(list, 'デバッグ読みシナ');
   assert.equal(n.url, 'https://uu.getuploader.com/u/download/17');
   assert.equal(n.version, '1.02');
   assert.equal(findNewest(list, '星間列車の相席屋').version, '1.0.0');
@@ -537,7 +550,7 @@ test('登録フォーム（Google Apps Script）の共用カタログを読む',
   const { parseCatalog } = await import('../src/core/catalog.js');
   const cat = parseCatalog({
     format: 1, kind: 'cw-catalog/shared', name: '共用', links: { register: 'https://docs.google.com/forms/d/e/x/viewform', manage: 'javascript:alert(1)' }, authors: {},
-    entries: [{ id: 'e00001', type: 'scenario', name: '水の都', author: '清葉雪見', version: '1.02', format: 'wsn', compat: { cw150: 'no', next: 'no', py: 'expected' }, downloads: [{ label: '配布元', url: 'https://uu.getuploader.com/u/', kind: 'list', status: 'active' }], tags: ['長編'], claim: 'proxy' }],
+    entries: [{ id: 'e00001', type: 'scenario', name: 'デバッグ読みシナ', author: 'テスト作者', version: '1.02', format: 'wsn', compat: { cw150: 'no', next: 'no', py: 'expected' }, downloads: [{ label: '配布元', url: 'https://uu.getuploader.com/u/', kind: 'list', status: 'active' }], tags: ['長編'], claim: 'proxy' }],
   });
   assert.equal(cat.entries[0].claim, 'proxy');
   assert.equal(cat.entries[0].downloads[0].kind, 'list');
@@ -615,8 +628,8 @@ test('共用カタログ：一時保留中・出典・改変版・確かめた�
   const shared = parseCatalog({
     format: 1, attribution: { name: 'CW共用カタログ', url: 'https://example.github.io/cw/' }, license: 'CC0-1.0',
     entries: [
-      { id: 'e00001', name: '鳥籠', author: '雪見', state: 'held', held_reason: '無断改変の疑い', downloads: [{ url: 'https://a.example/x.zip' }] },
-      { id: 'e00002', name: '森', author: '雪見', checked: 'readme', derivative: { of: '元の森', basis: 'Readmeに改変可と記載' }, origin: { name: '前の一覧', url: 'https://old.example/' }, downloads: [] },
+      { id: 'e00001', name: 'サンプル店', author: 'テスト作者', state: 'held', held_reason: '無断改変の疑い', downloads: [{ url: 'https://a.example/x.zip' }] },
+      { id: 'e00002', name: '森', author: 'テスト作者', checked: 'readme', derivative: { of: '元の森', basis: 'Readmeに改変可と記載' }, origin: { name: '前の一覧', url: 'https://old.example/' }, downloads: [] },
       { id: 'e00003', name: '海', author: '空', state: 'deleted', downloads: [] },
     ],
   });
@@ -625,9 +638,9 @@ test('共用カタログ：一時保留中・出典・改変版・確かめた�
   const own = parseCatalog({ format: 1, entries: [{ id: 'p00001', name: '海', author: '空', downloads: [] }] });
   const c = combineCats([{ id: 's', kind: 'shared', name: '共用', catalog: shared }, { id: 'o', kind: 'own', name: 'マイ', catalog: own }]);
   const w = (n) => c.works.find((x) => x.name === n);
-  assert.equal(w('鳥籠').held, true);
-  assert.equal(w('鳥籠').heldReason, '無断改変の疑い');
-  assert.deepEqual(w('鳥籠').origins.map((o) => o.name), ['CW共用カタログ']);
+  assert.equal(w('サンプル店').held, true);
+  assert.equal(w('サンプル店').heldReason, '無断改変の疑い');
+  assert.deepEqual(w('サンプル店').origins.map((o) => o.name), ['CW共用カタログ']);
   assert.deepEqual(w('森').origins.map((o) => o.name), ['前の一覧']);
   assert.equal(w('森').derivative.basis, 'Readmeに改変可と記載');
   assert.equal(w('森').checked, 'readme');
@@ -686,13 +699,13 @@ import { guessFromLink, urlLines, bulkEntry, mergeEntry } from '../src/core/bulk
 
 test('まとめて登録：リンクから作品名とバージョンを推測する', () => {
   // リンクの文字が作品名なら、それを使う（バージョンは外す）
-  assert.deepEqual(guessFromLink({ url: 'https://example.com/dl/torikago_v1_01.zip', text: '開けられた鳥籠 ver1.01' }),
-    { name: '開けられた鳥籠', version: '1.01', fileName: 'torikago_v1_01.zip' });
+  assert.deepEqual(guessFromLink({ url: 'https://example.com/dl/sample_v1_01.zip', text: 'サンプル店 ver1.01' }),
+    { name: 'サンプル店', version: '1.01', fileName: 'sample_v1_01.zip' });
   // 「ダウンロード」などのときは、ファイル名から
-  assert.deepEqual(guessFromLink({ url: 'https://example.com/files/%E3%81%86%E3%81%95%E3%81%8E%E5%B0%8F%E5%B1%8BVer1.12.zip', text: 'ダウンロード' }),
-    { name: 'うさぎ小屋', version: '1.12', fileName: 'うさぎ小屋Ver1.12.zip' });
-  assert.equal(guessFromLink({ url: 'https://example.com/sayonara_230124.wsn', text: 'DL' }).version, '230124');
-  assert.equal(guessFromLink({ url: 'https://example.com/sayonara_230124.wsn', text: 'DL' }).name, 'sayonara');
+  assert.deepEqual(guessFromLink({ url: `https://example.com/files/${encodeURIComponent('テスト冒険譚Ver1.12')}.zip`, text: 'ダウンロード' }),
+    { name: 'テスト冒険譚', version: '1.12', fileName: 'テスト冒険譚Ver1.12.zip' });
+  assert.equal(guessFromLink({ url: 'https://example.com/debug_230124.wsn', text: 'DL' }).version, '230124');
+  assert.equal(guessFromLink({ url: 'https://example.com/debug_230124.wsn', text: 'DL' }).name, 'debug');
   assert.equal(guessFromLink({ url: 'https://example.com/a/b.zip', text: 'b.zip' }).name, 'b');
 });
 
