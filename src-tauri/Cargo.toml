@@ -9,17 +9,17 @@ rust-version = "1.77.2"
 # 版は「出てから2週間以上たったもの」に固定（サプライチェーン対策）。
 # JavaScript側（package.json）の @tauri-apps/* と、マイナー版をそろえること。
 [build-dependencies]
-tauri-build = { version = "=2.7.1", features = [] }
+tauri-build = { version = "=2.7.3", features = [] }
 
 [dependencies]
-tauri = { version = "=2.12.1", features = [] }
-tauri-plugin-fs = "=2.6.0"
-tauri-plugin-dialog = "=2.8.1"
+tauri = { version = "=2.12.2", features = [] }
+tauri-plugin-fs = "=2.7.1"
+tauri-plugin-dialog = "=2.8.3"
 # unsafe-headers：同意ページの送信で Cookie・Referer を付けるため
-tauri-plugin-http = { version = "=2.8.1", features = ["unsafe-headers"] }
-tauri-plugin-opener = "=2.7.0"
+tauri-plugin-http = { version = "=2.8.3", features = ["unsafe-headers"] }
+tauri-plugin-opener = "=2.7.2"
 # 2つ目の起動（.wsn のダブルクリック・リンク）を最初の窓に渡す
-tauri-plugin-single-instance = "=2.5.2"
+tauri-plugin-single-instance = "=2.5.4"
 # ポータブル版の更新の署名を確かめる（Tauriの自動更新と同じ仕組み・同じ鍵）
 minisign-verify = "=0.2.5"
 base64 = "=0.22.1"
