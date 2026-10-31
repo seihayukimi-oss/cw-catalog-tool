@@ -20,7 +20,32 @@ permissions:
   contents: read
 
 jobs:
+  # その版のリリース（下書きを含む）がもうあるときは、作らずに終わる。
+  # 下書きを公開するとタグができて、上の「タグを push したとき」でもう一度動くため（同じ版の下書きが2つになるのを防ぐ）
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 下書きのリリースも見るため（読むだけで、書かない）
+    outputs:
+      skip: ${{ steps.c.outputs.skip }}
+    steps:
+      - id: c
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="v${INPUT_VERSION#v}"; else TAG="$GITHUB_REF_NAME"; fi
+          if gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate -q '.[].tag_name' | grep -qx "$TAG"; then
+            echo "::notice title=作りませんでした::$TAG のリリース（下書きを含む）はもうあります"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: windows-latest
     permissions:
       contents: write # リリースの作成だけに使う
