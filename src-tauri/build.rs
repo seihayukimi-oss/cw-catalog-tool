@@ -12,6 +12,7 @@ fn main() {
                 "machine_key",
                 "default_store_dirs",
                 "open_folder",
+                "move_to_trash",
                 "portable_update_install",
                 "update_key_configured",
                 "downloads_list",

@@ -272,6 +272,7 @@ fn main() {
             machine::machine_key,
             folders::default_store_dirs,
             folders::open_folder,
+            folders::move_to_trash,
             update::portable_update_install,
             update::update_key_configured,
             downloads::downloads_list,

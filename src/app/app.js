@@ -245,7 +245,10 @@ async function deleteRecordFiles(r) {
     const d = await dirOf(r.engineId, true);
     if (!d) throw new Error('フォルダに接続できませんでした');
     let m;
-    if (ans.backup) {
+    if (ans.how === 'trash') {
+      await S.platform.trash([engine(r.engineId).ref.replace(/[\\/]+$/, ''), ...r.path.split('/')].join('\\'));
+      m = 'ごみ箱に移動しました';
+    } else if (ans.how === 'backup') {
       const dest = await moveToBackup(d, r.path, await backupOpts('engine', r.engineId));
       m = `削除しました（バックアップ：${backupFull('engine', r.engineId, dest)}）`;
     } else {

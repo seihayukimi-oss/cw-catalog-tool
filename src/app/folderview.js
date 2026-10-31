@@ -46,25 +46,32 @@ export function mineTools({ rootLabel, onCreate }) {
 export const deleteBtn = (onclick) => h('button', { class: 'btn sm danger delete-btn', onclick }, '🗑️削除する');
 
 /**
- * 削除の確認（バックアップを取る が最初からON）
- * @returns {Promise<{backup: boolean}|null>}
+ * 削除の確認。消し方を選ぶ：アプリ版は「ごみ箱に移動」が最初から選ばれている（HTML版はごみ箱が使えないので「バックアップを取る」）
+ * @returns {Promise<{how: 'trash'|'backup'|'delete'}|null>}
  */
 export function confirmDelete({ name, path, place, note }) {
+  const canTrash = !!S.platform.canTrash;
   return modal((close) => {
-    const box = h('input', { type: 'checkbox', checked: true, id: 'delete-backup', 'aria-label': 'バックアップを取る' });
-    const warn = h('p', { class: 'note bad small', style: 'margin:0', hidden: true }, 'バックアップを取らない場合、削除したファイルは復元できません（ごみ箱にも移動されません）。');
-    box.addEventListener('change', () => { warn.hidden = box.checked; });
+    let how = canTrash ? 'trash' : 'backup';
+    const warn = h('p', { class: 'note bad small', style: 'margin:0', hidden: true }, '完全に削除した場合、削除したファイルは復元できません（ごみ箱にも移動されません）。');
+    const opt = (v, label, sub) => {
+      const r = h('input', { type: 'radio', name: 'delete-how', value: v, id: `delete-${v}`, checked: how === v });
+      r.addEventListener('change', () => { how = v; warn.hidden = v !== 'delete'; });
+      return h('label', { class: 'check', style: 'align-items:flex-start' }, r, h('span', {}, label, sub ? h('span', { class: 'small muted', style: 'display:block;word-break:break-all' }, sub) : null));
+    };
     return h('div', { class: 'stack', id: 'delete-confirm' },
       h('h2', {}, '🗑️ 削除する'),
       h('p', { style: 'margin:0' }, `「${name}」を削除します。よろしいですか？`),
       h('p', { class: 'small muted', style: 'margin:0;word-break:break-all' }, path),
       note ? h('p', { class: 'note warn small', style: 'margin:0' }, note) : null,
-      h('label', { class: 'check' }, box, 'バックアップを取る（削除せず CWCatalog_backup フォルダへ移動します）'),
-      h('p', { class: 'small muted', style: 'margin:0;word-break:break-all' }, `移動先：${place}`),
+      h('div', { class: 'stack', style: 'gap:6px' },
+        canTrash ? opt('trash', 'ごみ箱に移動する', 'Windows のごみ箱から元に戻せます') : null,
+        opt('backup', 'バックアップを取る（削除せず CWCatalog_backup フォルダへ移動します）', `移動先：${place}`),
+        opt('delete', '完全に削除する')),
       warn,
       h('div', { class: 'row', style: 'justify-content:flex-end' },
         h('button', { class: 'btn', onclick: () => close(null) }, 'やめる'),
-        h('button', { class: 'btn primary danger-fill', id: 'delete-go', onclick: () => close({ backup: box.checked }) }, '削除する')));
+        h('button', { class: 'btn primary danger-fill', id: 'delete-go', onclick: () => close({ how }) }, '削除する')));
   });
 }
 

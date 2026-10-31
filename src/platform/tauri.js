@@ -163,6 +163,12 @@ export const platform = {
     return invoke('default_store_dirs');
   },
 
+  /** Windows のごみ箱へ移す（アプリが触れてよいフォルダの中だけ） */
+  canTrash: true,
+  async trash(path) {
+    return invoke('move_to_trash', { path });
+  },
+
   /** フォルダをエクスプローラーで開く（アプリが触れてよいフォルダだけ） */
   async revealFolder(path) {
     return invoke('open_folder', { path });

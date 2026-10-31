@@ -547,7 +547,10 @@ async function deleteStashItem(r) {
     const d = await stashDirOf(kind, true);
     if (!d) throw new Error(`${k.place}を使う許可がありませんでした`);
     let m;
-    if (ans.backup) {
+    if (ans.how === 'trash') {
+      await S.platform.trash(joinPath(S.stash[kind].ref, r.path));
+      m = 'ごみ箱に移動しました';
+    } else if (ans.how === 'backup') {
       const dest = await moveToBackup(d, r.path, { anywhere: true, ...(await backupOpts(kind)) });
       m = `削除しました（バックアップ：${backupFull(kind, '', dest)}）`;
     } else {

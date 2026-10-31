@@ -16,6 +16,7 @@
     "allow-machine-key",
     "allow-default-store-dirs",
     "allow-open-folder",
+    "allow-move-to-trash",
     "allow-portable-update-install",
     "allow-update-key-configured",
     "allow-downloads-list",
