@@ -12,6 +12,8 @@ const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const changelog = parseChangelog(readFileSync('CHANGELOG.md', 'utf8'));
 if (!changelog.some((e) => e.version === pkg.version)) console.warn(`※ CHANGELOG.md に ${pkg.version} の項目がありません`);
 const css = readFileSync('src/app/style.css', 'utf8');
+// タブのアイコン：アプリのアイコン（src-tauri/icons）を、HTML の中に埋め込む（HTML版は1ファイルのため）
+const favicon = `data:image/png;base64,${readFileSync('src-tauri/icons/128x128.png').toString('base64')}`;
 const common = {
   bundle: true,
   minify: true,
@@ -34,6 +36,7 @@ function page({ script, scriptTag, csp }) {
 ${csp ? `<meta http-equiv="Content-Security-Policy" content="${csp}">` : ''}
 <meta name="referrer" content="no-referrer">
 <title>CWカタログ</title>
+<link rel="icon" type="image/png" href="${favicon}">
 <style>${css}</style>
 </head>
 <body>
