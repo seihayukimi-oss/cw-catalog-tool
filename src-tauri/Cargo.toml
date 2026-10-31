@@ -22,7 +22,7 @@ tauri-plugin-opener = "=2.7.0"
 tauri-plugin-single-instance = "=2.5.2"
 # ポータブル版の更新の署名を確かめる（Tauriの自動更新と同じ仕組み・同じ鍵）
 minisign-verify = "=0.2.5"
-base64 = "=0.22.1"
+base64 = "=0.23.1"
 # tauri::generate_context! とアプリ内ブラウザの通知が使う
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
