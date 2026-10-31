@@ -7,7 +7,7 @@
 
 import { installMaterial, moveWithin, moveToBackup, BACKUP_DIR } from '../core/install.js';
 import { safeRelativePath } from '../core/zip.js';
-import { existsAt } from '../core/fs.js';
+import { existsAt, removeAt } from '../core/fs.js';
 import { backupOpts, backupFull, backupPlace } from './backup.js';
 import { readSkin } from '../core/skin.js';
 import { S, render, busy, dirOf, engine, rerenderList } from './state.js';
@@ -17,7 +17,7 @@ import { applyCatalog } from './catalog-data.js';
 import { tagEditor, tagChips, pickTags, applyTags, addTagName } from './tags.js';
 import { catPicker } from './catpick.js';
 import { choosePlace } from './place.js';
-import { mineMode, folderTree, askFolderName, rerenderBody } from './folderview.js';
+import { mineMode, mineTools, folderTree, askFolderName, rerenderBody, deleteBtn, confirmDelete } from './folderview.js';
 
 export const MAT = '__mat';
 export const SKIN = '__skin';
@@ -502,18 +502,19 @@ export function viewStashMine(kind, makeSel) {
     groups.get(c).push(r);
   }
   const cats = S.categories[k.id] || [];
+  const onCreate = st?.ref && S.platform.canWriteFolders !== false ? () => createStashFolder(kind) : null;
   const filtering = !!(q || tg);
   const list = mineMode() === 'folder' && (recs.length || (!filtering && cats.length)) ? folderTree({
     ns: k.id, recs, cats, card: stashCard, filtering, rerender: rerenderBody(() => viewStashMine(kind, makeSel)),
     parentOf: (r) => (r.path.includes('/') ? r.path.split('/')[0] : ''),
     rootLabel: k.place, nested: false,
-    onCreate: st?.ref && S.platform.canWriteFolders !== false ? () => createStashFolder(kind) : null,
+    onCreate,
   }) : h('div', { class: 'list', id: 'mine-list' }, recs.length
     ? [...groups].map(([c, rs]) => h('details', { class: 'group', open: true },
       h('summary', {}, h('span', { class: 'group-name' }, c || '（分類なし）'), h('span', { class: 'badge plain' }, `${rs.length}件`)),
       rs.map(stashCard)))
     : h('p', { class: 'empty' }, mine.length ? '見つかりませんでした' : st?.ref ? 'まだ記録がありません。「読み取る」を押してください' : `まだ${k.place}が決まっていません`));
-  return h('div', {}, head, h('div', { id: 'mine-body' }, selBar, list));
+  return h('div', {}, head, h('div', { id: 'mine-body' }, selBar, mineTools({ rootLabel: k.place, onCreate }), list));
 }
 export const viewMaterialsMine = (makeSel) => viewStashMine('material', makeSel);
 
@@ -536,6 +537,32 @@ async function createStashFolder(kind) {
   render();
 }
 
+/** 削除モード：素材・スキンを削除する。最初はバックアップを取る（CWCatalog_backup へ移動） */
+async function deleteStashItem(r) {
+  const kind = kindOfId(r.engineId).key;
+  const k = KINDS[kind];
+  const ans = await confirmDelete({ name: r.name, path: `${k.place}：${r.path}`, place: backupPlace(kind) });
+  if (!ans) return;
+  const msg = await busy('削除する', async () => {
+    const d = await stashDirOf(kind, true);
+    if (!d) throw new Error(`${k.place}を使う許可がありませんでした`);
+    let m;
+    if (ans.backup) {
+      const dest = await moveToBackup(d, r.path, { anywhere: true, ...(await backupOpts(kind)) });
+      m = `削除しました（バックアップ：${backupFull(kind, '', dest)}）`;
+    } else {
+      await removeAt(d, r.path);
+      m = '削除しました';
+    }
+    await store.deleteRecord(r.id);
+    S.mineSel.delete(r.id);
+    S.records = await store.records();
+    return m;
+  });
+  if (msg) toast(msg, { ms: 8000 });
+  render();
+}
+
 function stashCard(r) {
   const save = async (patch) => { Object.assign(r, patch); await store.putRecord(r); S.records = await store.records(); render(); };
   const fav = (r.tags || []).includes('お気に入り');
@@ -549,7 +576,8 @@ function stashCard(r) {
       h('span', { class: 'item-title' }, r.name),
       h('span', { class: 'badge plain' }, r.kind === 'dir' ? 'フォルダ' : 'ファイル'),
       r.missing ? h('span', { class: 'badge bad' }, '見つからない') : null,
-      r.missing ? h('button', { class: 'btn ghost danger sm', onclick: async () => { await store.deleteRecord(r.id); S.records = await store.records(); render(); } }, '記録を消す') : null),
+      r.missing ? h('button', { class: 'btn ghost danger sm', onclick: async () => { await store.deleteRecord(r.id); S.records = await store.records(); render(); } }, '記録を消す') : null,
+      S.deleteMode && !r.missing ? deleteBtn(() => deleteStashItem(r)) : null),
     h('div', { class: 'meta' }, r.path),
     h('div', { class: 'row', style: 'margin-top:6px' }, tagEditor(r, save)));
 }

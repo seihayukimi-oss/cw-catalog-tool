@@ -12,24 +12,60 @@ export const MODE_LABEL = { folder: 'フォルダ表示', list: '一覧表示' }
 export const mineMode = () => (S.mineMode === 'list' ? 'list' : 'folder');
 export const UNSORTED_NOTE = 'このフォルダは実際のシナリオ・素材フォルダには作成されていません';
 
-/** エンジンのタブ・表示の切り替え・素材／スキン（検索欄の下に置く） */
+/** エンジンのタブ（素材・スキンの置き場所も同じ並びのタブ）。検索欄の下に置く */
 export function mineNav() {
   const go = async (fn) => { S.mineSel.clear(); await fn(); render(); };
-  const mode = mineMode();
-  const other = mode === 'folder' ? 'list' : 'folder';
+  const tab = (label, selected, fn) => h('button', { role: 'tab', 'aria-selected': selected ? 'true' : 'false', onclick: () => go(fn) }, label);
   return h('div', { class: 'mine-nav' },
     h('div', { class: 'engine-tabs', role: 'tablist', 'aria-label': 'エンジン' },
-      S.engines.map((x) => h('button', {
-        role: 'tab', 'aria-selected': !S.mineView && x.id === S.engineId ? 'true' : 'false',
-        onclick: () => go(async () => { S.mineView = ''; S.engineId = x.id; await store.set('engineId', x.id); }),
-      }, `${x.name}（${ENGINE_KINDS[x.kind]?.short || x.kind}）`))),
+      S.engines.map((x) => tab(`${x.name}（${ENGINE_KINDS[x.kind]?.short || x.kind}）`, !S.mineView && x.id === S.engineId,
+        async () => { S.mineView = ''; S.engineId = x.id; await store.set('engineId', x.id); })),
+      tab('素材の置き場所', S.mineView === 'mat', () => { S.mineView = 'mat'; }),
+      tab('スキンの置き場所', S.mineView === 'skin', () => { S.mineView = 'skin'; })));
+}
+
+/** 一覧の上の操作：新規フォルダを作成・表示の切り替え（フォルダ表示 ⇄ 一覧表示）・削除モード */
+export function mineTools({ rootLabel, onCreate }) {
+  const mode = mineMode();
+  const other = mode === 'folder' ? 'list' : 'folder';
+  const del = !!S.deleteMode;
+  return h('div', { class: 'row mine-tools', id: 'mine-tools' },
+    onCreate ? h('button', { class: 'btn sm', id: 'folder-new-root', onclick: () => onCreate('') }, `${rootLabel} 内に新規フォルダを作成`) : null,
     h('button', {
       class: 'btn sm mode-btn', id: 'mine-mode', title: `押すと${MODE_LABEL[other]}に切り替えます`,
       onclick: async () => { S.mineMode = other; await store.set('mineMode', other); render(); },
     }, `表示：${MODE_LABEL[mode]}`),
-    h('div', { class: 'row stash-btns' },
-      h('button', { class: `btn sm${S.mineView === 'mat' ? ' on' : ''}`, 'aria-pressed': S.mineView === 'mat' ? 'true' : 'false', onclick: () => go(() => { S.mineView = 'mat'; }) }, '素材を表示'),
-      h('button', { class: `btn sm${S.mineView === 'skin' ? ' on' : ''}`, 'aria-pressed': S.mineView === 'skin' ? 'true' : 'false', onclick: () => go(() => { S.mineView = 'skin'; }) }, 'スキンを表示')));
+    h('button', {
+      class: `btn sm delete-mode${del ? ' on' : ''}`, id: 'delete-mode', 'aria-pressed': del ? 'true' : 'false',
+      title: del ? '押すと削除モードを終わります' : '押すと、各作品に「🗑️削除する」ボタンが出ます',
+      onclick: () => { S.deleteMode = !del; render(); },
+    }, `🗑️ ファイル・データ削除モード：${del ? 'ON' : 'OFF'}`));
+}
+
+/** 削除モードのときに各作品に付けるボタン */
+export const deleteBtn = (onclick) => h('button', { class: 'btn sm danger delete-btn', onclick }, '🗑️削除する');
+
+/**
+ * 削除の確認（バックアップを取る が最初からON）
+ * @returns {Promise<{backup: boolean}|null>}
+ */
+export function confirmDelete({ name, path, place, note }) {
+  return modal((close) => {
+    const box = h('input', { type: 'checkbox', checked: true, id: 'delete-backup', 'aria-label': 'バックアップを取る' });
+    const warn = h('p', { class: 'note bad small', style: 'margin:0', hidden: true }, 'バックアップを取らない場合、削除したファイルは復元できません（ごみ箱にも移動されません）。');
+    box.addEventListener('change', () => { warn.hidden = box.checked; });
+    return h('div', { class: 'stack', id: 'delete-confirm' },
+      h('h2', {}, '🗑️ 削除する'),
+      h('p', { style: 'margin:0' }, `「${name}」を削除します。よろしいですか？`),
+      h('p', { class: 'small muted', style: 'margin:0;word-break:break-all' }, path),
+      note ? h('p', { class: 'note warn small', style: 'margin:0' }, note) : null,
+      h('label', { class: 'check' }, box, 'バックアップを取る（削除せず CWCatalog_backup フォルダへ移動します）'),
+      h('p', { class: 'small muted', style: 'margin:0;word-break:break-all' }, `移動先：${place}`),
+      warn,
+      h('div', { class: 'row', style: 'justify-content:flex-end' },
+        h('button', { class: 'btn', onclick: () => close(null) }, 'やめる'),
+        h('button', { class: 'btn primary danger-fill', id: 'delete-go', onclick: () => close({ backup: box.checked }) }, '削除する')));
+  });
 }
 
 /** 新しいフォルダの名前を聞く（1段分の名前だけ。使えない文字は置き換える） */
@@ -123,7 +159,6 @@ export function folderTree(o) {
 
   const root = nodes.get('');
   return h('div', { class: 'list folder-tree', id: 'mine-list' },
-    o.onCreate ? h('div', { class: 'row' }, h('button', { class: 'btn sm', id: 'folder-new-root', onclick: () => o.onCreate('') }, `${o.rootLabel} 内に新規フォルダを作成`)) : null,
     [...root.dirs].sort(byName).map(folder),
     root.recs.length ? group('__unsorted', [h('span', { class: 'folder-name' }, '📁 未整理'), h('span', { class: 'badge plain' }, `${root.recs.length}件`)],
       () => h('div', { class: 'folder-body' }, h('p', { class: 'small muted', style: 'margin:4px 0' }, `※${UNSORTED_NOTE}`), root.recs.map(o.card))) : null,

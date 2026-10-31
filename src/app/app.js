@@ -28,15 +28,16 @@ import { decodeText } from '../core/text.js';
 import { openArchive } from '../core/archive.js';
 import { dirAt } from '../core/fs.js';
 import { openTidy, viewTidy } from './tidy.js';
-import { loadBackup, viewBackupSettings } from './backup.js';
+import { loadBackup, viewBackupSettings, backupOpts, backupFull, backupPlace } from './backup.js';
+import { moveToBackup } from '../core/install.js';
 import { loadLinkCheck, checkLinks, staleLink, markLink } from './linkcheck.js';
 import { viewSafetySettings } from './safety-view.js';
 import { viewChangelog, showWhatsNew } from './changelog-view.js';
 import { loadRatingPrefs, labelBadges, viewRatingSettings } from './ratings-view.js';
 import { CREDITS } from './credits.js';
 import { loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
-import { mineNav, mineMode, folderTree, askFolderName, openFolder, rerenderBody } from './folderview.js';
-import { existsAt } from '../core/fs.js';
+import { mineNav, mineTools, mineMode, folderTree, askFolderName, openFolder, rerenderBody, deleteBtn, confirmDelete } from './folderview.js';
+import { existsAt, removeAt } from '../core/fs.js';
 
 const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
 
@@ -171,12 +172,13 @@ function viewMine() {
         },
       }, '分類フォルダへ移す')) : null) : null;
   const filtering = !!(q || tg || S.filter.mineState);
+  const onCreate = connected && S.platform.canWriteFolders !== false ? (p) => createScenarioFolder(e, p) : null;
   const list = mineMode() === 'folder' && (recs.length || (!filtering && (S.categories[e.id] || []).length))
     ? folderTree({
       ns: e.id, recs, cats: S.categories[e.id] || [], card: recordCard, filtering, rerender: rerenderBody(viewMine),
       parentOf: (r) => (r.type === 'bookmark' ? null : (r.path || '').startsWith('Scenario/') ? r.path.split('/').slice(1, -1).join('/') : ''),
       rootLabel: 'Scenario', nested: true, otherLabel: 'カタログ外の登録（ブックマーク）',
-      onCreate: connected && S.platform.canWriteFolders !== false ? (p) => createScenarioFolder(e, p) : null,
+      onCreate,
     })
     : h('div', { class: 'list', id: 'mine-list' }, recs.length ? recs.map(recordCard) : h('p', { class: 'empty' }, recordsOf().length ? '見つかりませんでした' : 'まだ記録がありません。「読み取る」を押してください'));
 
@@ -207,7 +209,7 @@ function viewMine() {
       tagChips(allRecs),
     ),
     S.tidy ? viewTidy() : null,
-    h('div', { id: 'mine-body' }, selBar, list),
+    h('div', { id: 'mine-body' }, selBar, mineTools({ rootLabel: 'Scenario', onCreate }), list),
   );
 }
 
@@ -228,6 +230,33 @@ async function createScenarioFolder(e, parent) {
   if (!done) return;
   if (parent) openFolder(e.id, parent);
   toast(`Scenario/${rel} を作成しました`);
+  render();
+}
+
+/** 削除モード：作品（シナリオのフォルダ・zipなど）を削除する。最初はバックアップを取る（CWCatalog_backup へ移動） */
+async function deleteRecordFiles(r) {
+  const same = S.records.filter((x) => x.engineId === r.engineId && x.path === r.path);
+  const ans = await confirmDelete({
+    name: r.name || r.path.split('/').pop(), path: r.path, place: backupPlace('engine', r.engineId),
+    note: same.length > 1 ? `※このファイルには、ほかに${same.length - 1}件の作品が入っています。いっしょに削除されます。` : '',
+  });
+  if (!ans) return;
+  const msg = await busy('削除する', async () => {
+    const d = await dirOf(r.engineId, true);
+    if (!d) throw new Error('フォルダに接続できませんでした');
+    let m;
+    if (ans.backup) {
+      const dest = await moveToBackup(d, r.path, await backupOpts('engine', r.engineId));
+      m = `削除しました（バックアップ：${backupFull('engine', r.engineId, dest)}）`;
+    } else {
+      await removeAt(d, r.path);
+      m = '削除しました';
+    }
+    for (const x of same) { await store.deleteRecord(x.id); S.mineSel.delete(x.id); }
+    S.records = await store.records();
+    return m;
+  });
+  if (msg) toast(msg, { ms: 8000 });
   render();
 }
 
@@ -266,6 +295,7 @@ function recordCard(r) {
         r.pageUrl ? h('button', { class: 'btn ghost', onclick: () => S.platform.openUrl(r.pageUrl) }, '配布ページ') : null,
         work ? h('button', { class: 'btn ghost', onclick: () => { S.filter.cat = work.name; S.filter.catSource = ''; goTab('catalog'); } }, 'カタログ') : null,
         !work && r.type !== 'bookmark' && r.name ? h('button', { class: 'btn ghost', onclick: () => editEntry({ prefill: { entry: entryFromRecord(r) } }) }, '個人用カタログに登録') : null,
+        S.deleteMode && !r.missing && r.type !== 'bookmark' && r.path ? deleteBtn(() => deleteRecordFiles(r)) : null,
         r.missing || r.type === 'bookmark' ? h('button', { class: 'btn ghost danger', onclick: async () => { await store.deleteRecord(r.id); S.records = S.records.filter((x) => x.id !== r.id); render(); } }, '削除') : null,
       )),
     h('div', { class: 'meta' }, [r.author, r.type === 'bookmark' ? r.pageUrl : r.path].filter(Boolean).join('　')),

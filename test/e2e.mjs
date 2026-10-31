@@ -622,7 +622,7 @@ async function run(colorScheme, width) {
   ok('入れ先の様子：もう入っている（入れると前のものをバックアップしてから置き換える）', /もう入っています/.test(await page.locator('#mat-dest').textContent()));
   await page.locator('.card', { hasText: 'skin.zip' }).getByRole('button', { name: '閉じる' }).first().click();
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
-  await page.getByRole('button', { name: '素材を表示' }).click();
+  await page.getByRole('tab', { name: '素材の置き場所' }).click();
   const mat = page.locator('#mine-list .card', { hasText: 'スキン/skin' });
   await mat.waitFor();
   ok('素材の置き場所を一覧で見る（分類フォルダごと）', await page.locator('#mine-list details.group summary', { hasText: 'スキン' }).isVisible());
@@ -651,7 +651,7 @@ async function run(colorScheme, width) {
   await page.locator('#mat-done', { hasText: /MedievalFantasy\/和風テスト に入れました/ }).waitFor();
   ok('スキンを種類の分類フォルダに自動で入れる', true);
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
-  await page.getByRole('button', { name: 'スキンを表示' }).click();
+  await page.getByRole('tab', { name: 'スキンの置き場所' }).click();
   await page.locator('#mine-list .card', { hasText: 'MedievalFantasy/和風テスト' }).waitFor();
   ok('スキンの置き場所を一覧で見る', true);
   await page.getByRole('tablist', { name: 'エンジン' }).getByRole('tab').first().click();
