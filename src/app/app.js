@@ -28,16 +28,16 @@ import { decodeText } from '../core/text.js';
 import { openArchive } from '../core/archive.js';
 import { dirAt } from '../core/fs.js';
 import { openTidy, viewTidy } from './tidy.js';
-import { loadBackup, viewBackupSettings, backupOpts, backupFull, backupPlace } from './backup.js';
-import { moveToBackup } from '../core/install.js';
+import { loadBackup, viewBackupSettings } from './backup.js';
 import { loadLinkCheck, checkLinks, staleLink, markLink } from './linkcheck.js';
 import { viewSafetySettings } from './safety-view.js';
 import { viewChangelog, showWhatsNew } from './changelog-view.js';
 import { loadRatingPrefs, labelBadges, viewRatingSettings } from './ratings-view.js';
 import { CREDITS } from './credits.js';
 import { loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
-import { mineNav, mineTools, mineMode, folderTree, askFolderName, openFolder, rerenderBody, deleteBtn, confirmDelete } from './folderview.js';
-import { existsAt, removeAt } from '../core/fs.js';
+import { mineNav, mineTools, mineMode, folderTree, askFolderName, openFolder, rerenderBody, deleteBtn } from './folderview.js';
+import { setRescanEngine, deleteItems, copyItems, selection, favoriteAll, selectModeBtn, copyBtn, folderRel } from './fileops.js';
+import { existsAt } from '../core/fs.js';
 
 const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
 
@@ -67,6 +67,7 @@ export async function startApp(platform) {
   S.engines = await store.engines();
   S.engineId = (await store.get('engineId')) || S.engines[0]?.id || null;
   S.mineMode = (await store.get('mineMode')) || 'folder';
+  setRescanEngine(scanEngine);
   S.categories = (await store.get('categories')) || {};
   S.archive = { on: false, ref: null, label: '', ...((await store.get('archive')) || {}) };
   await loadCatalogs();
@@ -151,17 +152,26 @@ function viewMine() {
   const updates = S.records.filter((r) => r.state === 'update' && workOf(r) && r.type !== 'bookmark');
   const outside = recordsOf().filter((r) => !r.missing && r.type !== 'bookmark' && !workOf(r) && r.name);
 
-  const sel = recs.filter((r) => S.mineSel.has(r.id));
-  const selBar = recs.length ? h('div', { class: 'card batch-bar', id: 'mine-bar' },
+  const loc = { kind: 'engine', id: e.id };
+  const pickd = selection(loc, recordsOf());
+  const sel = pickd.records;
+  const nPicked = recs.filter((r) => S.mineSel.has(r.id)).length + pickd.folders.length;
+  const selBar = recs.length || pickd.folders.length || (S.categories[e.id] || []).length ? h('div', { class: 'card batch-bar', id: 'mine-bar' },
     h('div', { class: 'row' },
       h('span', { class: 'small' }, `${recs.length}件${q || tg || S.filter.mineState ? '（絞り込み中）' : ''}`),
-      h('button', { class: 'btn sm', disabled: sel.length === recs.length, onclick: () => { recs.forEach((r) => S.mineSel.add(r.id)); render(); } }, '表示中をすべて選ぶ'),
-      sel.length ? h('button', { class: 'btn ghost sm', onclick: () => { S.mineSel.clear(); render(); } }, '選択を解除') : null),
-    sel.length ? h('div', { class: 'row sel-actions' },
-      h('b', { class: 'small' }, `選んだ${sel.length}件に：`),
-      h('button', { class: 'btn primary sm', onclick: async () => { const t = await pickTags(`${sel.length}件にタグを付ける`); if (t?.length) { await applyTags(sel, t, []); toast(`${sel.length}件に「${t.join('・')}」を付けました`); render(); } } }, 'タグを付ける'),
-      h('button', { class: 'btn sm', onclick: async () => { const present = [...new Set(sel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${sel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(sel, [], t); toast(`${sel.length}件から「${t.join('・')}」を外しました`); render(); } } }, 'タグを外す'),
-      h('button', { class: 'btn sm', onclick: () => retagFromReadme(sel) }, 'Readmeからタグを付ける'),
+      selectModeBtn(),
+      S.selectMode ? h('button', { class: 'btn sm', disabled: recs.every((r) => S.mineSel.has(r.id)), onclick: () => { recs.forEach((r) => S.mineSel.add(r.id)); render(); } }, '表示中をすべて選ぶ') : null,
+      S.selectMode && nPicked ? h('button', { class: 'btn ghost sm', onclick: () => { S.mineSel.clear(); S.folderSel?.clear(); render(); } }, '選択を解除') : null),
+    S.selectMode && nPicked ? h('div', { class: 'row sel-actions' },
+      h('b', { class: 'small' }, `選んだもの（${pickd.folders.length ? `フォルダ${pickd.folders.length}件・` : ''}作品${sel.length}件）に：`),
+      h('button', { class: 'btn primary sm', disabled: !sel.length, onclick: async () => { const t = await pickTags(`${sel.length}件にタグを付ける`); if (t?.length) { await applyTags(sel, t, []); toast(`${sel.length}件に「${t.join('・')}」を付けました`); render(); } } }, 'タグを付ける'),
+      h('button', { class: 'btn sm', disabled: !sel.length, onclick: async () => { const present = [...new Set(sel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${sel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(sel, [], t); toast(`${sel.length}件から「${t.join('・')}」を外しました`); render(); } } }, 'タグを外す'),
+      h('button', { class: 'btn sm', disabled: !sel.length, onclick: () => favoriteAll(sel) }, '★お気に入りにする'),
+      h('button', {
+        class: 'btn sm', disabled: !sel.length, title: 'カタログにまだ無い作品を、個人用カタログに登録します',
+        onclick: () => { const out = sel.filter((r) => !r.missing && r.type !== 'bookmark' && !workOf(r) && r.name); if (!out.length) { toast('個人用カタログに登録できる作品がありません（カタログにある作品・ブックマークは登録しません）', { bad: true }); return; } registerOutside(out); },
+      }, '個人用カタログに登録'),
+      h('button', { class: 'btn sm', disabled: !sel.length, onclick: () => retagFromReadme(sel) }, 'Readmeからタグを付ける'),
       h('button', {
         class: 'btn sm', title: 'Scenario の中の分類フォルダ（例：Scenario/_店）へ、実際のフォルダを動かします',
         onclick: async () => {
@@ -170,7 +180,9 @@ function viewMine() {
           await moveToCategory(ok);
           render();
         },
-      }, '分類フォルダへ移す')) : null) : null;
+      }, '分類フォルダへ移す'),
+      S.deleteMode ? h('button', { class: 'btn sm danger delete-btn', disabled: !pickd.items.length, onclick: () => deleteItems(loc, pickd.items) }, '🗑️選んだものを削除') : null,
+      S.copyMode ? h('button', { class: 'btn sm copy-btn', disabled: !pickd.items.length, onclick: () => copyItems(loc, pickd.items) }, '📋選んだものをコピー') : null) : null) : null;
   const filtering = !!(q || tg || S.filter.mineState);
   const onCreate = connected && S.platform.canWriteFolders !== false ? (p) => createScenarioFolder(e, p) : null;
   const list = mineMode() === 'folder' && (recs.length || (!filtering && (S.categories[e.id] || []).length))
@@ -179,6 +191,8 @@ function viewMine() {
       parentOf: (r) => (r.type === 'bookmark' ? null : (r.path || '').startsWith('Scenario/') ? r.path.split('/').slice(1, -1).join('/') : ''),
       rootLabel: 'Scenario', nested: true, otherLabel: 'カタログ外の登録（ブックマーク）',
       onCreate,
+      onDeleteFolder: connected ? (p) => deleteItems(loc, [{ rel: folderRel(loc, p), name: p.split('/').pop(), isFolder: true }]) : null,
+      onCopyFolder: connected ? (p) => copyItems(loc, [{ rel: folderRel(loc, p), name: p.split('/').pop(), isFolder: true }]) : null,
     })
     : h('div', { class: 'list', id: 'mine-list' }, recs.length ? recs.map(recordCard) : h('p', { class: 'empty' }, recordsOf().length ? '見つかりませんでした' : 'まだ記録がありません。「読み取る」を押してください'));
 
@@ -233,34 +247,10 @@ async function createScenarioFolder(e, parent) {
   render();
 }
 
-/** 削除モード：作品（シナリオのフォルダ・zipなど）を削除する。最初はバックアップを取る（CWCatalog_backup へ移動） */
-async function deleteRecordFiles(r) {
+/** 削除モード・コピーモード：1つの作品（シナリオのフォルダ・zipなど） */
+function recordItem(r) {
   const same = S.records.filter((x) => x.engineId === r.engineId && x.path === r.path);
-  const ans = await confirmDelete({
-    name: r.name || r.path.split('/').pop(), path: r.path, place: backupPlace('engine', r.engineId),
-    note: same.length > 1 ? `※このファイルには、ほかに${same.length - 1}件の作品が入っています。いっしょに削除されます。` : '',
-  });
-  if (!ans) return;
-  const msg = await busy('削除する', async () => {
-    const d = await dirOf(r.engineId, true);
-    if (!d) throw new Error('フォルダに接続できませんでした');
-    let m;
-    if (ans.how === 'trash') {
-      await S.platform.trash([engine(r.engineId).ref.replace(/[\\/]+$/, ''), ...r.path.split('/')].join('\\'));
-      m = 'ごみ箱に移動しました';
-    } else if (ans.how === 'backup') {
-      const dest = await moveToBackup(d, r.path, await backupOpts('engine', r.engineId));
-      m = `削除しました（バックアップ：${backupFull('engine', r.engineId, dest)}）`;
-    } else {
-      await removeAt(d, r.path);
-      m = '削除しました';
-    }
-    for (const x of same) { await store.deleteRecord(x.id); S.mineSel.delete(x.id); }
-    S.records = await store.records();
-    return m;
-  });
-  if (msg) toast(msg, { ms: 8000 });
-  render();
+  return { item: { rel: r.path, name: r.name || r.path.split('/').pop() }, note: same.length > 1 ? `※このファイルには、ほかに${same.length - 1}件の作品が入っています。いっしょに削除されます。` : '' };
 }
 
 function recordCard(r) {
@@ -279,7 +269,7 @@ function recordCard(r) {
   return h('div', { class: 'card' },
     h('div', { class: 'row between' },
       h('div', { class: 'row' },
-        pick,
+        S.selectMode ? pick : null,
         h('button', {
           class: `btn star${(r.tags || []).includes('お気に入り') ? ' on' : ''}`, 'aria-label': `${r.name}をお気に入りにする`, 'aria-pressed': (r.tags || []).includes('お気に入り') ? 'true' : 'false',
           title: '「お気に入り」タグを付ける・外す',
@@ -298,7 +288,8 @@ function recordCard(r) {
         r.pageUrl ? h('button', { class: 'btn ghost', onclick: () => S.platform.openUrl(r.pageUrl) }, '配布ページ') : null,
         work ? h('button', { class: 'btn ghost', onclick: () => { S.filter.cat = work.name; S.filter.catSource = ''; goTab('catalog'); } }, 'カタログ') : null,
         !work && r.type !== 'bookmark' && r.name ? h('button', { class: 'btn ghost', onclick: () => editEntry({ prefill: { entry: entryFromRecord(r) } }) }, '個人用カタログに登録') : null,
-        S.deleteMode && !r.missing && r.type !== 'bookmark' && r.path ? deleteBtn(() => deleteRecordFiles(r)) : null,
+        S.deleteMode && !r.missing && r.type !== 'bookmark' && r.path ? deleteBtn(() => { const x = recordItem(r); deleteItems({ kind: 'engine', id: r.engineId }, [x.item], { note: x.note }); }) : null,
+        S.copyMode && !r.missing && r.type !== 'bookmark' && r.path ? copyBtn(() => copyItems({ kind: 'engine', id: r.engineId }, [recordItem(r).item])) : null,
         r.missing || r.type === 'bookmark' ? h('button', { class: 'btn ghost danger', onclick: async () => { await store.deleteRecord(r.id); S.records = S.records.filter((x) => x.id !== r.id); render(); } }, '削除') : null,
       )),
     h('div', { class: 'meta' }, [r.author, r.type === 'bookmark' ? r.pageUrl : r.path].filter(Boolean).join('　')),

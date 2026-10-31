@@ -283,3 +283,6 @@ details.folder > .folder-body { margin-left: 1.1em; padding-left: 10px; border-l
 /* いちばん上の右：アプリの更新を確認 */
 nav.tabs button.app-update { margin-left: auto; align-self: center; border: 1px solid var(--accent); border-radius: 8px; padding: 4px 12px; color: var(--accent); background: var(--panel); font-size: .88rem; }
 nav.tabs button.app-update:hover { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.mine-tools .copy-mode.on, .batch-bar .select-mode.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.copy-btn { border-color: var(--accent); color: var(--accent); }
+details.folder > summary .folder-pick { margin: 0; }

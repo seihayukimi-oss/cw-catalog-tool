@@ -7,7 +7,7 @@
 
 import { installMaterial, moveWithin, moveToBackup, BACKUP_DIR } from '../core/install.js';
 import { safeRelativePath } from '../core/zip.js';
-import { existsAt, removeAt } from '../core/fs.js';
+import { existsAt } from '../core/fs.js';
 import { backupOpts, backupFull, backupPlace } from './backup.js';
 import { readSkin } from '../core/skin.js';
 import { S, render, busy, dirOf, engine, rerenderList } from './state.js';
@@ -17,7 +17,8 @@ import { applyCatalog } from './catalog-data.js';
 import { tagEditor, tagChips, pickTags, applyTags, addTagName } from './tags.js';
 import { catPicker } from './catpick.js';
 import { choosePlace } from './place.js';
-import { mineMode, mineTools, folderTree, askFolderName, rerenderBody, deleteBtn, confirmDelete } from './folderview.js';
+import { mineMode, mineTools, folderTree, askFolderName, rerenderBody, deleteBtn } from './folderview.js';
+import { deleteItems, copyItems, selection, favoriteAll, selectModeBtn, copyBtn } from './fileops.js';
 
 export const MAT = '__mat';
 export const SKIN = '__skin';
@@ -484,16 +485,24 @@ export function viewStashMine(kind, makeSel) {
       st?.ref ? `${k.place}：${st.label}${st.lastScan ? `／最後に読み取った日時：${fmtDate(st.lastScan)}／${mine.length}件` : ''}` : `${k.label}は「シナリオ・素材・スキンをDLする」タブで開くと、ここ（${k.place}）に分類して入れられます。`),
     tagChips(allRecs));
 
-  const selBar = recs.length ? h('div', { class: 'card batch-bar', id: 'mine-bar' },
+  const loc = { kind };
+  const pickd = selection(loc, mine);
+  const psel = pickd.records;
+  const nPicked = recs.filter((r) => S.mineSel.has(r.id)).length + pickd.folders.length;
+  const selBar = recs.length || pickd.folders.length ? h('div', { class: 'card batch-bar', id: 'mine-bar' },
     h('div', { class: 'row' },
       h('span', { class: 'small' }, `${recs.length}件${q || tg ? '（絞り込み中）' : ''}`),
-      h('button', { class: 'btn sm', disabled: sel.length === recs.length, onclick: () => { recs.forEach((r) => S.mineSel.add(r.id)); render(); } }, '表示中をすべて選ぶ'),
-      sel.length ? h('button', { class: 'btn ghost sm', onclick: () => { S.mineSel.clear(); render(); } }, '選択を解除') : null),
-    sel.length ? h('div', { class: 'row sel-actions' },
-      h('b', { class: 'small' }, `選んだ${sel.length}件に：`),
-      h('button', { class: 'btn primary sm', onclick: async () => { const t = await pickTags(`${sel.length}件にタグを付ける`); if (t?.length) { await applyTags(sel, t, []); render(); } } }, 'タグを付ける'),
-      h('button', { class: 'btn sm', onclick: async () => { const present = [...new Set(sel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${sel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(sel, [], t); render(); } } }, 'タグを外す'),
-      h('button', { class: 'btn sm', onclick: async () => { const ok = sel.filter((r) => !r.missing); if (ok.length) await moveToCategory(ok); render(); } }, '分類フォルダへ移す')) : null) : null;
+      selectModeBtn(),
+      S.selectMode ? h('button', { class: 'btn sm', disabled: recs.every((r) => S.mineSel.has(r.id)), onclick: () => { recs.forEach((r) => S.mineSel.add(r.id)); render(); } }, '表示中をすべて選ぶ') : null,
+      S.selectMode && nPicked ? h('button', { class: 'btn ghost sm', onclick: () => { S.mineSel.clear(); S.folderSel?.clear(); render(); } }, '選択を解除') : null),
+    S.selectMode && nPicked ? h('div', { class: 'row sel-actions' },
+      h('b', { class: 'small' }, `選んだもの（${pickd.folders.length ? `フォルダ${pickd.folders.length}件・` : ''}${k.label}${psel.length}件）に：`),
+      h('button', { class: 'btn primary sm', disabled: !psel.length, onclick: async () => { const t = await pickTags(`${psel.length}件にタグを付ける`); if (t?.length) { await applyTags(psel, t, []); render(); } } }, 'タグを付ける'),
+      h('button', { class: 'btn sm', disabled: !psel.length, onclick: async () => { const present = [...new Set(psel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${psel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(psel, [], t); render(); } } }, 'タグを外す'),
+      h('button', { class: 'btn sm', disabled: !psel.length, onclick: () => favoriteAll(psel) }, '★お気に入りにする'),
+      h('button', { class: 'btn sm', onclick: async () => { const ok = psel.filter((r) => !r.missing); if (ok.length) await moveToCategory(ok); render(); } }, '分類フォルダへ移す'),
+      S.deleteMode ? h('button', { class: 'btn sm danger delete-btn', disabled: !pickd.items.length, onclick: () => deleteItems(loc, pickd.items) }, '🗑️選んだものを削除') : null,
+      S.copyMode ? h('button', { class: 'btn sm copy-btn', disabled: !pickd.items.length, onclick: () => copyItems(loc, pickd.items) }, '📋選んだものをコピー') : null) : null) : null;
 
   const groups = new Map();
   for (const r of recs) {
@@ -509,6 +518,8 @@ export function viewStashMine(kind, makeSel) {
     parentOf: (r) => (r.path.includes('/') ? r.path.split('/')[0] : ''),
     rootLabel: k.place, nested: false,
     onCreate,
+    onDeleteFolder: st?.ref ? (p) => deleteItems(loc, [{ rel: p, name: p, isFolder: true }]) : null,
+    onCopyFolder: st?.ref ? (p) => copyItems(loc, [{ rel: p, name: p, isFolder: true }]) : null,
   }) : h('div', { class: 'list', id: 'mine-list' }, recs.length
     ? [...groups].map(([c, rs]) => h('details', { class: 'group', open: true },
       h('summary', {}, h('span', { class: 'group-name' }, c || '（分類なし）'), h('span', { class: 'badge plain' }, `${rs.length}件`)),
@@ -537,41 +548,14 @@ async function createStashFolder(kind) {
   render();
 }
 
-/** 削除モード：素材・スキンを削除する。最初はバックアップを取る（CWCatalog_backup へ移動） */
-async function deleteStashItem(r) {
-  const kind = kindOfId(r.engineId).key;
-  const k = KINDS[kind];
-  const ans = await confirmDelete({ name: r.name, path: `${k.place}：${r.path}`, place: backupPlace(kind) });
-  if (!ans) return;
-  const msg = await busy('削除する', async () => {
-    const d = await stashDirOf(kind, true);
-    if (!d) throw new Error(`${k.place}を使う許可がありませんでした`);
-    let m;
-    if (ans.how === 'trash') {
-      await S.platform.trash(joinPath(S.stash[kind].ref, r.path));
-      m = 'ごみ箱に移動しました';
-    } else if (ans.how === 'backup') {
-      const dest = await moveToBackup(d, r.path, { anywhere: true, ...(await backupOpts(kind)) });
-      m = `削除しました（バックアップ：${backupFull(kind, '', dest)}）`;
-    } else {
-      await removeAt(d, r.path);
-      m = '削除しました';
-    }
-    await store.deleteRecord(r.id);
-    S.mineSel.delete(r.id);
-    S.records = await store.records();
-    return m;
-  });
-  if (msg) toast(msg, { ms: 8000 });
-  render();
-}
+const locOfRec = (r) => ({ kind: kindOfId(r.engineId).key });
 
 function stashCard(r) {
   const save = async (patch) => { Object.assign(r, patch); await store.putRecord(r); S.records = await store.records(); render(); };
   const fav = (r.tags || []).includes('お気に入り');
   return h('div', { class: 'card' },
     h('div', { class: 'row' },
-      h('input', { type: 'checkbox', checked: S.mineSel.has(r.id), 'aria-label': `${r.name}を選ぶ`, onchange: (ev) => { if (ev.target.checked) S.mineSel.add(r.id); else S.mineSel.delete(r.id); render(); } }),
+      !S.selectMode ? null : h('input', { type: 'checkbox', checked: S.mineSel.has(r.id), 'aria-label': `${r.name}を選ぶ`, onchange: (ev) => { if (ev.target.checked) S.mineSel.add(r.id); else S.mineSel.delete(r.id); render(); } }),
       h('button', {
         class: `btn star${fav ? ' on' : ''}`, 'aria-label': `${r.name}をお気に入りにする`, 'aria-pressed': fav ? 'true' : 'false', title: '「お気に入り」タグを付ける・外す',
         onclick: async () => { await addTagName('お気に入り'); await save({ tags: fav ? r.tags.filter((t) => t !== 'お気に入り') : [...(r.tags || []), 'お気に入り'] }); },
@@ -580,7 +564,8 @@ function stashCard(r) {
       h('span', { class: 'badge plain' }, r.kind === 'dir' ? 'フォルダ' : 'ファイル'),
       r.missing ? h('span', { class: 'badge bad' }, '見つからない') : null,
       r.missing ? h('button', { class: 'btn ghost danger sm', onclick: async () => { await store.deleteRecord(r.id); S.records = await store.records(); render(); } }, '記録を消す') : null,
-      S.deleteMode && !r.missing ? deleteBtn(() => deleteStashItem(r)) : null),
+      S.deleteMode && !r.missing ? deleteBtn(() => deleteItems(locOfRec(r), [{ rel: r.path, name: r.name }])) : null,
+      S.copyMode && !r.missing ? copyBtn(() => copyItems(locOfRec(r), [{ rel: r.path, name: r.name }])) : null),
     h('div', { class: 'meta' }, r.path),
     h('div', { class: 'row', style: 'margin-top:6px' }, tagEditor(r, save)));
 }

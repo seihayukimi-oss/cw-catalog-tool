@@ -167,6 +167,10 @@ async function run(colorScheme, width) {
   // ここからの試験は一覧表示で行う（選んだ表示は覚えておく）
   await page.locator('#mine-mode').click();
   ok('一覧表示に切り替え', (await page.locator('#mine-mode').textContent()) === '表示：一覧表示');
+  // チェック欄は選択モードのときだけ出る。ここからの試験は選択モードONで行う
+  ok('選択モードOFFのときはチェック欄なし', !(await page.locator('#mine-list > .card input[type=checkbox]').count()));
+  await page.locator('#select-mode').click();
+  ok('選択モードON', (await page.locator('#select-mode').textContent()) === '☑ 選択モード：ON');
   ok('既存シナリオの読み取り', await page.getByText(CL.name).isVisible());
   ok('名前から版を推測（既存フォルダには版表記なし）', !(await page.getByText(/推測「/).count()));
 

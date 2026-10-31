@@ -39,7 +39,12 @@ export function mineTools({ rootLabel, onCreate }) {
       class: `btn sm delete-mode${del ? ' on' : ''}`, id: 'delete-mode', 'aria-pressed': del ? 'true' : 'false',
       title: del ? '押すと削除モードを終わります' : '押すと、各作品に「🗑️削除する」ボタンが出ます',
       onclick: () => { S.deleteMode = !del; render(); },
-    }, `🗑️ ファイル・データ削除モード：${del ? 'ON' : 'OFF'}`));
+    }, `🗑️ ファイル・データ削除モード：${del ? 'ON' : 'OFF'}`),
+    h('button', {
+      class: `btn sm copy-mode${S.copyMode ? ' on' : ''}`, id: 'copy-mode', 'aria-pressed': S.copyMode ? 'true' : 'false',
+      title: S.copyMode ? '押すとコピーモードを終わります' : '押すと、各作品・フォルダに「📋コピーする先を選択」ボタンが出ます',
+      onclick: () => { S.copyMode = !S.copyMode; render(); },
+    }, `📋 コピーモード：${S.copyMode ? 'ON' : 'OFF'}`));
 }
 
 /** 削除モードのときに各作品に付けるボタン */
@@ -105,7 +110,9 @@ export function openFolder(ns, path) {
  * フォルダ表示
  * @param {{ns: string, recs: object[], cats: string[], parentOf: (r: object) => string|null, card: (r: object) => HTMLElement,
  *          filtering: boolean, rerender: () => void, rootLabel: string,
- *          onCreate?: (parent: string) => void, nested?: boolean, otherLabel?: string}} o
+ *          onCreate?: (parent: string) => void, nested?: boolean, otherLabel?: string,
+ *          onDeleteFolder?: (path: string) => void, onCopyFolder?: (path: string) => void}} o
+ *   選択モードのときは、フォルダにもチェック欄（S.folderSel に「ns:フォルダ」で入れる）
  *   parentOf：記録が入っているフォルダ（''＝直下＝未整理、null＝フォルダの無いもの（カタログ外の登録など））
  */
 export function folderTree(o) {
@@ -152,12 +159,28 @@ export function folderTree(o) {
     class: 'btn ghost sm', title: `「${p}」の中に、新しいフォルダを作ります`,
     onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); o.onCreate(p); },
   }, 'ここに新規フォルダを作成');
+  S.folderSel ??= new Set();
+  const stop = (fn) => (ev) => { ev.preventDefault(); ev.stopPropagation(); fn(); };
+  const folderPick = (p) => {
+    const key = `${o.ns}:${p}`;
+    const box = h('input', { type: 'checkbox', checked: S.folderSel.has(key), 'aria-label': `フォルダ「${p}」を選ぶ`, class: 'folder-pick' });
+    // チェック欄を押しても、フォルダが開け閉めしないように
+    box.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (box.checked) S.folderSel.add(key); else S.folderSel.delete(key);
+      o.rerender();
+    });
+    return box;
+  };
   const folder = (p) => {
     const n = nodes.get(p);
     return group(p, [
+      S.selectMode ? folderPick(p) : null,
       h('span', { class: 'folder-name' }, `📁 ${p.split('/').pop()}`),
       h('span', { class: 'badge plain' }, `${count(p)}件`),
       o.onCreate && o.nested ? createBtn(p) : null,
+      S.deleteMode && o.onDeleteFolder ? h('button', { class: 'btn sm danger delete-btn', onclick: stop(() => o.onDeleteFolder(p)) }, '🗑️削除する') : null,
+      S.copyMode && o.onCopyFolder ? h('button', { class: 'btn sm copy-btn', onclick: stop(() => o.onCopyFolder(p)) }, '📋コピーする先を選択') : null,
     ], () => h('div', { class: 'folder-body' },
       [...n.dirs].sort(byName).map(folder),
       n.recs.map(o.card),
