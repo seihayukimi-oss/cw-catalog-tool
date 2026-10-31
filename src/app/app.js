@@ -171,7 +171,7 @@ function viewMine() {
       h('button', {
         class: 'btn sm', disabled: !sel.length, title: 'カタログにまだ無い作品を、個人用カタログに登録します',
         onclick: () => { const out = sel.filter((r) => !r.missing && r.type !== 'bookmark' && !workOf(r) && r.name); if (!out.length) { toast('個人用カタログに登録できる作品がありません（カタログにある作品・ブックマークは登録しません）', { bad: true }); return; } registerOutside(out); },
-      }, '個人用カタログに登録'),
+      }, '＋個人用カタログに登録'),
       h('button', { class: 'btn sm', disabled: !sel.length, onclick: () => retagFromReadme(sel) }, 'Readmeからタグを付ける'),
       h('button', {
         class: 'btn sm', title: 'Scenario の中の分類フォルダ（例：Scenario/_店）へ、実際のフォルダを動かします',
@@ -287,8 +287,8 @@ function recordCard(r) {
       h('div', { class: 'row' },
         r.readmes?.length ? h('button', { class: 'btn ghost', onclick: () => showReadmes(r) }, 'Readme') : null,
         r.pageUrl ? h('button', { class: 'btn ghost', onclick: () => S.platform.openUrl(r.pageUrl) }, '配布ページ') : null,
-        work ? h('button', { class: 'btn ghost', onclick: () => { S.filter.cat = work.name; S.filter.catSource = ''; goTab('catalog'); } }, 'カタログ') : null,
-        !work && r.type !== 'bookmark' && r.name ? h('button', { class: 'btn ghost', onclick: () => editEntry({ prefill: { entry: entryFromRecord(r) } }) }, '個人用カタログに登録') : null,
+        work ? h('button', { class: 'btn sm', title: 'カタログでこの作品を見ます', onclick: () => { S.filter.cat = work.name; S.filter.catSource = ''; goTab('catalog'); } }, '📖 カタログ') : null,
+        !work && r.type !== 'bookmark' && r.name ? h('button', { class: 'btn sm', title: 'この作品を個人用カタログに登録します', onclick: () => editEntry({ prefill: { entry: entryFromRecord(r) } }) }, '＋個人用カタログに登録') : null,
         S.deleteMode && !r.missing && r.type !== 'bookmark' && r.path ? deleteBtn(() => { const x = recordItem(r); deleteItems({ kind: 'engine', id: r.engineId }, [x.item], { note: x.note }); }) : null,
         S.copyMode && !r.missing && r.type !== 'bookmark' && r.path ? copyBtn(() => copyItems({ kind: 'engine', id: r.engineId }, [recordItem(r).item])) : null,
         r.missing || r.type === 'bookmark' ? h('button', { class: 'btn ghost danger', onclick: async () => { await store.deleteRecord(r.id); S.records = S.records.filter((x) => x.id !== r.id); render(); } }, '削除') : null,

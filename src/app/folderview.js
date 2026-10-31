@@ -156,9 +156,9 @@ export function folderTree(o) {
     return det;
   };
   const createBtn = (p) => h('button', {
-    class: 'btn ghost sm', title: `「${p}」の中に、新しいフォルダを作ります`,
+    class: 'btn sm', title: `「${p}」の中に、新しいフォルダを作ります`, 'aria-label': `「${p}」の中に新規フォルダを作成`,
     onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); o.onCreate(p); },
-  }, 'ここに新規フォルダを作成');
+  }, '＋📁');
   S.folderSel ??= new Set();
   const stop = (fn) => (ev) => { ev.preventDefault(); ev.stopPropagation(); fn(); };
   const folderPick = (p) => {
