@@ -87,7 +87,7 @@ async function analyze() {
             const o = await openArchive(bytes, f.path.split('/').pop());
             z.scenarios = o.scenarios.map((s) => ({ name: s.name, author: s.author, version: s.versionGuess || '' }));
           } catch (e) { errors.push(`${f.path}：${e.message}`); }
-        } else z.note = '大きいため中身は見ていません';
+        } else z.note = 'ファイルサイズが大きいため、内容は照合していません';
         zips.push(z);
       }
     }
@@ -155,16 +155,16 @@ async function perform(list, backup) {
         const kind = it.kind === 'rec' ? 'engine' : 'zip';
         const eid = it.kind === 'rec' ? it.rec.engineId : '';
         const dest = await moveToBackup(d, rel, { anywhere: it.kind === 'zip', ...(await backupOpts(kind, eid)) });
-        log.push(`移した　${labelOf(it)}\n　　→ ${backupFull(kind, eid, dest)}`);
+        log.push(`移動　${labelOf(it)}\n　　→ ${backupFull(kind, eid, dest)}`);
       } else {
         await removeAt(d, rel);
-        log.push(`消した　${labelOf(it)}`);
+        log.push(`削除　${labelOf(it)}`);
       }
       if (it.kind === 'rec') {
         for (const r of S.records.filter((x) => x.engineId === it.rec.engineId && x.path === rel)) await store.deleteRecord(r.id);
       }
     } catch (e) {
-      log.push(`できなかった　${labelOf(it)}：${e.message}`);
+      log.push(`失敗　${labelOf(it)}：${e.message}`);
     }
   }
   S.records = await store.records();
@@ -174,18 +174,18 @@ async function perform(list, backup) {
 /** 確認の一覧を見せてから整理する */
 async function confirmAndRun(title, plan, keeps = []) {
   const t = S.tidy;
-  if (!plan.length) { toast('整理するものがありません（除外しているものは触りません）'); return; }
+  if (!plan.length) { toast('整理対象のファイルはありません（除外設定中のファイルは対象外です）'); return; }
   const backupBox = h('input', { type: 'checkbox', checked: t.backup, 'aria-label': 'バックアップを用意する' });
   const places = [...new Set(plan.map(placeOf))];
-  const warn = h('p', { class: 'note bad small', style: 'margin:0', hidden: t.backup }, 'バックアップを用意しないので、下のものは元に戻せません（ごみ箱にも入りません）。');
+  const warn = h('p', { class: 'note bad small', style: 'margin:0', hidden: t.backup }, 'バックアップを作成しない場合、整理したファイルは復元できません（ごみ箱にも移動されません）。');
   backupBox.addEventListener('change', () => { warn.hidden = backupBox.checked; });
   const ok = await modal((close) => h('div', { class: 'stack' },
     h('h2', {}, title),
-    h('label', { class: 'check' }, backupBox, '整理するとき、バックアップを用意する（消さずに CWCatalog_backup フォルダへ移す）'),
-    h('div', { class: 'small' }, '移す先：', h('ul', { style: 'margin:2px 0 0;padding-left:1.2em' }, places.map((p) => h('li', { style: 'word-break:break-all' }, p)))),
+    h('label', { class: 'check' }, backupBox, '整理時にバックアップを作成します（削除せず CWCatalog_backup フォルダへ移動します）。'),
+    h('div', { class: 'small' }, '移動先：', h('ul', { style: 'margin:2px 0 0;padding-left:1.2em' }, places.map((p) => h('li', { style: 'word-break:break-all' }, p)))),
     warn,
     keeps.length ? h('div', {}, h('div', { class: 'small muted' }, `残すもの（${keeps.length}件）`), h('pre', { class: 'readme log' }, keeps.join('\n'))) : null,
-    h('div', {}, h('div', { class: 'small muted' }, `動かすもの（${plan.length}件）`), h('pre', { class: 'readme log', id: 'tidy-plan' }, plan.map((it) => `・${labelOf(it)}${it.why ? `　（${it.why}）` : ''}`).join('\n'))),
+    h('div', {}, h('div', { class: 'small muted' }, `移動対象（${plan.length}件）`), h('pre', { class: 'readme log', id: 'tidy-plan' }, plan.map((it) => `・${labelOf(it)}${it.why ? `　（${it.why}）` : ''}`).join('\n'))),
     h('div', { class: 'row', style: 'justify-content:flex-end' },
       h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
       h('button', { class: 'btn primary', onclick: () => close(true) }, 'この内容で整理する'))));
@@ -231,31 +231,31 @@ function planLatest(t) {
 // ------------------------------------------------------------ 画面
 export function viewTidy() {
   const t = S.tidy;
-  if (t.running) return h('div', { class: 'card tidy', id: 'tidy' }, h('p', { class: 'small muted', style: 'margin:0' }, '調べています…'));
+  if (t.running) return h('div', { class: 'card tidy', id: 'tidy' }, h('p', { class: 'small muted', style: 'margin:0' }, '照合中…'));
   const refresh = async () => { S.records = await store.records(); await openTidy(); };
   const items = new Map(); // 選べるもの key → {kind, rec|z}
   const sec = (title, n, body, open = true, id = '') => h('details', { class: 'group', open: open && n > 0 ? true : null, id: id || null },
     h('summary', {}, h('span', { class: 'group-name' }, title), h('span', { class: `badge ${n ? 'update' : 'ok'}` }, n ? `${n}件` : 'なし')), body);
-  const exBtn = (k, what) => h('button', { class: `btn ghost sm${isEx(k) ? ' on' : ''}`, 'aria-pressed': isEx(k) ? 'true' : 'false', title: isEx(k) ? '除外をやめて、また整理の対象にします' : '整理・二重チェックで、これには触らないようにします', onclick: () => toggleEx(k) }, isEx(k) ? `除外中（${what}）・戻す` : `${what}を除外`);
+  const exBtn = (k, what) => h('button', { class: `btn ghost sm${isEx(k) ? ' on' : ''}`, 'aria-pressed': isEx(k) ? 'true' : 'false', title: isEx(k) ? '除外を解除し、再び整理対象に含めます' : '整理・二重チェックの対象から外します', onclick: () => toggleEx(k) }, isEx(k) ? `除外中（${what}）・戻す` : `${what}を除外`);
   const pickBox = (k, it, label, disabled = false) => {
     items.set(k, it);
     return h('input', { type: 'checkbox', checked: t.sel.has(k), disabled: disabled || isEx(k), 'aria-label': `${label}を選ぶ`, onchange: (ev) => { if (ev.target.checked) t.sel.add(k); else t.sel.delete(k); document.getElementById('tidy-selbar')?.replaceWith(selBar()); } });
   };
-  const moveOne = (it) => h('button', { class: 'btn sm', onclick: () => confirmAndRun('1件を整理する', [it]) }, t.backup ? 'CWCatalog_backup に移す' : '消す');
+  const moveOne = (it) => h('button', { class: 'btn sm', onclick: () => confirmAndRun('1件を整理する', [it]) }, t.backup ? 'CWCatalog_backup へ移動' : '削除する');
 
   // Scenarioフォルダの二重
   const nDup = t.engineDup.filter((g) => !isEx(g.key)).length;
   const dupBody = h('div', { class: 'stack' },
-    t.engineDup.length ? h('p', { class: 'small muted', style: 'margin:0' }, '一番上が、版（または入れた日）がいちばん新しいものです。「最新版のみ残して整理」では、これを残します。') : null,
+    t.engineDup.length ? h('p', { class: 'small muted', style: 'margin:0' }, '各作品の最上段が、最も新しいバージョン（不明な場合は導入日時）です。「最新版のみ残してフォルダを整理する」を実行すると、このファイルが残ります。') : null,
     h('ul', { class: 'dl' }, t.engineDup.map((g) => h('li', { class: `stack${isEx(g.key) ? ' excluded' : ''}` },
-      h('div', { class: 'row' }, h('b', {}, g.name), h('span', { class: 'small muted grow' }, `${g.author}・${engine(g.engineId)?.name || ''}・${g.recs.length}か所`), exBtn(g.key, 'この作品')),
+      h('div', { class: 'row' }, h('b', {}, g.name), h('span', { class: 'small muted grow' }, `${g.author}・${engine(g.engineId)?.name || ''}・${g.recs.length}箇所`), exBtn(g.key, 'この作品')),
       h('ul', { class: 'dl' }, g.recs.map((r, i) => {
         const k = recKey(r);
         const it = { kind: 'rec', rec: r };
         return h('li', { class: isEx(k) ? 'excluded' : null },
           i > 0 ? pickBox(k, it, r.path, isEx(g.key)) : h('span', { class: 'badge ok' }, '残す'),
           h('span', { class: 'grow', style: 'word-break:break-all' }, disp(r.path)),
-          h('span', { class: 'small muted' }, [verOf(r) ? `ver ${verOf(r)}` : '版不明', r.installedAt ? `入れた日 ${fmtDate(r.installedAt)}` : ''].filter(Boolean).join('・')),
+          h('span', { class: 'small muted' }, [verOf(r) ? `ver ${verOf(r)}` : '版不明', r.installedAt ? `導入日 ${fmtDate(r.installedAt)}` : ''].filter(Boolean).join('・')),
           exBtn(k, 'これ'),
           i > 0 && !isEx(k) && !isEx(g.key) ? moveOne(it) : null);
       }))))));
@@ -263,7 +263,7 @@ export function viewTidy() {
   // 保存場所：中身が同じファイル
   const nZipDup = t.zipDup.filter((g) => !isEx(g.key)).length;
   const zipDupBody = h('ul', { class: 'dl' }, t.zipDup.map((g) => h('li', { class: `stack${isEx(g.key) ? ' excluded' : ''}` },
-    h('div', { class: 'row' }, h('span', { class: 'small muted grow' }, `中身がまったく同じファイル（${fmtSize(g.files[0].size)}）`), exBtn(g.key, 'このグループ')),
+    h('div', { class: 'row' }, h('span', { class: 'small muted grow' }, `内容が完全に一致するファイル（サイズ：${fmtSize(g.files[0].size)}）`), exBtn(g.key, 'このグループ')),
     h('ul', { class: 'dl' }, g.files.map((z, i) => {
       const k = zipKey(z);
       const it = { kind: 'zip', z };
@@ -277,9 +277,9 @@ export function viewTidy() {
   // 保存場所：同じ作品の古い版
   const nZipOld = (t.zipOld || []).filter((g) => !isEx(g.key)).length;
   const zipOldBody = h('div', { class: 'stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, '同じ作品で、中身が違うファイルです（古い版かもしれません）。版が名前から分からないものは、自動では整理しません。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, '同一作品の異なるファイルです。ファイル名からバージョンが判別できないものは、自動整理の対象外となります。'),
     h('ul', { class: 'dl' }, (t.zipOld || []).map((g) => h('li', { class: `stack${isEx(g.key) ? ' excluded' : ''}` },
-      h('div', { class: 'row' }, h('b', {}, g.name), h('span', { class: 'small muted grow' }, `${g.author}・${g.files.length}ファイル${g.decided ? '' : '・どれが新しいか分かりません'}`), exBtn(g.key, 'この作品')),
+      h('div', { class: 'row' }, h('b', {}, g.name), h('span', { class: 'small muted grow' }, `${g.author}・${g.files.length}ファイル${g.decided ? '' : '・新旧の判別ができません'}`), exBtn(g.key, 'この作品')),
       h('ul', { class: 'dl' }, g.files.map((z, i) => {
         const k = zipKey(z);
         const it = { kind: 'zip', z };
@@ -293,14 +293,14 @@ export function viewTidy() {
   const chosen = new Set();
   const notList = t.notInstalled.filter((z) => !isEx(zipKey(z)));
   const notBody = h('div', { class: 'stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, 'zipの保存場所にあるけれど、どのエンジンのScenarioにも入っていない作品です（積みシナ候補）。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'zip・wsn保存フォルダに存在しますが、いずれのエンジンのScenarioフォルダにも導入されていない作品です（積みシナ候補）。'),
     h('ul', { class: 'dl' }, t.notInstalled.map((z) => h('li', { class: isEx(zipKey(z)) ? 'excluded' : null },
       h('input', { type: 'checkbox', disabled: isEx(zipKey(z)), 'aria-label': `${z.rel}を入れるものに選ぶ`, onchange: (ev) => { if (ev.target.checked) chosen.add(z); else chosen.delete(z); } }),
       h('span', { class: 'grow' }, h('b', {}, z.scenarios.map((s) => s.name).join('・')), h('span', { class: 'small muted' }, `　${z.scenarios[0].author}・${disp(z.rel)}・${fmtSize(z.size)}`)),
       exBtn(zipKey(z), 'これ')))),
     notList.length ? h('div', { class: 'row' }, h('button', {
       class: 'btn primary sm', onclick: async () => {
-        if (!chosen.size) { toast('入れる作品にチェックを付けてください', { bad: true }); return; }
+        if (!chosen.size) { toast('導入する作品を選択してください', { bad: true }); return; }
         const files = await busy('ファイルを読み込み', async () => {
           const d = await archiveDirOf(true);
           const all = await listFiles(d, '', 3);
@@ -313,15 +313,15 @@ export function viewTidy() {
         });
         if (files?.length) await openLocalFiles(files);
       },
-    }, '選んだものを入れる（DLするタブへ）')) : null);
+    }, '選択した作品を導入する（「DLする」タブへ移動）')) : null);
 
   const noZipList = t.noZip.filter((r) => !isEx(recKey(r)));
   const noZipBody = h('div', { class: 'stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, `「${engine()?.name || ''}」に導入済みですが、保存場所に元のzipが見つからない作品です。再導入用に必要な作品は再ダウンロードし、保存場所へ配置することをお勧めします。`),
+    h('p', { class: 'small muted', style: 'margin:0' }, `「${engine()?.name || ''}」のScenarioフォルダに導入済みですが、zip・wsn保存フォルダ内に元の入手ファイル（zip/wsn/cab/lzh/7z等）が見つかりません。再導入に備え、必要な作品は再ダウンロードして配置することをお勧めします。`),
     h('ul', { class: 'dl' }, t.noZip.map((r) => h('li', { class: isEx(recKey(r)) ? 'excluded' : null }, h('span', { class: 'grow' }, h('b', {}, r.name), h('span', { class: 'small muted' }, `　${r.author}・${disp(r.path)}`)), exBtn(recKey(r), 'これ')))));
 
   const tsumiBody = h('div', { class: 'stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, '「積み」タグを付けた作品です。遊び始めたら、選んで「タグを付ける」で「プレイ中」や「クリア」にしてください。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, '「積み」タグが設定されている作品です。プレイを開始した作品は、選択メニューの「タグを付ける」から「プレイ中」や「クリア」へ変更してください。'),
     h('ul', { class: 'dl' }, t.tsumi.map((r) => h('li', {},
       h('span', { class: 'grow' }, h('b', {}, r.name), h('span', { class: 'small muted' }, `　${r.author}・${engine(r.engineId)?.name || ''}`)),
       h('button', { class: 'btn ghost sm', onclick: async () => { await applyTags([r], ['プレイ中'], ['積み']); await refresh(); } }, 'プレイ中にする')))));
@@ -330,8 +330,8 @@ export function viewTidy() {
   const selBar = () => {
     const list = [...t.sel].filter((k) => items.has(k) && !isEx(k)).map((k) => items.get(k));
     return h('div', { class: 'row tidy-selbar', id: 'tidy-selbar' },
-      h('span', { class: 'small' }, `選んだもの：${list.length}件`),
-      h('button', { class: 'btn sm', disabled: !list.length, onclick: () => confirmAndRun(`選んだ${list.length}件を整理する`, list) }, t.backup ? '選んだものを CWCatalog_backup に移す' : '選んだものを消す'),
+      h('span', { class: 'small' }, `選択中：${list.length}件`),
+      h('button', { class: 'btn sm', disabled: !list.length, onclick: () => confirmAndRun(`選んだ${list.length}件を整理する`, list) }, t.backup ? '選択した作品を CWCatalog_backup へ移動' : '選択した作品を削除'),
       list.length ? h('button', { class: 'btn ghost sm', onclick: () => { t.sel.clear(); render(); } }, '選択を解除') : null);
   };
 
@@ -340,31 +340,31 @@ export function viewTidy() {
   const places = [...new Set([...t.engineDup.map((g) => engineBackupPlace(g.engineId)), ...(t.zips && (t.zipDup.length || t.zipOld?.length) ? [archiveBackupPlace()] : [])])];
 
   const sections = h('div', { class: 'stack' },
-    sec('同じ作品が2つ以上入っている（Scenarioフォルダ）', nDup, dupBody, true, 'tidy-dup'),
-    t.zips ? sec(`保存場所で、同じファイルが重なっている（${S.archive.label}）`, nZipDup, zipDupBody, true, 'tidy-zipdup') : null,
-    t.zips ? sec('保存場所に、同じ作品の別の版がある', nZipOld, zipOldBody, true, 'tidy-zipold') : null);
+    sec('Scenarioフォルダ内で作品が重複しています', nDup, dupBody, true, 'tidy-dup'),
+    t.zips ? sec(`zip・wsn保存フォルダ内でファイルが重複しています（${S.archive.label}）`, nZipDup, zipDupBody, true, 'tidy-zipdup') : null,
+    t.zips ? sec('zip・wsn保存フォルダ内に別バージョンの同一作品があります', nZipOld, zipOldBody, true, 'tidy-zipold') : null);
 
   return h('div', { class: 'card stack tidy', id: 'tidy' },
     h('div', { class: 'row between' }, h('h2', { style: 'margin:0' }, '整理・二重チェック'),
-      h('div', { class: 'row' }, h('span', { class: 'small muted' }, `調べた日時：${fmtDate(t.at)}`),
-        h('button', { class: 'btn sm', onclick: refresh }, 'もう一度調べる'),
+      h('div', { class: 'row' }, h('span', { class: 'small muted' }, `確認日時：${fmtDate(t.at)}`),
+        h('button', { class: 'btn sm', onclick: refresh }, '再確認'),
         h('button', { class: 'btn ghost sm', onclick: () => { S.tidy = null; render(); } }, '閉じる'))),
-    h('p', { class: 'small muted', style: 'margin:0' }, 'Scenarioフォルダは、最後に「読み取る」を押したときの内容で調べています。新しく入れたものがあれば、先に「読み取る」を押してください。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'Scenarioフォルダは、直近で「読み取る」を実行した時点のデータで照合しています。新たにファイルを追加・削除した場合は、あらかじめ「読み取る」を実行してください。'),
     h('div', { class: 'card soft stack', style: 'margin:0' },
-      h('label', { class: 'check' }, backupBox, '整理するとき、バックアップを用意する（消さずに CWCatalog_backup フォルダへ移す）'),
+      h('label', { class: 'check' }, backupBox, '整理時にバックアップを作成します（削除せず CWCatalog_backup フォルダへ移動します）。'),
       t.backup
-        ? (places.length ? h('div', { class: 'small' }, '移す先：', h('ul', { style: 'margin:2px 0 0;padding-left:1.2em' }, places.map((p) => h('li', { style: 'word-break:break-all' }, p)))) : null)
-        : h('p', { class: 'note bad small', style: 'margin:0' }, 'バックアップを用意しないので、整理したものは元に戻せません（ごみ箱にも入りません）。'),
+        ? (places.length ? h('div', { class: 'small' }, '移動先：', h('ul', { style: 'margin:2px 0 0;padding-left:1.2em' }, places.map((p) => h('li', { style: 'word-break:break-all' }, p)))) : null)
+        : h('p', { class: 'note bad small', style: 'margin:0' }, 'バックアップを作成しない場合、整理したファイルは復元できません（ごみ箱にも移動されません）。'),
       h('div', { class: 'row' },
         h('button', { class: 'btn primary', id: 'tidy-latest', disabled: !latest.plan.length, onclick: () => confirmAndRun('最新版のみ残してフォルダを整理する', latest.plan, latest.keeps) },
           `最新版のみ残してフォルダを整理する（${latest.plan.length}件）`),
-        h('span', { class: 'small muted' }, '押すと、残すもの・動かすものの一覧が出ます。除外したものには触りません。')),
+        h('span', { class: 'small muted' }, '実行前に、残すファイルと移動するファイルの一覧を表示します。除外設定した作品は処理対象外です。')),
       selBar()),
     sections,
-    t.zips ? sec('保存場所にあるけれど、まだ入れていない（積みシナ候補）', notList.length, notBody) : null,
-    t.zips ? sec('入れてあるけれど、保存場所に元のzipが無い', noZipList.length, noZipBody, false) : null,
-    !t.zips ? h('p', { class: 'note small', style: 'margin:0' }, 'zipの保存場所を設定すると（「設定」→「zip・wsnの保存場所」）、保存場所の重なりや、まだ入れていない作品（積みシナ候補）も調べられます。') : null,
-    sec('「積み」タグの作品', t.tsumi.length, tsumiBody, false),
+    t.zips ? sec('zip・wsn保存フォルダに未導入の作品があります（積みシナ候補）', notList.length, notBody) : null,
+    t.zips ? sec('Scenarioフォルダに導入済みですが、元のzipファイルがありません', noZipList.length, noZipBody, false) : null,
+    !t.zips ? h('p', { class: 'note small', style: 'margin:0' }, '「設定 ＞ zip・wsnの保存場所」を設定すると、zip・wsn保存フォルダ内の重複や未導入作品（積みシナ候補）も自動検出できます。') : null,
+    sec('「積み」タグが設定されている作品', t.tsumi.length, tsumiBody, false),
     S.tidyEx.keys.length ? h('div', { class: 'row small' }, h('span', { class: 'muted' }, `除外しているもの：${S.tidyEx.keys.length}件`),
       h('button', { class: 'btn ghost sm', onclick: async () => { S.tidyEx.keys = []; await store.set('tidyExclude', S.tidyEx); render(); } }, '除外をすべてやめる')) : null,
     t.errors.length ? h('details', { class: 'small' }, h('summary', {}, `読めなかったもの ${t.errors.length}件`), h('ul', {}, t.errors.map((e) => h('li', {}, e)))) : null);

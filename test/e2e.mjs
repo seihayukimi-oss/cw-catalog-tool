@@ -687,7 +687,7 @@ async function run(colorScheme, width) {
   await page.locator('.folder-chips .chip', { hasText: 'すべて' }).click();
   await page.locator('#mine-bar').getByRole('button', { name: '選択を解除' }).click();
   await page.getByRole('button', { name: '整理・二重チェック' }).click();
-  await page.locator('#tidy summary', { hasText: '同じ作品が2つ以上入っている' }).waitFor();
+  await page.locator('#tidy summary', { hasText: 'Scenarioフォルダ内で作品が重複しています' }).waitFor();
   const dupSec = page.locator('#tidy-dup');
   ok('Scenarioの二重を見つける', await dupSec.getByText(CL.name).first().isVisible() && (await dupSec.locator('li li').count()) >= 3);
   ok('保存場所の重なりを見つける', (await page.locator('#tidy-zipdup li li').count()) === 2);
@@ -695,12 +695,12 @@ async function run(colorScheme, width) {
   ok('移す先を表示する（選んだバックアップ先）', await page.locator('#tidy').getByText(/test-backup」フォルダの中の CardWirthNext/).first().isVisible());
   if (width > 600) await page.locator('#tidy').screenshot({ path: join(OUT, `tidy-${colorScheme}.png`) }).catch(() => {});
   // 1件だけ移す（確認の一覧 → 結果の記録）
-  await dupSec.locator('li li', { hasText: `Scenario/_サンプル分類/${CL.folderName}` }).getByRole('button', { name: 'CWCatalog_backup に移す' }).click();
+  await dupSec.locator('li li', { hasText: `Scenario/_サンプル分類/${CL.folderName}` }).getByRole('button', { name: 'CWCatalog_backup へ移動' }).click();
   ok('確認の一覧に、移す先を書く', await page.locator('dialog').getByText(/test-backup」フォルダの中の CardWirthNext/).isVisible());
   await page.locator('dialog').getByRole('button', { name: 'この内容で整理する' }).click();
   const log1 = page.locator('dialog', { hasText: '整理しました（1件）' });
   await log1.waitFor();
-  ok('結果の記録に移した先を書く', new RegExp(`移した　.*Scenario/_サンプル分類/${esc(CL.folderName)}[\\s\\S]*→ .*test-backup」の中の CardWirthNext[^/]*/\\d{8}_\\d{6}_${esc(CL.folderName)}`).test(await log1.locator('pre').textContent()));
+  ok('結果の記録に移した先を書く', new RegExp(`移動　.*Scenario/_サンプル分類/${esc(CL.folderName)}[\\s\\S]*→ .*test-backup」の中の CardWirthNext[^/]*/\\d{8}_\\d{6}_${esc(CL.folderName)}`).test(await log1.locator('pre').textContent()));
   await log1.getByRole('button', { name: '閉じる' }).click();
   // サンプル店2は除外して、最新版のみ残して整理
   await page.locator('#tidy-dup li li', { hasText: 'Scenario/サンプル店2' }).getByRole('button', { name: 'これを除外' }).click();

@@ -180,6 +180,7 @@ function viewMine() {
         outside.length ? h('button', { class: 'btn', onclick: () => registerOutside(outside) }, `カタログ外を個人用カタログにまとめて登録（${outside.length}件）`) : null,
         openBtn(e.ref, 'フォルダを開く'),
         S.platform.kind === 'app' && e.kind !== 'wcw' ? h('button', { class: 'btn', title: `${e.name} を起動します`, onclick: () => busy('エンジンを起動', () => S.platform.launch(e.ref, e.kind)) }, 'エンジンを起動') : null,
+        h('button', { class: 'btn help', title: 'ボタンの説明', 'aria-label': 'ボタンの説明', onclick: showButtonHelp }, '?'),
       ),
       h('div', { class: 'row', style: 'margin-top:10px' },
         h('input', { type: 'search', class: 'grow', placeholder: '名前・作者・タグで絞り込み', value: S.filter.mine, oninput: (ev) => { S.filter.mine = ev.target.value; rerenderList('mine-body', viewMine); } }),
@@ -403,6 +404,26 @@ async function scanEngine(id) {
     toast(`${fresh.length}件を読み取りました${missing.length ? `（見つからないもの ${missing.length}件）` : ''}${res.warnings.length ? `。読めなかったもの ${res.warnings.length}件` : ''}`);
     if (res.warnings.length) console.warn(res.warnings);
   });
+}
+
+// ------------------------------------------------------------ ボタンの説明（？）
+const BUTTON_HELP = [
+  ['読み取る', ['接続中エンジンのScenarioフォルダ内を解析し、導入済み作品（作品名・作者・形式・バージョン等）の情報を一覧に記録・更新します。シナリオの追加や削除を行った後に実行してください。（※実際のファイルの変更・削除は一切行いません）']],
+  ['更新チェック', ['カタログデータを最新状態に更新し、一覧の作品に新しいバージョンがあるかを照合します。アプリ版では、登録済みファイル一覧・配布ページの更新状況、および配布先のリンク切れ（週1回・最大30件まで）も自動確認します。更新がある作品は「更新あり」と表示され、一括ダウンロードが可能です。（※ファイルの変更・削除は行いません）']],
+  ['整理・二重チェック', ['Scenarioフォルダと「zip・wsn保存フォルダ」を照合し、以下の作品を一覧検出します。',
+    ['同一作品の重複', '旧バージョン', '未導入の作品（積みシナ候補）', '元の入手ファイル（zip / wsn / cab / lzh / 7z）が存在しない作品'],
+    '※照合処理だけでファイルが変更されることはありません。「整理」を実行した場合のみ、選択したファイルを CWCatalog_backup フォルダへ移動（または削除）します。']],
+  ['カタログ外を登録', ['共用カタログに未掲載の作品について、作品名や配布ページURL等を直接入力して個人用カタログに登録します。アプリ版では「更新チェック」時に配布ページの更新状況を追跡できるようになります。']],
+];
+function showButtonHelp() {
+  return modal((close) => h('div', { class: 'stack', id: 'button-help' },
+    h('h2', {}, 'ボタンの説明'),
+    BUTTON_HELP.map(([name, body]) => h('section', {},
+      h('h3', { style: 'margin:0 0 4px' }, `【${name}】`),
+      body.map((b) => (Array.isArray(b)
+        ? h('ul', { style: 'margin:2px 0;padding-left:1.4em' }, b.map((x) => h('li', {}, x)))
+        : h('p', { style: 'margin:0' }, b))))),
+    h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn primary', onclick: () => close() }, '閉じる'))));
 }
 
 // ------------------------------------------------------------ カタログ外（ブックマーク）

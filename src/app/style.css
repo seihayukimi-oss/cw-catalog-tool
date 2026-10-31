@@ -73,6 +73,7 @@ h3 { font-size: 1rem; margin: 0 0 6px; }
 .btn.danger { color: var(--bad); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.sm { padding: 2px 8px; font-size: .85rem; }
+.btn.help { width: 2.1em; height: 2.1em; padding: 0; justify-content: center; border-radius: 50%; font-weight: 700; }
 
 input[type="text"], input[type="url"], input[type="search"], select, textarea {
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0;
