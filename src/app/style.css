@@ -261,3 +261,23 @@ pre.log { max-height: 40vh; white-space: pre-wrap; word-break: break-all; }
 .cat-pick { display: flex; flex-direction: column; gap: 6px; }
 .cat-pick .cat-new input { width: 100%; }
 .dest-status { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; word-break: break-all; }
+
+/* 自分のフォルダ一覧：エンジンのタブ・表示の切り替え・素材／スキン */
+.mine-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.engine-tabs { display: flex; flex-wrap: wrap; gap: 2px; }
+.engine-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 12px; cursor: pointer; color: var(--sub); white-space: nowrap; font: inherit; }
+.engine-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.mine-nav .mode-btn { font-weight: 600; }
+.mine-nav .stash-btns { margin-left: auto; gap: 6px; }
+.mine-nav .btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* フォルダ表示 */
+.folder-tree { display: flex; flex-direction: column; gap: 4px; }
+details.folder > summary { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 4px; border-radius: 6px; }
+details.folder > summary:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+details.folder .folder-name { font-weight: 600; word-break: break-all; }
+details.folder > .folder-body { margin-left: 1.1em; padding-left: 10px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+
+/* いちばん上の右：アプリの更新を確認 */
+nav.tabs button.app-update { margin-left: auto; align-self: center; border: 1px solid var(--accent); border-radius: 8px; padding: 4px 12px; color: var(--accent); background: var(--panel); font-size: .88rem; }
+nav.tabs button.app-update:hover { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }

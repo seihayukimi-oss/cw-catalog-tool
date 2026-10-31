@@ -20,7 +20,7 @@ import { downloadWork, handleInstallLink, viewLinkMaker, loadConsents, viewConse
 import { loadDlKeys, viewDlKeys } from './dlkeys.js';
 import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
 import { startBatch } from './batch.js';
-import { setupShell, startShell, viewAppSettings } from './appshell.js';
+import { setupShell, startShell, viewAppSettings, checkSelf } from './appshell.js';
 import { ownSources, saveOwnEntry } from './catalog-data.js';
 import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName, manageTags } from './tags.js';
 import { findTags, findTagsInOpened } from '../core/autotag.js';
@@ -34,7 +34,9 @@ import { viewSafetySettings } from './safety-view.js';
 import { viewChangelog, showWhatsNew } from './changelog-view.js';
 import { loadRatingPrefs, labelBadges, viewRatingSettings } from './ratings-view.js';
 import { CREDITS } from './credits.js';
-import { MAT, SKIN, loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
+import { loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
+import { mineNav, mineMode, folderTree, askFolderName, openFolder, rerenderBody } from './folderview.js';
+import { existsAt } from '../core/fs.js';
 
 const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
 
@@ -63,6 +65,7 @@ export async function startApp(platform) {
   document.documentElement.dataset.platform = platform.kind;
   S.engines = await store.engines();
   S.engineId = (await store.get('engineId')) || S.engines[0]?.id || null;
+  S.mineMode = (await store.get('mineMode')) || 'folder';
   S.categories = (await store.get('categories')) || {};
   S.archive = { on: false, ref: null, label: '', ...((await store.get('archive')) || {}) };
   await loadCatalogs();
@@ -113,7 +116,10 @@ function draw() {
           h('div', { class: 'busy-sub', id: 'busy-sub' })) : null),
       h('nav', { class: 'tabs', role: 'tablist' }, tabs.map(([k, label, extra]) => h('button', {
         role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', onclick: () => { S.tab = k; render(); },
-      }, label, extra))))),
+      }, label, extra)),
+      S.platform.kind === 'app'
+        ? h('button', { class: 'app-update', id: 'app-update', title: 'このアプリ（CWカタログ）の新しい版があるか確認します', onclick: () => busy('更新を確認', () => checkSelf(true)) }, 'アプリの更新を確認')
+        : null))),
     h('main', {}, view),
   );
 }
@@ -129,8 +135,8 @@ function viewMine() {
         : h('p', { class: 'note warn' }, `このブラウザはフォルダの読み書きに対応していません。パソコンのChrome・Edgeか、アプリ版を使ってください。zipの中身の確認と、WebCardWirth用の書き出しは「${TAB_LABEL.add}」タブでできます。`),
     );
   }
-  if (S.mineView === 'mat') return viewStashMine('material', mineSelect);
-  if (S.mineView === 'skin') return viewStashMine('skin', mineSelect);
+  if (S.mineView === 'mat') return viewStashMine('material', mineNav);
+  if (S.mineView === 'skin') return viewStashMine('skin', mineNav);
   if (!engine()) S.engineId = S.engines[0].id;
   const e = engine();
   const connected = e && S.dirs.has(e.id);
@@ -164,12 +170,19 @@ function viewMine() {
           render();
         },
       }, '分類フォルダへ移す')) : null) : null;
-  const list = h('div', { class: 'list', id: 'mine-list' }, recs.length ? recs.map(recordCard) : h('p', { class: 'empty' }, recordsOf().length ? '見つかりませんでした' : 'まだ記録がありません。「読み取る」を押してください'));
+  const filtering = !!(q || tg || S.filter.mineState);
+  const list = mineMode() === 'folder' && (recs.length || (!filtering && (S.categories[e.id] || []).length))
+    ? folderTree({
+      ns: e.id, recs, cats: S.categories[e.id] || [], card: recordCard, filtering, rerender: rerenderBody(viewMine),
+      parentOf: (r) => (r.type === 'bookmark' ? null : (r.path || '').startsWith('Scenario/') ? r.path.split('/').slice(1, -1).join('/') : ''),
+      rootLabel: 'Scenario', nested: true, otherLabel: 'カタログ外の登録（ブックマーク）',
+      onCreate: connected && S.platform.canWriteFolders !== false ? (p) => createScenarioFolder(e, p) : null,
+    })
+    : h('div', { class: 'list', id: 'mine-list' }, recs.length ? recs.map(recordCard) : h('p', { class: 'empty' }, recordsOf().length ? '見つかりませんでした' : 'まだ記録がありません。「読み取る」を押してください'));
 
   return h('div', {},
     h('div', { class: 'card' },
       h('div', { class: 'row' },
-        mineSelect(),
         connected
           ? h('button', { class: 'btn', onclick: () => scanEngine(e.id) }, '読み取る')
           : h('button', { class: 'btn primary', onclick: () => connectEngine(e.id) }, 'フォルダに接続'),
@@ -188,6 +201,7 @@ function viewMine() {
           [['', 'すべて'], ['update', '更新あり'], ['unknown', '版不明'], ['latest', '最新'], ['none', 'カタログ外'], ['missing', '見つからない']]
             .map(([v, l]) => h('option', { value: v, selected: S.filter.mineState === v ? 'selected' : null }, l))),
       ),
+      mineNav(),
       e.lastScan ? h('p', { class: 'small muted', style: 'margin:8px 0 0' }, `最後に読み取った日時：${fmtDate(e.lastScan)}／${recordsOf().length}件`) : null,
       !connected && S.platform.kind === 'web' ? h('p', { class: 'small muted', style: 'margin:6px 0 0' }, 'ブラウザは開くたびにフォルダの許可を聞き直します。「フォルダに接続」を押して許可してください。') : null,
       tagChips(allRecs),
@@ -197,22 +211,24 @@ function viewMine() {
   );
 }
 
-/** 自分のフォルダ一覧の「どこを見るか」（エンジン、または素材の置き場所） */
-function mineSelect() {
-  return h('select', {
-    'aria-label': 'エンジン', onchange: async (ev) => {
-      S.mineSel.clear();
-      if (ev.target.value === MAT) { S.mineView = 'mat'; render(); return; }
-      if (ev.target.value === SKIN) { S.mineView = 'skin'; render(); return; }
-      S.mineView = '';
-      S.engineId = ev.target.value;
-      await store.set('engineId', S.engineId);
-      render();
-    },
-  },
-  S.engines.map((x) => h('option', { value: x.id, selected: !S.mineView && x.id === S.engineId ? 'selected' : null }, `${x.name}（${ENGINE_KINDS[x.kind]?.short || x.kind}）`)),
-  h('option', { value: MAT, selected: S.mineView === 'mat' ? 'selected' : null }, '素材の置き場所'),
-  h('option', { value: SKIN, selected: S.mineView === 'skin' ? 'selected' : null }, 'スキンの置き場所'));
+/** Scenario の中（parent：'' は直下、'_店' など）に、空のフォルダを作る */
+async function createScenarioFolder(e, parent) {
+  const name = await askFolderName(['Scenario', parent].filter(Boolean).join('/'));
+  if (!name) return;
+  const rel = [parent, name].filter(Boolean).join('/');
+  const done = await busy('フォルダを作成', async () => {
+    const d = await dirOf(e.id, true);
+    if (!d) throw new Error('フォルダに接続できませんでした');
+    if (await existsAt(d, `Scenario/${rel}`)) throw new Error(`同じ名前のものがすでにあります：Scenario/${rel}`);
+    await dirAt(d, `Scenario/${rel}`, { create: true });
+    S.categories[e.id] = [...new Set([...(S.categories[e.id] || []), rel])].sort();
+    await store.set('categories', S.categories);
+    return true;
+  });
+  if (!done) return;
+  if (parent) openFolder(e.id, parent);
+  toast(`Scenario/${rel} を作成しました`);
+  render();
 }
 
 function recordCard(r) {

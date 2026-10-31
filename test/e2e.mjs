@@ -162,6 +162,11 @@ async function run(colorScheme, width) {
   await page.locator('#dev-opfs').click();
   await page.getByText(/件を読み取りました/).waitFor();
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
+  // 最初はフォルダ表示。直下の作品は「未整理」に入り、実際には無いフォルダだと書く
+  ok('最初はフォルダ表示', (await page.locator('#mine-mode').textContent()) === '表示：フォルダ表示' && await page.locator('details.folder[data-folder="__unsorted"]').isVisible());
+  // ここからの試験は一覧表示で行う（選んだ表示は覚えておく）
+  await page.locator('#mine-mode').click();
+  ok('一覧表示に切り替え', (await page.locator('#mine-mode').textContent()) === '表示：一覧表示');
   ok('既存シナリオの読み取り', await page.getByText(CL.name).isVisible());
   ok('名前から版を推測（既存フォルダには版表記なし）', !(await page.getByText(/推測「/).count()));
 
@@ -617,7 +622,7 @@ async function run(colorScheme, width) {
   ok('入れ先の様子：もう入っている（入れると前のものをバックアップしてから置き換える）', /もう入っています/.test(await page.locator('#mat-dest').textContent()));
   await page.locator('.card', { hasText: 'skin.zip' }).getByRole('button', { name: '閉じる' }).first().click();
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
-  await page.getByLabel('エンジン').selectOption({ label: '素材の置き場所' });
+  await page.getByRole('button', { name: '素材を表示' }).click();
   const mat = page.locator('#mine-list .card', { hasText: 'スキン/skin' });
   await mat.waitFor();
   ok('素材の置き場所を一覧で見る（分類フォルダごと）', await page.locator('#mine-list details.group summary', { hasText: 'スキン' }).isVisible());
@@ -646,10 +651,10 @@ async function run(colorScheme, width) {
   await page.locator('#mat-done', { hasText: /MedievalFantasy\/和風テスト に入れました/ }).waitFor();
   ok('スキンを種類の分類フォルダに自動で入れる', true);
   await page.getByRole('tab', { name: /自分のフォルダ一覧/ }).click();
-  await page.getByLabel('エンジン').selectOption({ label: 'スキンの置き場所' });
+  await page.getByRole('button', { name: 'スキンを表示' }).click();
   await page.locator('#mine-list .card', { hasText: 'MedievalFantasy/和風テスト' }).waitFor();
   ok('スキンの置き場所を一覧で見る', true);
-  await page.getByLabel('エンジン').selectOption({ index: 0 });
+  await page.getByRole('tablist', { name: 'エンジン' }).getByRole('tab').first().click();
 
   // 12d. 取ってきたときに保存先を選ぶ（今回だけ）：素材の入れ先と、元のzipの保存先
   await page.getByRole('tab', { name: /シナリオ・素材・スキンをDLする/ }).click();

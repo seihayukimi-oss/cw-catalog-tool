@@ -17,6 +17,7 @@ import { applyCatalog } from './catalog-data.js';
 import { tagEditor, tagChips, pickTags, applyTags, addTagName } from './tags.js';
 import { catPicker } from './catpick.js';
 import { choosePlace } from './place.js';
+import { mineMode, folderTree, askFolderName, rerenderBody } from './folderview.js';
 
 export const MAT = '__mat';
 export const SKIN = '__skin';
@@ -379,14 +380,14 @@ export async function moveToCategory(recs) {
   const cats = S.categories[id] || [];
   const target = await modal((close) => {
     const state = {};
-    const cp = catPicker({ cats, rootLabel: isStash ? `（${k.place}の直下）` : '（Scenario の直下）', state, idPrefix: 'move' });
+    const cp = catPicker({ cats, rootLabel: isStash ? `（${k.place}の直下）` : '（Scenario の直下）', state, idPrefix: 'move', nested: !isStash });
     return h('div', { class: 'stack' },
       h('h2', {}, `${recs.length}件を分類フォルダへ移す`),
       h('p', { class: 'small muted', style: 'margin:0' }, `${isStash ? k.place : 'Scenario フォルダ'}の中で、実際のフォルダやファイルを動かします（宿の冒険の記録などには影響しません）。`),
       cp.el,
       h('div', { class: 'row', style: 'justify-content:flex-end' },
         h('button', { class: 'btn', onclick: () => close(null) }, 'やめる'),
-        h('button', { class: 'btn primary', id: 'move-go', onclick: () => { const c = cp.value(); if (state.isNew && !c) { toast('新しい分類フォルダの名前を入れてください', { bad: true }); return; } close({ cat: c }); } }, '移す')));
+        h('button', { class: 'btn primary', id: 'move-go', onclick: () => { const c = cp.value(); if (state.isNew && !c) { toast('新しい分類フォルダの名前を入れてください', { bad: true }); return; } if (state.isNew && (/[/\\]/.test((state.newCat || '').trim()) || !safeRelativePath(c))) { toast('フォルダの名前が正しくありません（「/」「\\」や「..」は使えません）', { bad: true }); return; } close({ cat: c }); } }, '移す')));
   });
   if (!target) return;
   await busy('分類フォルダへ移す', async () => {
@@ -471,7 +472,6 @@ export function viewStashMine(kind, makeSel) {
 
   const head = h('div', { class: 'card' },
     h('div', { class: 'row' },
-      makeSel(),
       st?.ref
         ? h('button', { class: 'btn', onclick: () => busy(`${k.label}を読み取る`, () => scanStash(kind)) }, '読み取る')
         : h('button', { class: 'btn primary', onclick: () => pickStashFolder(kind).then(render) }, `${k.place}を決める`),
@@ -479,6 +479,7 @@ export function viewStashMine(kind, makeSel) {
       st?.ref ? h('button', { class: 'btn ghost sm', onclick: () => pickStashFolder(kind).then(render) }, '置き場所を変える') : null),
     h('div', { class: 'row', style: 'margin-top:10px' },
       h('input', { type: 'search', class: 'grow', placeholder: '名前・分類・タグで絞り込み', value: S.filter.mine, oninput: (ev) => { S.filter.mine = ev.target.value; rerenderList('mine-body', () => viewStashMine(kind, makeSel)); } })),
+    makeSel(),
     h('p', { class: 'small muted', style: 'margin:8px 0 0;word-break:break-all' },
       st?.ref ? `${k.place}：${st.label}${st.lastScan ? `／最後に読み取った日時：${fmtDate(st.lastScan)}／${mine.length}件` : ''}` : `${k.label}は「シナリオ・素材・スキンをDLする」タブで開くと、ここ（${k.place}）に分類して入れられます。`),
     tagChips(allRecs));
@@ -500,7 +501,14 @@ export function viewStashMine(kind, makeSel) {
     if (!groups.has(c)) groups.set(c, []);
     groups.get(c).push(r);
   }
-  const list = h('div', { class: 'list', id: 'mine-list' }, recs.length
+  const cats = S.categories[k.id] || [];
+  const filtering = !!(q || tg);
+  const list = mineMode() === 'folder' && (recs.length || (!filtering && cats.length)) ? folderTree({
+    ns: k.id, recs, cats, card: stashCard, filtering, rerender: rerenderBody(() => viewStashMine(kind, makeSel)),
+    parentOf: (r) => (r.path.includes('/') ? r.path.split('/')[0] : ''),
+    rootLabel: k.place, nested: false,
+    onCreate: st?.ref && S.platform.canWriteFolders !== false ? () => createStashFolder(kind) : null,
+  }) : h('div', { class: 'list', id: 'mine-list' }, recs.length
     ? [...groups].map(([c, rs]) => h('details', { class: 'group', open: true },
       h('summary', {}, h('span', { class: 'group-name' }, c || '（分類なし）'), h('span', { class: 'badge plain' }, `${rs.length}件`)),
       rs.map(stashCard)))
@@ -508,6 +516,25 @@ export function viewStashMine(kind, makeSel) {
   return h('div', {}, head, h('div', { id: 'mine-body' }, selBar, list));
 }
 export const viewMaterialsMine = (makeSel) => viewStashMine('material', makeSel);
+
+/** 素材・スキンの置き場所の直下に、空の分類フォルダを作る（置き場所は1段目だけが分類フォルダ） */
+async function createStashFolder(kind) {
+  const k = KINDS[kind];
+  const name = await askFolderName(k.place);
+  if (!name) return;
+  const done = await busy('フォルダを作成', async () => {
+    const d = await stashDirOf(kind, true);
+    if (!d) throw new Error(`${k.place}を使う許可がありませんでした`);
+    if (await existsAt(d, name)) throw new Error(`同じ名前のものがすでにあります：${name}`);
+    await d.dir(name, { create: true });
+    S.categories[k.id] = [...new Set([...(S.categories[k.id] || []), name])].sort((a, b) => a.localeCompare(b, 'ja'));
+    await store.set('categories', S.categories);
+    return true;
+  });
+  if (!done) return;
+  toast(`${k.place}に「${name}」を作成しました`);
+  render();
+}
 
 function stashCard(r) {
   const save = async (patch) => { Object.assign(r, patch); await store.putRecord(r); S.records = await store.records(); render(); };
