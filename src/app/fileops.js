@@ -7,7 +7,7 @@ import { h, toast, modal } from './ui.js';
 import { moveToBackup } from '../core/install.js';
 import { existsAt, removeAt, dirAt, readAt, writeAt, copyTree } from '../core/fs.js';
 import { backupOpts, backupFull, backupPlace } from './backup.js';
-import { KINDS, MAT, SKIN, stashDirOf, scanStash, showLog } from './materials.js';
+import { KINDS, MAT, SKIN, stashDirOf, scanStash, showLog, openBtn } from './materials.js';
 import { catPicker } from './catpick.js';
 import { confirmDelete } from './folderview.js';
 import { safeRelativePath } from '../core/zip.js';
@@ -167,7 +167,16 @@ export async function copyItems(loc, items) {
   // コピーした先を読み取り直して、一覧に出す
   if (dest.loc.kind === 'engine') await rescanEngine(dest.loc.id);
   else await busy(`${KINDS[dest.loc.kind].label}を読み取る`, () => scanStash(dest.loc.kind, true));
-  await showLog(`コピーしました（${items.length}件）`, log);
+  // コピーした先のフォルダを、エクスプローラーで開けるようにする（アプリ版だけ。下の方に出す）
+  const destPath = absPath(dest.loc, base);
+  await modal((close) => h('div', { class: 'stack', id: 'copy-done' },
+    h('h2', {}, `コピーしました（${items.length}件）`),
+    h('pre', { class: 'readme log' }, log.join('\n')),
+    h('div', { class: 'row', style: 'justify-content:space-between' },
+      h('div', { class: 'row' },
+        h('span', { class: 'small muted', style: 'word-break:break-all' }, `コピーした先：${placeName(dest.loc)}${base ? `／${base}` : ''}`),
+        isApp() ? openBtn(destPath, 'コピーした先をエクスプローラーで開く') : null),
+      h('button', { class: 'btn primary', onclick: () => close(true) }, '閉じる'))));
   render();
 }
 

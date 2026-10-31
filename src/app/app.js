@@ -35,6 +35,7 @@ import { viewChangelog, showWhatsNew } from './changelog-view.js';
 import { loadRatingPrefs, labelBadges, viewRatingSettings } from './ratings-view.js';
 import { CREDITS } from './credits.js';
 import { loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
+import { ownPicker } from './ownpick.js';
 import { mineNav, mineTools, mineMode, folderTree, askFolderName, openFolder, rerenderBody, deleteBtn } from './folderview.js';
 import { setRescanEngine, deleteItems, copyItems, selection, favoriteAll, selectModeBtn, copyBtn, folderRel } from './fileops.js';
 import { existsAt } from '../core/fs.js';
@@ -768,20 +769,21 @@ function entryFromRecord(r) {
 async function registerOutside(list) {
   const own = ownSources();
   const preset = new Set(S.catPrefs.addTo === 'all' ? own.map((s) => s.id) : own.slice(0, 1).map((s) => s.id));
-  const boxes = own.map((s) => ({ s, box: h('input', { type: 'checkbox', checked: preset.has(s.id) }) }));
+  const picker = ownPicker({ preset, emptyText: '個人用カタログを選ばないときは、「マイカタログ」を作って入れます。' });
   const ok = await modal((close) => h('div', { class: 'stack' },
     h('h2', {}, 'カタログ外をまとめて登録'),
     h('p', { style: 'margin:0' }, `「${engine()?.name || ''}」のカタログ外の作品 ${list.length}件 を、個人用カタログに登録します。`),
     h('p', { class: 'small muted', style: 'margin:0' }, 'DL先は空のまま登録するので、あとから「カタログ」タブの「編集」で足してください。作品名・作者・形式・タグ・バージョンは、フォルダの中身から入れます。'),
-    own.length ? h('div', {}, h('div', { class: 'small muted' }, '入れる個人用カタログ'), h('div', { class: 'row' }, boxes.map((b) => h('label', { class: 'check' }, b.box, b.s.name)))) : h('p', { class: 'small muted' }, '個人用カタログ「マイカタログ」を作って入れます。'),
+    picker.el,
+    h('p', { class: 'note small', style: 'margin:0' }, 'なお、カタログに追加する際、DL先のリンクや作者の紹介等は保存されません。'),
     h('div', { class: 'row', style: 'justify-content:flex-end' },
       h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
       h('button', { class: 'btn primary', onclick: () => close(true) }, '登録する'))));
   if (!ok) return;
   await busy('個人用カタログに登録', async () => {
-    let ids = boxes.filter((b) => b.box.checked).map((b) => b.s.id);
+    let ids = picker.ids();
     if (!ids.length) {
-      if (own.length) throw new Error('入れる個人用カタログを1つ以上選んでください');
+      if (picker.count()) throw new Error('入れる個人用カタログを1つ以上選んでください');
       const { createOwn } = await import('./catalog-data.js');
       ids = [(await createOwn('マイカタログ')).id];
     }

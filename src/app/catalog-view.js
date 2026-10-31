@@ -1,5 +1,6 @@
 // 「カタログ」タブ：共用・個人用カタログの管理、作品の一覧・紹介・DL、個人用カタログへの登録と編集。
 
+import { ownPicker } from './ownpick.js';
 import { ENGINE_KINDS } from '../core/catalog.js';
 import { chooseDownloads, statusOf, ageRoleOf, introKind, INTRO_LABEL, workKey, KIND_LABEL } from '../core/catalogs.js';
 import { decodeHtml, parseOgp } from '../core/weblink.js';
@@ -701,7 +702,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       h('button', { type: 'button', class: 'btn sm', onclick: () => { dls.push({ url: '', label: '', kind: 'page', age: 'new', role: 'normal', note: '', until: '', dlkey: '' }); drawDls(); } }, '＋DL先'));
     drawDls();
 
-    const targets = ownSources().map((s) => ({ s, box: h('input', { type: 'checkbox', checked: preset.has(s.id) }) }));
+    const picker = ownPicker({ preset, label: `入れる個人用カタログ${inOwn.size ? '（チェックを外すと、そのカタログから抜けます）' : ''}` });
     const err = h('p', { class: 'note bad small', style: 'display:none' });
     const submit = (ev) => {
       ev.preventDefault();
@@ -710,7 +711,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       if (!name) return fail('作品名を入れてください');
       const badUrl = [f.site.value.trim(), ...intros.map((i) => i.url), ...dls.map((d) => d.url)].find((u) => u && !/^https?:\/\/\S+$/.test(u));
       if (badUrl) return fail(`URLは https:// から始まるものにしてください：${badUrl}`);
-      const ids = targets.filter((t) => t.box.checked).map((t) => t.s.id);
+      const ids = picker.ids();
       if (!ids.length && !inOwn.size) return fail('入れる個人用カタログを1つ以上選んでください');
       const format = f.format.value;
       const entry = {
@@ -749,8 +750,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
       h('div', {}, h('div', { class: 'small muted' }, 'DL先（「デフォルト」にしたところから先に取ります。取れなければ、新→予備→旧の順に試します）'), dlBox),
       h('p', { class: 'small muted', style: 'margin:0' }, '「ファイル一覧」にすると、アップローダーの一覧ページ（例：https://uu.getuploader.com/○○/）から、作品名に合うファイルのうち版がいちばん新しいものを、「更新チェック」のときに探します（アプリ版）。新しい版を上げるたびにURLが変わるアップローダーで便利です。'),
       h('p', { class: 'small muted', style: 'margin:0' }, 'DLキーは、このパソコンの個人用カタログの中だけに保存します。DL一覧として書き出しても入りません（「設定」の「DLキー」で一覧にできます）。'),
-      h('div', {}, h('div', { class: 'small muted' }, `入れる個人用カタログ${inOwn.size ? '（チェックを外すと、そのカタログから抜けます）' : ''}`),
-        h('div', { class: 'row' }, targets.map((t) => h('label', { class: 'check' }, t.box, t.s.name)))),
+      picker.el,
       err,
       h('div', { class: 'row', style: 'justify-content:flex-end' },
         h('button', { type: 'button', class: 'btn', onclick: () => close(null) }, 'やめる'),

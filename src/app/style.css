@@ -286,3 +286,4 @@ nav.tabs button.app-update:hover { background: color-mix(in srgb, var(--accent) 
 .mine-tools .copy-mode.on, .batch-bar .select-mode.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn.copy-btn { border-color: var(--accent); color: var(--accent); }
 details.folder > summary .folder-pick { margin: 0; }
+.own-pick [hidden] { display: none !important; }

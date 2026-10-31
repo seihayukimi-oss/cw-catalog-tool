@@ -4,6 +4,7 @@
 //  全部に共通で、移転先・移転前の配布ページと、作者さんのサイト・紹介ページを入れられる。
 //  同じ作品（作品名＋作者）がもう個人用カタログにあるときは、DL先・紹介ページを足す（core/bulkentry.js）
 
+import { ownPicker } from './ownpick.js';
 import { openArchive } from '../core/archive.js';
 import { workKey } from '../core/catalogs.js';
 import { guessVersion } from '../core/scenario.js';
@@ -50,7 +51,7 @@ async function infoFromOpened(o) {
 async function askCommon({ count, pageUrl = '', canFetch = false }) {
   const own = ownSources();
   const preset = new Set(S.catPrefs.addTo === 'all' ? own.map((s) => s.id) : own.slice(0, 1).map((s) => s.id));
-  const boxes = own.map((s) => ({ s, box: h('input', { type: 'checkbox', checked: preset.has(s.id) }) }));
+  const picker = ownPicker({ preset, emptyText: '個人用カタログを選ばないときは、「マイカタログ」を作って入れます。' });
   const fetchOn = h('input', { type: 'radio', name: 'bulk-mode', checked: true });
   const guessOn = h('input', { type: 'radio', name: 'bulk-mode' });
   const author = h('input', { type: 'text', placeholder: '空なら、作品ごと（ファイルの中身）から入れます' });
@@ -68,9 +69,9 @@ async function askCommon({ count, pageUrl = '', canFetch = false }) {
         const v = {
           fetch: canFetch && fetchOn.checked, author: author.value.trim(), rating: rating.value,
           pages: urlLines(pages.value), oldPages: urlLines(oldPages.value), intro: urlLines(intro.value), site: urlLines(site.value)[0] || '',
-          ids: boxes.filter((b) => b.box.checked).map((b) => b.s.id),
+          ids: picker.ids(),
         };
-        if (own.length && !v.ids.length) throw new Error('入れる個人用カタログを1つ以上選んでください');
+        if (picker.count() && !v.ids.length) throw new Error('入れる個人用カタログを1つ以上選んでください');
         close(v);
       } catch (e) { err.textContent = e.message; err.style.display = ''; }
     };
@@ -88,8 +89,7 @@ async function askCommon({ count, pageUrl = '', canFetch = false }) {
       h('label', { class: 'field' }, '作者公式サイト', site),
       h('label', { class: 'field' }, '紹介ページ（サイト内の作品紹介ページ、告知投稿、X・Misskey などの投稿URL。全部の作品に入れます。1行に1つ）', intro),
       h('label', { class: 'field' }, '対象年齢', rating),
-      own.length ? h('div', {}, h('div', { class: 'small muted' }, '入れる個人用カタログ'), h('div', { class: 'row' }, boxes.map((b) => h('label', { class: 'check' }, b.box, b.s.name))))
-        : h('p', { class: 'small muted', style: 'margin:0' }, '個人用カタログ「マイカタログ」を作って入れます。'),
+      picker.el,
       h('p', { class: 'small muted', style: 'margin:0' }, 'DL先は、作品ごとのリンク → 配布ページ（移転先）→ 移転前の順に入れます。同じ作品（作品名＋作者）がもう個人用カタログにあるときは、DL先・紹介ページを足します（移転前に書いたDL先は「旧（移転済み）」にします。作者公式サイトは、空のときだけ入れます）。'),
       err,
       h('div', { class: 'row', style: 'justify-content:flex-end' },
