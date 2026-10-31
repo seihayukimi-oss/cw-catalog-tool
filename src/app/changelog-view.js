@@ -38,7 +38,7 @@ export async function showWhatsNew() {
   if (items.length) {
     await modal((close) => h('div', { class: 'stack', id: 'whats-new' },
       h('h2', { style: 'margin:0' }, `${APP_VERSION} に更新しました`),
-      h('p', { class: 'small muted', style: 'margin:0' }, `前に使っていた版：${seen}。変わったところです（「設定」のいちばん下の「更新履歴」でも見られます）。`),
+      h('p', { class: 'small muted', style: 'margin:0' }, `更新前の版：${seen}　変更点（「設定」の一番下の「更新履歴」でも閲覧可能です）`),
       h('div', { class: 'stack', style: 'max-height:55vh;overflow:auto' }, items.map((e, i) => entryBlock(e, { open: i === 0 || items.length <= 3 }))),
       h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn primary', onclick: () => close(true) }, 'OK'))));
   }
