@@ -775,7 +775,7 @@ async function registerOutside(list) {
     h('p', { style: 'margin:0' }, `「${engine()?.name || ''}」のカタログ外の作品 ${list.length}件 を、個人用カタログに登録します。`),
     h('p', { class: 'small muted', style: 'margin:0' }, 'DL先は空のまま登録するので、あとから「カタログ」タブの「編集」で足してください。作品名・作者・形式・タグ・バージョンは、フォルダの中身から入れます。'),
     picker.el,
-    h('p', { class: 'note small', style: 'margin:0' }, 'なお、カタログに追加する際、DL先のリンクや作者の紹介等は保存されません。'),
+    h('p', { class: 'note small', style: 'margin:0' }, 'なお、カタログに追加する際、DL先のリンクや作者の紹介サイト等は保存されません。'),
     h('div', { class: 'row', style: 'justify-content:flex-end' },
       h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
       h('button', { class: 'btn primary', onclick: () => close(true) }, '登録する'))));

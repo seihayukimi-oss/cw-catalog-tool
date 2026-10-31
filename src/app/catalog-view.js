@@ -269,7 +269,7 @@ function workCard(w, mine) {
       open ? h('button', { class: 'btn ghost sm', onclick: () => toggleHidden(w, !hiddenHere) }, hiddenHere ? '候補に戻す' : '候補から外す') : null,
       open && w.author ? h('button', { class: 'btn ghost sm', title: 'この作者の作品をカタログに表示しないようにします（このPCの中だけの設定です）', onclick: () => muteAuthor(w.author, !isMutedAuthor(w.author)) }, isMutedAuthor(w.author) ? '作者の除外を解除' : 'この作者を除外') : null,
       compactView() ? h('button', { class: 'btn ghost sm', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) S.expanded.delete(w.key); else S.expanded.add(w.key); render(); } }, open ? '▲ たたむ' : '▼ くわしく') : null));
-  const meta = h('div', { class: 'meta' }, [w.author, `ver ${w.version}`, w.updated].filter(Boolean).join('・'),
+  const meta = h('div', { class: 'meta' }, [w.author, `ver ${w.version}`, w.updated].filter(Boolean).join(' / '),
     h('span', { class: 'row', style: 'display:inline-flex;margin-left:8px;gap:4px' }, w.refs.map((r) => h('span', { class: `badge src ${r.kind}` }, r.sourceName))),
     w.origins?.length ? h('span', { class: 'origin', style: 'margin-left:8px' }, '出典：', w.origins.map((o, i) => [i ? '・' : '', o.url ? h('a', { href: o.url, onclick: (ev) => { ev.preventDefault(); S.platform.openUrl(o.url); } }, o.name) : o.name])) : null,
     w.checked ? h('span', { style: 'margin-left:8px' }, `確認：${CHECKED[w.checked]}`) : null);
