@@ -21,7 +21,7 @@ tauri-plugin-opener = "=2.7.0"
 # 2つ目の起動（.wsn のダブルクリック・リンク）を最初の窓に渡す
 tauri-plugin-single-instance = "=2.5.2"
 # ポータブル版の更新の署名を確かめる（Tauriの自動更新と同じ仕組み・同じ鍵）
-minisign-verify = "=0.2.5"
+minisign-verify = "=0.3.0"
 base64 = "=0.22.1"
 # tauri::generate_context! とアプリ内ブラウザの通知が使う
 serde = { version = "=1.0.229", features = ["derive"] }
