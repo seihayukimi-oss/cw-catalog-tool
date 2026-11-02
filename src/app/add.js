@@ -132,7 +132,7 @@ export function viewAdd() {
           h('li', {}, '文字化けしたファイル名を正しく読み直します（UTF-8・Shift_JISを自動判定）'),
           h('li', {}, 'シナリオの範囲・形式（クラシック／Next／Py）・暗号化の有無を判定します'),
           h('li', {}, 'Readmeを表示してから、エンジンのScenarioフォルダに入れます（同じものがあればバックアップしてから置き換え）'),
-          h('li', {}, 'WebCardWirthの「追加データのインストール（ZIP）」で入れやすいzipに書き出せます'))));
+          h('li', {}, 'WebCardWirth の「追加シナリオをインストール」で、そのまま入れられる zip に書き出せます'))));
   }
 
   const o = S.opened;
@@ -489,7 +489,7 @@ async function doExportWeb() {
   await busy('書き出し中', async () => {
     const out = await exportForWeb(S.opened, S.pick);
     await S.platform.saveFile(out.fileName, out.data);
-    toast(`${out.fileName} を書き出しました。WebCardWirthのインストールページの「追加データのインストール（ZIP）」で入れてください`, { ms: 9000 });
+    toast(`${out.fileName} を書き出しました。WebCardWirth の「インストール」→「追加データ」タブの「追加シナリオをインストール」で、この zip を選んでください。（展開は不要です。初めて使うときは先に「基本データ」を入れてください）`, { ms: 9000 });
   });
 }
 
