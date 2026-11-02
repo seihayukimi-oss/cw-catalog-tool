@@ -517,14 +517,14 @@ test('アップローダーの一覧から、作品の最新のファイルを�
   const { extractFileList, findNewest } = await import('../src/core/filelist.js');
   const html = `<table><tr><td><a href="https://uu.getuploader.com/u/download/17" title="デバッグ読みシナ_ver1_02.zip">デバッグ読みシナ_ver1_02.zip</a></td><td><a href="https://uu.getuploader.com/u/edit/17" title="編集">編集</a></td></tr>
     <tr><td><a href="https://uu.getuploader.com/u/download/9" title="デバッグ読みシナ_ver1_01.zip">デバッグ読みシナ_ver1_01.zip</a></td></tr>
-    <tr><td><a href="https://uu.getuploader.com/u/download/13" title="星間列車の相席屋ver1.0.0.zip">星間列車の相席屋ver1.0.0.zip</a></td></tr>
+    <tr><td><a href="https://uu.getuploader.com/u/download/13" title="テスト冒険譚ver1.0.0.zip">テスト冒険譚ver1.0.0.zip</a></td></tr>
     <tr><td><a href="https://uu.getuploader.com/u/index/date/asc/1" title="日時">日時</a></td></tr></table>`;
   const list = extractFileList(html, 'https://uu.getuploader.com/u/');
   assert.equal(list.length, 3);
   const n = findNewest(list, 'デバッグ読みシナ');
   assert.equal(n.url, 'https://uu.getuploader.com/u/download/17');
   assert.equal(n.version, '1.02');
-  assert.equal(findNewest(list, '星間列車の相席屋').version, '1.0.0');
+  assert.equal(findNewest(list, 'テスト冒険譚').version, '1.0.0');
   assert.equal(findNewest(list, 'ない作品'), null);
 });
 

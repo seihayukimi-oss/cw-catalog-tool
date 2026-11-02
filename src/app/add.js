@@ -36,16 +36,19 @@ export function setupDrop() {
     if (e.target?.closest?.('[data-batch-drop]')) return;
     e.preventDefault();
     depth = 0;
+    // ドロップしたものは、このイベントの中（await の前）でしか読めない（ブラウザの決まり）。先に全部受け取っておく
+    const dropped = [...e.dataTransfer.files];
     const item = e.dataTransfer.items?.[0];
+    const handleP = item?.getAsFileSystemHandle ? item.getAsFileSystemHandle().catch(() => null) : null;
     // フォルダのドロップ（Chrome・Edge）
-    if (item?.getAsFileSystemHandle) {
-      const handle = await item.getAsFileSystemHandle().catch(() => null);
+    if (handleP) {
+      const handle = await handleP;
       if (handle?.kind === 'directory') {
         const { FsaDirFromHandle } = S.platform;
         if (FsaDirFromHandle) return openSource(() => openFolder(FsaDirFromHandle(handle)));
       }
     }
-    const files = [...e.dataTransfer.files].filter((f) => /\.(zip|wsn|cab|lzh|lha|7z|rar)$/i.test(f.name) || e.dataTransfer.files.length === 1);
+    const files = dropped.filter((f) => /\.(zip|wsn|cab|lzh|lha|7z|rar)$/i.test(f.name) || dropped.length === 1);
     if (files.length > 1) {
       // 複数ドロップしたら、まとめて入れる
       const list = [];
@@ -53,7 +56,8 @@ export function setupDrop() {
       await openLocalFiles(list);
       return;
     }
-    const file = files[0] || e.dataTransfer.files[0];
+    const file = files[0] || dropped[0];
+    if (!file) return;
     await openSource(async () => openArchive(new Uint8Array(await file.arrayBuffer()), file.name));
   });
 }
