@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-update-key-configured"
+description = "Enables the update_key_configured command without any pre-configured scope."
+commands.allow = ["update_key_configured"]
+
+[[permission]]
+identifier = "deny-update-key-configured"
+description = "Denies the update_key_configured command without any pre-configured scope."
+commands.deny = ["update_key_configured"]

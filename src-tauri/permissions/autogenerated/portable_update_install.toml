@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-portable-update-install"
+description = "Enables the portable_update_install command without any pre-configured scope."
+commands.allow = ["portable_update_install"]
+
+[[permission]]
+identifier = "deny-portable-update-install"
+description = "Denies the portable_update_install command without any pre-configured scope."
+commands.deny = ["portable_update_install"]

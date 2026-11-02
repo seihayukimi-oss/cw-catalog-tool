@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-assoc-unregister"
+description = "Enables the assoc_unregister command without any pre-configured scope."
+commands.allow = ["assoc_unregister"]
+
+[[permission]]
+identifier = "deny-assoc-unregister"
+description = "Denies the assoc_unregister command without any pre-configured scope."
+commands.deny = ["assoc_unregister"]

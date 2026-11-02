@@ -1,0 +1,159 @@
+name: リリース
+
+# v0.3.0 のようなタグを push すると、ポータブル版（Windows）とHTML版を作って、
+# 「下書き」のリリースに置く。中身を確認してから GitHub の画面で公開する。
+# 公開すると、アプリの「更新を確認」が latest-portable.json を見つけられるようになる。
+#
+# タグを送れないとき（Claude の作業場など）は、Actions の画面の「Run workflow」で、版（例：0.4.5）を入れて動かす。
+# main の最新のコミットで作り、下書きのリリースに v0.4.5 のタグを付ける（タグは、リリースを公開したときにできる）。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "出す版（例：0.4.5）。package.json の版と同じにする"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # その版のリリース（下書きを含む）がもうあるときは、作らずに終わる。
+  # 下書きを公開するとタグができて、上の「タグを push したとき」でもう一度動くため（同じ版の下書きが2つになるのを防ぐ）
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 下書きのリリースも見るため（読むだけで、書かない）
+    outputs:
+      skip: ${{ steps.c.outputs.skip }}
+    steps:
+      - id: c
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="v${INPUT_VERSION#v}"; else TAG="$GITHUB_REF_NAME"; fi
+          if gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate -q '.[].tag_name' | grep -qx "$TAG"; then
+            echo "::notice title=作りませんでした::$TAG のリリース（下書きを含む）はもうあります"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check
+    if: needs.check.outputs.skip != 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: write # リリースの作成だけに使う
+    steps:
+      # Actions はコミットIDで固定（タグの付け替えによる乗っ取り対策）。更新は Dependabot が提案する
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: 版とタグを決める
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then echo "::error::Run workflow は main で動かしてください"; exit 1; fi
+            V="${INPUT_VERSION#v}"
+            if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "::error::版は 0.4.5 のような形で入れてください（入れた値：$INPUT_VERSION）"; exit 1; fi
+            TAG="v$V"
+          else
+            TAG="$GITHUB_REF_NAME"; V="${TAG#v}"
+          fi
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$PKG" != "$V" ]; then echo "::error::package.json の版（$PKG）と、出す版（$V）が違います"; exit 1; fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "$(git ls-remote --tags "https://github.com/$GITHUB_REPOSITORY" "refs/tags/$TAG")" ]; then
+            echo "::error::$TAG のタグはもうあります。版を上げてから動かしてください"; exit 1
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "::notice title=出す版::$TAG（コミット $GITHUB_SHA）"
+
+      - name: Rust を用意
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: 更新用の鍵が設定されているか確認
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if grep -q "NOT-CONFIGURED" src-tauri/update-pubkey.txt; then
+            echo "::error::src-tauri/update-pubkey.txt に公開鍵を入れてください（README の「初めてのリリースの前に」参照）"; exit 1
+          fi
+          if [ -z "$KEY" ]; then
+            echo "::error::リポジトリの Secrets に TAURI_SIGNING_PRIVATE_KEY を登録してください"; exit 1
+          fi
+
+      # インストール時のスクリプトは .npmrc で無効。ロックファイルどおりに入れる
+      - run: npm ci
+      - run: npm test
+
+      # Rust 側の試験の前に画面を作っておく（アプリに埋め込むため）
+      - run: npm run build
+
+      - name: Rust 側の試験
+        working-directory: src-tauri
+        shell: bash
+        # 失敗したときは、エラーの行を画面（Annotations）に出す
+        run: |
+          set -o pipefail
+          cargo test --release --color never 2>&1 | tee ../cargo-test.log || {
+            msg=$(grep -E "^error|^\s+-->|panicked|FAILED|assertion|left:|right:" ../cargo-test.log | head -40 | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Rust::$msg"
+            exit 1
+          }
+
+      - name: ポータブル版をビルド
+        shell: bash
+        run: |
+          set -o pipefail
+          npx tauri build --ci 2>&1 | tee build.log || {
+            msg=$(grep -E "^error|^Error|^\s+-->|failed" build.log | head -40 | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Build::$msg"
+            exit 1
+          }
+
+      # 使っている部品の一覧と許諾文（THIRD-PARTY-NOTICES.txt）を作る。cargo が部品を取ってきたあとに動かす
+      - name: 部品の許諾文を作る
+        shell: bash
+        run: node scripts/third-party.mjs
+
+      - name: 配布物の形に並べて、署名する
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          node scripts/make-portable.mjs
+          npx tauri signer sign out/CWCatalog.exe
+          node scripts/make-portable.mjs --pack --release
+
+      - name: 下書きのリリースを作る
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${TAG#v}"
+          # リリースのページに出す説明（運営者の文）。版の番号は自動で入る
+          NOTES="【ダウンロード・使用方法】
+
+          ■ ポータブル版
+          \`CWCatalog-v${V}-portable.zip\` をダウンロードし、任意のフォルダへ解凍（展開）の上、\`CWCatalog.exe\` を起動してください（※インストール作業は不要です）。
+          ※旧バージョンをお使いの方は、アプリ内の「設定 ＞ アプリの更新 ＞ 更新を確認」から最新版へ更新いただけます。
+
+          ■ HTML版
+          \`cw-catalog-v${V}.html\` をお使いのWebブラウザ（Google Chrome / Microsoft Edge 等）で開いてご利用いただけます。"
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "CWカタログ $TAG" --notes "$NOTES" release/*

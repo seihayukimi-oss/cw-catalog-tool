@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-zone-info"
+description = "Enables the zone_info command without any pre-configured scope."
+commands.allow = ["zone_info"]
+
+[[permission]]
+identifier = "deny-zone-info"
+description = "Denies the zone_info command without any pre-configured scope."
+commands.deny = ["zone_info"]

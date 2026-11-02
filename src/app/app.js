@@ -1,0 +1,862 @@
+// CWカタログツール 本体（HTML版・アプリ版で共通）
+// 画面ごとのファイル：
+//   add.js          … シナリオ・素材・スキンをDLする（中身の確認・インストール）
+//   download.js     … URL・配布ページ・カタログの配布元から取得する
+//   batch.js        … 一括ダウンロード
+//   catalog-view.js … カタログ（管理・一覧・紹介・個人用カタログの編集）
+//   catalog-data.js … カタログの保存と読み込み
+
+import { scanScenarioFolder, detectEngineKind, checkEngineFolder } from '../core/scan.js';
+import { ENGINE_KINDS, compareVersions } from '../core/catalog.js';
+import { comparePage } from '../core/pagecheck.js';
+import { netProgress, dlProgress } from './state.js';
+import { S, views, setRenderer, render, busy, busyText, engine, recordsOf, dirOf, rerenderList, confirmBox, goTab, TAB_LABEL, APP_VERSION } from './state.js';
+import { store, recordId, exportRecords, importRecords } from './store.js';
+import { h, toast, modal, fmtDate, formatBadge, sleep, placeField } from './ui.js';
+import { loadCatalogs, applyCatalog, workOf, refreshSource, refreshStates, checkFileLists, defaultUrlOf } from './catalog-data.js';
+import { chooseDownloads } from '../core/catalogs.js';
+import { viewAdd, setupDrop, VERSION_SOURCE } from './add.js';
+import { downloadWork, handleInstallLink, viewLinkMaker, loadConsents, viewConsents } from './download.js';
+import { loadDlKeys, viewDlKeys } from './dlkeys.js';
+import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
+import { startBatch } from './batch.js';
+import { setupShell, startShell, viewAppSettings, checkSelf } from './appshell.js';
+import { ownSources, saveOwnEntry } from './catalog-data.js';
+import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName, manageTags } from './tags.js';
+import { findTags, findTagsInOpened } from '../core/autotag.js';
+import { decodeText } from '../core/text.js';
+import { openArchive } from '../core/archive.js';
+import { isReadmeName } from '../core/scenario.js';
+import { dirAt, readAt } from '../core/fs.js';
+import { openTidy, viewTidy } from './tidy.js';
+import { loadBackup, viewBackupSettings } from './backup.js';
+import { loadLinkCheck, checkLinks, staleLink, markLink } from './linkcheck.js';
+import { viewSafetySettings } from './safety-view.js';
+import { viewChangelog, showWhatsNew } from './changelog-view.js';
+import { loadRatingPrefs, labelBadges, viewRatingSettings } from './ratings-view.js';
+import { CREDITS } from './credits.js';
+import { loadStash, viewStashMine, viewStashSettings, moveToCategory, openBtn } from './materials.js';
+import { ownPicker } from './ownpick.js';
+import { mineNav, mineTools, mineMode, folderTree, askFolderName, openFolder, rerenderBody, deleteBtn } from './folderview.js';
+import { setRescanEngine, deleteItems, copyItems, selection, favoriteAll, selectModeBtn, recordsJumpBtn, RECORDS_BACKUP, copyBtn, folderRel } from './fileops.js';
+import { existsAt } from '../core/fs.js';
+
+const STATE_LABEL = { latest: '最新', update: '更新あり', unknown: '版不明', none: 'カタログ外' };
+
+/** ブラウザで開けなかったとき */
+function openFailed(url, e) {
+  return modal((close) => h('div', { class: 'stack', id: 'open-failed' },
+    h('h2', { style: 'margin:0' }, 'ブラウザで開けませんでした'),
+    h('p', { class: 'small', style: 'margin:0' }, `理由：${e?.message || e}`),
+    h('p', { class: 'small muted', style: 'margin:0' }, S.platform.kind === 'app' ? 'URLをコピーして、お使いのブラウザに貼り付けてください。' : '下のリンクを押すか、URLをコピーして、お使いのブラウザに貼り付けてください。'),
+    h('div', { class: 'note small', style: 'word-break:break-all;user-select:all' }, S.platform.kind === 'app' ? url : h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, url)),
+    h('div', { class: 'row', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(url); toast('URLをコピーしました'); } catch { toast('コピーできませんでした。リンクを右クリックしてコピーしてください', { bad: true }); } } }, 'URLをコピー'),
+      h('button', { class: 'btn primary', onclick: () => close(null) }, '閉じる'))));
+}
+
+// ------------------------------------------------------------ 起動
+export async function startApp(platform) {
+  S.platform = platform;
+  platform.netProgress = netProgress;
+  platform.dlProgress = dlProgress;
+  // 「ブラウザで開く」：開けなかったときは、理由とURL（コピー・押して開くリンク）を出す
+  const rawOpen = platform.openUrl.bind(platform);
+  platform.openUrl = async (url) => {
+    try { await rawOpen(url); } catch (e) { await openFailed(url, e); }
+  };
+  document.documentElement.dataset.platform = platform.kind;
+  S.engines = await store.engines();
+  S.engineId = (await store.get('engineId')) || S.engines[0]?.id || null;
+  S.mineMode = (await store.get('mineMode')) || 'folder';
+  setRescanEngine(scanEngine);
+  S.categories = (await store.get('categories')) || {};
+  S.archive = { on: false, ref: null, label: '', ...((await store.get('archive')) || {}) };
+  await loadCatalogs();
+  await loadRatingPrefs();
+  await loadConsents();
+  await loadDlKeys();
+  await setupShell();
+  S.records = await store.records();
+  if (S.records.some((r) => r.entryId && !('workKey' in r))) await refreshStates(); // 0.1.4 までの記録を新しい形に
+  await loadTags();
+  for (const e of S.engines) {
+    const d = await platform.openFolder(e.ref).catch(() => null); // 許可が残っていればそのまま使える
+    if (d) S.dirs.set(e.id, d);
+  }
+  if (S.archive.ref) S.archiveDir = await platform.openFolder(S.archive.ref).catch(() => null);
+  await loadStash();
+  await loadBackup();
+  await loadLinkCheck();
+  Object.assign(views, { mine: viewMine, add: viewAdd, catalog: viewCatalog, settings: viewSettings });
+  setRenderer(draw);
+  setupDrop();
+  render();
+  handleInstallLink();
+  startShell();
+  showWhatsNew().catch(() => {});
+}
+
+// ------------------------------------------------------------ 描画
+function draw() {
+  const root = document.getElementById('app');
+  const view = views[S.tab]();
+  const updates = S.records.filter((r) => r.state === 'update').length;
+  const pending = S.batch ? S.batch.items.filter((i) => !['done'].includes(i.status)).length : S.opened ? 1 : 0;
+  const tabs = [
+    ['mine', TAB_LABEL.mine, updates ? h('span', { class: 'count', title: '更新あり' }, updates) : null],
+    ['add', TAB_LABEL.add, pending ? h('span', { class: 'count' }, pending) : null],
+    ['catalog', TAB_LABEL.catalog],
+    ['settings', TAB_LABEL.settings],
+  ];
+  root.replaceChildren(
+    h('header', { class: 'top' }, h('div', { class: 'top-inner' },
+      h('div', { class: 'top-row' },
+        h('div', { class: 'brand' }, h('h1', {}, 'CWカタログ'), S.platform.kind === 'app' ? null : h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`)),
+        // アプリ版：右上に「アプリ版 1.0.0」と「アプリの更新を確認」
+        S.platform.kind === 'app' ? h('div', { class: 'app-ver' },
+          h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`),
+          h('button', { class: 'btn sm app-update', id: 'app-update', title: 'このアプリ（CWカタログ）の新しい版があるか確認します', onclick: () => busy('更新を確認', () => checkSelf(true)) }, 'アプリの更新を確認')) : null,
+        // 進み具合（右上）：いま何をしているか・バー・何の作業か
+        S.busy ? h('div', { class: 'busy-box', id: 'busy-box', role: 'status', 'aria-live': 'polite' },
+          h('div', { class: 'busy-stage', id: 'busy-text' }, `${S.busy}…`),
+          h('progress', { id: 'busy-prog', max: 1, hidden: true, 'aria-label': '進み具合' }),
+          h('div', { class: 'busy-sub', id: 'busy-sub' })) : null),
+      h('nav', { class: 'tabs', role: 'tablist' }, tabs.map(([k, label, extra]) => h('button', {
+        role: 'tab', 'aria-selected': S.tab === k ? 'true' : 'false', onclick: () => { S.tab = k; render(); },
+      }, label, extra))))),
+    h('main', {}, view),
+  );
+}
+
+// ------------------------------------------------------------ 自分のフォルダ一覧
+function viewMine() {
+  if (!S.engines.length) {
+    return h('div', { class: 'card stack' },
+      h('h2', {}, 'はじめに'),
+      h('p', {}, 'CardWirth（1.50・Next・Py）のフォルダを登録すると、入っているシナリオを読み取って一覧にします。'),
+      S.platform.canWriteFolders
+        ? h('button', { class: 'btn primary', onclick: addEngine }, 'CardWirthのフォルダを登録する')
+        : h('p', { class: 'note warn' }, `このブラウザはフォルダの読み書きに対応していません。パソコンのChrome・Edgeか、アプリ版を使ってください。zipの中身の確認と、WebCardWirth用の書き出しは「${TAB_LABEL.add}」タブでできます。`),
+    );
+  }
+  if (S.mineView === 'mat') return viewStashMine('material', mineNav);
+  if (S.mineView === 'skin') return viewStashMine('skin', mineNav);
+  if (!engine()) S.engineId = S.engines[0].id;
+  const e = engine();
+  const connected = e && S.dirs.has(e.id);
+  const q = S.filter.mine.normalize('NFKC').toLowerCase();
+  let recs = recordsOf().filter((r) => !q || `${r.name} ${r.author} ${r.path} ${(r.tags || []).join(' ')}`.normalize('NFKC').toLowerCase().includes(q));
+  if (S.filter.mineState) recs = recs.filter((r) => (S.filter.mineState === 'missing' ? r.missing : (r.state || 'none') === S.filter.mineState));
+  const allRecs = recs;
+  const tg = S.filter.mineTag || '';
+  if (tg) recs = recs.filter((r) => (tg === '__none' ? !(r.tags || []).length : (r.tags || []).includes(tg)));
+  recs.sort((a, b) => (b.state === 'update') - (a.state === 'update') || (a.path || '').localeCompare(b.path || '', 'ja'));
+  const updates = S.records.filter((r) => r.state === 'update' && workOf(r) && r.type !== 'bookmark');
+  const outside = recordsOf().filter((r) => !r.missing && r.type !== 'bookmark' && !workOf(r) && r.name);
+
+  const loc = { kind: 'engine', id: e.id };
+  const pickd = selection(loc, recordsOf());
+  const sel = pickd.records;
+  const nPicked = recs.filter((r) => S.mineSel.has(r.id)).length + pickd.folders.length;
+  const selBar = recs.length || pickd.folders.length || (S.categories[e.id] || []).length ? h('div', { class: 'card batch-bar', id: 'mine-bar' },
+    h('div', { class: 'row' },
+      h('span', { class: 'small' }, `${recs.length}件${q || tg || S.filter.mineState ? '（絞り込み中）' : ''}`),
+      selectModeBtn(),
+      S.selectMode ? h('button', { class: 'btn sm', disabled: recs.every((r) => S.mineSel.has(r.id)), onclick: () => { recs.forEach((r) => S.mineSel.add(r.id)); render(); } }, '表示中をすべて選ぶ') : null,
+      S.selectMode && nPicked ? h('button', { class: 'btn ghost sm bare', onclick: () => { S.mineSel.clear(); S.folderSel?.clear(); render(); } }, '選択を解除') : null,
+      recordsJumpBtn()),
+    S.selectMode && nPicked ? h('div', { class: 'row sel-actions' },
+      h('b', { class: 'small' }, `選んだもの（${pickd.folders.length ? `フォルダ${pickd.folders.length}件・` : ''}作品${sel.length}件）に：`),
+      h('button', { class: 'btn primary sm', disabled: !sel.length, onclick: async () => { const t = await pickTags(`${sel.length}件にタグを付ける`); if (t?.length) { await applyTags(sel, t, []); toast(`${sel.length}件に「${t.join('・')}」を付けました`); render(); } } }, 'タグを付ける'),
+      h('button', { class: 'btn sm', disabled: !sel.length, onclick: async () => { const present = [...new Set(sel.flatMap((r) => r.tags || []))]; const t = await pickTags(`${sel.length}件からタグを外す`, { mode: 'remove', present }); if (t?.length) { await applyTags(sel, [], t); toast(`${sel.length}件から「${t.join('・')}」を外しました`); render(); } } }, 'タグを外す'),
+      h('button', { class: 'btn sm', disabled: !sel.length, onclick: () => favoriteAll(sel) }, '★お気に入りにする'),
+      h('button', {
+        class: 'btn sm', disabled: !sel.length, title: 'カタログにまだ無い作品を、個人用カタログに登録します',
+        onclick: () => { const out = sel.filter((r) => !r.missing && r.type !== 'bookmark' && !workOf(r) && r.name); if (!out.length) { toast('個人用カタログに登録できる作品がありません（カタログにある作品・ブックマークは登録しません）', { bad: true }); return; } registerOutside(out); },
+      }, '＋個人用カタログに登録'),
+      h('button', { class: 'btn sm', disabled: !sel.length, onclick: () => retagFromReadme(sel) }, 'Readmeからタグを付ける'),
+      h('button', {
+        class: 'btn sm', title: 'Scenario の中の分類フォルダ（例：Scenario/_店）へ、実際のフォルダを動かします',
+        onclick: async () => {
+          const ok = sel.filter((r) => r.type !== 'bookmark' && !r.missing && r.path?.startsWith('Scenario/'));
+          if (!ok.length) { toast('動かせるものがありません（ブックマーク・見つからないものは動かせません）', { bad: true }); return; }
+          await moveToCategory(ok);
+          render();
+        },
+      }, '分類フォルダへ移す'),
+      S.deleteMode ? h('button', { class: 'btn sm danger delete-btn', disabled: !pickd.items.length, onclick: () => deleteItems(loc, pickd.items) }, '🗑️選んだものを削除') : null,
+      S.copyMode ? h('button', { class: 'btn sm copy-btn', disabled: !pickd.items.length, onclick: () => copyItems(loc, pickd.items) }, '📋選んだものをコピー') : null) : null) : null;
+  const filtering = !!(q || tg || S.filter.mineState);
+  const onCreate = connected && S.platform.canWriteFolders !== false ? (p) => createScenarioFolder(e, p) : null;
+  const list = mineMode() === 'folder' && (recs.length || (!filtering && (S.categories[e.id] || []).length))
+    ? folderTree({
+      ns: e.id, recs, cats: S.categories[e.id] || [], card: recordCard, filtering, rerender: rerenderBody(viewMine),
+      parentOf: (r) => (r.type === 'bookmark' ? null : (r.path || '').startsWith('Scenario/') ? r.path.split('/').slice(1, -1).join('/') : ''),
+      rootLabel: 'Scenario', nested: true, otherLabel: 'カタログ外の登録（ブックマーク）',
+      onCreate,
+      onDeleteFolder: connected ? (p) => deleteItems(loc, [{ rel: folderRel(loc, p), name: p.split('/').pop(), isFolder: true }]) : null,
+      onCopyFolder: connected ? (p) => copyItems(loc, [{ rel: folderRel(loc, p), name: p.split('/').pop(), isFolder: true }]) : null,
+    })
+    : h('div', { class: 'list', id: 'mine-list' }, recs.length ? recs.map(recordCard) : h('p', { class: 'empty' }, recordsOf().length ? '見つかりませんでした' : 'まだ記録がありません。「読み取る」を押してください'));
+
+  return h('div', {},
+    h('div', { class: 'card' },
+      h('div', { class: 'row' },
+        connected
+          ? h('button', { class: 'btn', onclick: () => scanEngine(e.id) }, '読み取る')
+          : h('button', { class: 'btn primary', onclick: () => connectEngine(e.id) }, 'フォルダに接続'),
+        h('button', { class: 'btn', onclick: checkUpdates }, '更新チェック'),
+        updates.length ? h('button', { class: 'btn primary', onclick: () => startBatch(updates.map((r) => ({ work: workOf(r), record: r })), '更新ありを一括ダウンロード') }, `更新ありを一括ダウンロード（${updates.length}件）`) : null,
+        h('button', { class: 'btn', onclick: openTidy, title: 'Scenarioフォルダとzipの保存場所の、二重に入っているもの・まだ入れていないもの（積みシナ）を調べます' }, '整理・二重チェック'),
+        h('button', { class: 'btn', onclick: addBookmark }, 'カタログ外を登録'),
+        outside.length ? h('button', { class: 'btn', onclick: () => registerOutside(outside) }, `カタログ外を個人用カタログにまとめて登録（${outside.length}件）`) : null,
+        openBtn(e.ref, 'フォルダを開く'),
+        S.platform.kind === 'app' && e.kind !== 'wcw' ? h('button', { class: 'btn', title: `${e.name} を起動します`, onclick: () => busy('エンジンを起動', () => S.platform.launch(e.ref, e.kind)) }, 'エンジンを起動') : null,
+        h('button', { class: 'btn help', title: 'ボタンの説明', 'aria-label': 'ボタンの説明', onclick: showButtonHelp }, '?'),
+      ),
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        h('input', { type: 'search', class: 'grow', placeholder: '名前・作者・タグで絞り込み', value: S.filter.mine, oninput: (ev) => { S.filter.mine = ev.target.value; rerenderList('mine-body', viewMine); } }),
+        h('select', { 'aria-label': '状態', onchange: (ev) => { S.filter.mineState = ev.target.value; render(); } },
+          [['', 'すべて'], ['update', '更新あり'], ['unknown', '版不明'], ['latest', '最新'], ['none', 'カタログ外'], ['missing', '見つからない']]
+            .map(([v, l]) => h('option', { value: v, selected: S.filter.mineState === v ? 'selected' : null }, l))),
+      ),
+      mineNav(),
+      e.lastScan ? h('p', { class: 'small muted', style: 'margin:8px 0 0' }, `最後に読み取った日時：${fmtDate(e.lastScan)}／${recordsOf().length}件`) : null,
+      !connected && S.platform.kind === 'web' ? h('p', { class: 'small muted', style: 'margin:6px 0 0' }, 'ブラウザは開くたびにフォルダの許可を聞き直します。「フォルダに接続」を押して許可してください。') : null,
+      tagChips(allRecs),
+    ),
+    S.tidy ? viewTidy() : null,
+    h('div', { id: 'mine-body' }, selBar, mineTools({ rootLabel: 'Scenario', onCreate }), list),
+  );
+}
+
+/** Scenario の中（parent：'' は直下、'_店' など）に、空のフォルダを作る */
+async function createScenarioFolder(e, parent) {
+  const name = await askFolderName(['Scenario', parent].filter(Boolean).join('/'));
+  if (!name) return;
+  const rel = [parent, name].filter(Boolean).join('/');
+  const done = await busy('フォルダを作成', async () => {
+    const d = await dirOf(e.id, true);
+    if (!d) throw new Error('フォルダに接続できませんでした');
+    if (await existsAt(d, `Scenario/${rel}`)) throw new Error(`同じ名前のものがすでにあります：Scenario/${rel}`);
+    await dirAt(d, `Scenario/${rel}`, { create: true });
+    S.categories[e.id] = [...new Set([...(S.categories[e.id] || []), rel])].sort();
+    await store.set('categories', S.categories);
+    return true;
+  });
+  if (!done) return;
+  if (parent) openFolder(e.id, parent);
+  toast(`Scenario/${rel} を作成しました`);
+  render();
+}
+
+/** 削除モード・コピーモード：1つの作品（シナリオのフォルダ・zipなど） */
+function recordItem(r) {
+  const same = S.records.filter((x) => x.engineId === r.engineId && x.path === r.path);
+  return { item: { rel: r.path, name: r.name || r.path.split('/').pop() }, note: same.length > 1 ? `※このファイルには、ほかに${same.length - 1}件の作品が入っています。いっしょに削除されます。` : '' };
+}
+
+function recordCard(r) {
+  const work = workOf(r);
+  const st = r.state || (S.combined ? 'none' : null);
+  const save = async (patch) => {
+    Object.assign(r, patch);
+    Object.assign(r, applyCatalog(r));
+    await store.putRecord(r);
+    render();
+  };
+  const pick = h('input', {
+    type: 'checkbox', checked: S.mineSel.has(r.id), 'aria-label': `${r.name || '(名前なし)'}を選ぶ`,
+    onchange: (ev) => { if (ev.target.checked) S.mineSel.add(r.id); else S.mineSel.delete(r.id); rerenderList('mine-body', viewMine); },
+  });
+  return h('div', { class: 'card' },
+    h('div', { class: 'row between' },
+      h('div', { class: 'row' },
+        S.selectMode ? pick : null,
+        h('button', {
+          class: `btn star${(r.tags || []).includes('お気に入り') ? ' on' : ''}`, 'aria-label': `${r.name}をお気に入りにする`, 'aria-pressed': (r.tags || []).includes('お気に入り') ? 'true' : 'false',
+          title: '「お気に入り」タグを付ける・外す',
+          onclick: async () => { await addTagName('お気に入り'); const on = (r.tags || []).includes('お気に入り'); await save({ tags: on ? r.tags.filter((t) => t !== 'お気に入り') : [...(r.tags || []), 'お気に入り'] }); },
+        }, (r.tags || []).includes('お気に入り') ? '★' : '☆'),
+        h('span', { class: 'item-title' }, r.name || '(名前なし)'),
+        r.type === 'bookmark' ? h('span', { class: 'badge plain' }, 'ブックマーク') : formatBadge(r),
+        labelBadges(work),
+        r.encrypted ? h('span', { class: 'badge enc', title: 'NextのWirthBuilderで暗号化（WDP）されたデータです' }, '暗号化') : null,
+        st ? h('span', { class: `badge ${st === 'update' ? 'update' : st === 'latest' ? 'ok' : 'plain'}` }, STATE_LABEL[st]) : null,
+        r.missing ? h('span', { class: 'badge bad' }, '見つからない') : null,
+        r.pageChanged ? h('span', { class: 'badge update' }, 'ページに変化あり') : null,
+      ),
+      h('div', { class: 'row' },
+        r.readmes?.length || (r.texts || []).some(isReadmeName) ? h('button', { class: 'btn ghost', onclick: () => ((r.texts || []).some(isReadmeName) ? showTexts(r, readmeFirst(r.texts)) : showReadmes(r)) }, 'Readme') : null,
+        r.pageUrl ? h('button', { class: 'btn ghost', onclick: () => S.platform.openUrl(r.pageUrl) }, '配布ページ') : null,
+        work ? h('button', { class: 'btn sm', title: 'カタログでこの作品を見ます', onclick: () => { S.filter.cat = work.name; S.filter.catSource = ''; goTab('catalog'); } }, 'カタログ') : null,
+        !work && r.type !== 'bookmark' && r.name ? h('button', { class: 'btn sm', title: 'この作品を個人用カタログに登録します', onclick: () => editEntry({ prefill: { entry: entryFromRecord(r) } }) }, '＋個人用カタログに登録') : null,
+        S.deleteMode && !r.missing && r.type !== 'bookmark' && r.path ? deleteBtn(() => { const x = recordItem(r); deleteItems({ kind: 'engine', id: r.engineId }, [x.item], { note: x.note }); }) : null,
+        S.copyMode && !r.missing && r.type !== 'bookmark' && r.path ? copyBtn(() => copyItems({ kind: 'engine', id: r.engineId }, [recordItem(r).item])) : null,
+        r.missing || r.type === 'bookmark' ? h('button', { class: 'btn ghost danger', onclick: async () => { await store.deleteRecord(r.id); S.records = S.records.filter((x) => x.id !== r.id); render(); } }, '削除') : null,
+      )),
+    h('div', { class: 'meta' }, [r.author, r.type === 'bookmark' ? r.pageUrl : r.path].filter(Boolean).join('　')),
+    h('div', { class: 'row', style: 'margin-top:6px' },
+      h('label', { class: 'row small muted' }, 'バージョン',
+        h('input', {
+          type: 'text', class: 'ver', value: r.version || '', placeholder: r.versionGuess || '未設定',
+          onchange: (ev) => save({ version: ev.target.value.trim(), versionSource: ev.target.value.trim() ? 'user' : '' }),
+        })),
+      !r.version && r.versionGuess ? h('button', { class: 'btn sm', onclick: () => save({ version: r.versionGuess, versionSource: 'guess' }) }, `推測「${r.versionGuess}」を使う`) : null,
+      r.versionSource ? h('span', { class: 'small muted' }, VERSION_SOURCE[r.versionSource]) : null,
+      tagEditor(r, save),
+    ),
+    st === 'update' && work ? h('div', { class: 'note warn row', style: 'margin-top:8px' },
+      h('span', {}, `新しい版 ${work.version} があります（手元：${r.version}）`),
+      h('button', { class: 'btn sm', onclick: () => downloadWork(work) }, 'ダウンロード'),
+      h('button', { class: 'btn ghost sm', onclick: () => startBatch([{ work, record: r }], '更新をDL') }, 'この場所に入れ直す')) : null,
+    r.note ? h('div', { class: 'small muted', style: 'margin-top:4px' }, r.note) : null,
+    textRow(r),
+  );
+}
+
+// ------------------------------------------------------------ シナリオの中のテキスト（Readme・はじめに・利用規約など）
+const TEXT_SHOW = 5;
+const readmeFirst = (names) => names.find(isReadmeName) || names[0];
+/** 作品の下に、テキストファイルの名前を並べる（押すと中身を見る） */
+function textRow(r) {
+  const names = r.texts || [];
+  if (!names.length || r.missing) return null;
+  const label = (n) => n.split('/').pop();
+  // 多いときは5件だけ出して、「＋もっと見る」で全部を出す（押した作品は覚えておく）
+  S.textOpen ??= new Set();
+  const all = S.textOpen.has(r.id);
+  const toggle = () => { if (all) S.textOpen.delete(r.id); else S.textOpen.add(r.id); rerenderList('mine-body', viewMine); };
+  return h('div', { class: 'row text-files', style: 'margin-top:6px' },
+    h('span', { class: 'small muted' }, `テキスト（${names.length}）：`),
+    (all ? names : names.slice(0, TEXT_SHOW)).map((n) => h('button', { class: 'btn ghost sm', title: n, onclick: () => showTexts(r, n) }, label(n))),
+    names.length > TEXT_SHOW ? h('button', { class: `btn ghost sm ${all ? 'text-less' : 'text-more'}`, onclick: toggle }, all ? '－たたむ' : `＋もっと見る（ほか${names.length - TEXT_SHOW}件）`) : null);
+}
+
+/** テキストの中身を読む（フォルダならそのまま、zipなどなら開いて中から） */
+async function readRecordText(r, name, cache) {
+  const d = await dirOf(r.engineId, true);
+  if (!d) throw new Error('エンジンのフォルダに接続できませんでした');
+  let bytes;
+  if (r.type === 'archive') {
+    cache.opened ??= await openArchive(await readAt(d, r.path), r.path.split('/').pop());
+    const f = cache.opened.files.find((x) => x.path === name);
+    if (!f) throw new Error(`見つかりません：${name}`);
+    bytes = await f.read();
+  } else {
+    bytes = await readAt(d, `${r.path}/${name}`);
+  }
+  return decodeText(bytes).text.slice(0, 200000);
+}
+
+/** テキストを見る窓（上にファイル名を並べて、押したものの中身を出す） */
+function showTexts(r, start) {
+  const names = r.texts || [];
+  const cache = {};
+  modal((close) => {
+    const pre = h('pre', { class: 'readme' }, '読み込み中…');
+    const list = h('div', { class: 'readme-list text-tabs' }); // ファイル名は小さめに、2行まで（多いときはスクロール）
+    const open = async (n) => {
+      list.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.name === n ? 'true' : 'false'));
+      pre.textContent = '読み込み中…';
+      try { pre.textContent = await readRecordText(r, n, cache); } catch (e) { pre.textContent = `読み込めませんでした：${e.message}`; }
+    };
+    list.append(...names.map((n) => h('button', { class: 'btn sm', 'data-name': n, 'aria-pressed': 'false', title: n, onclick: () => open(n) }, n.split('/').pop())));
+    setTimeout(() => open(start || names[0]), 0);
+    return h('div', { class: 'stack' },
+      h('h2', {}, `${r.name || '(名前なし)'} のテキスト`),
+      list,
+      pre,
+      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn', onclick: () => close() }, '閉じる')));
+  });
+}
+
+function showReadmes(r) {
+  modal((close) => {
+    let idx = 0;
+    const pre = h('pre', { class: 'readme' }, r.readmes[0].text);
+    return h('div', { class: 'stack' },
+      h('h2', {}, `${r.name} のReadme`),
+      h('div', { class: 'readme-list' }, r.readmes.map((x, i) => h('button', {
+        class: 'btn sm', 'aria-pressed': i === 0 ? 'true' : 'false',
+        onclick: (ev) => { idx = i; pre.textContent = r.readmes[i].text; ev.target.parentElement.querySelectorAll('button').forEach((b, j) => b.setAttribute('aria-pressed', j === idx ? 'true' : 'false')); },
+      }, x.name))),
+      pre,
+      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn', onclick: () => close() }, '閉じる')));
+  });
+}
+
+// ------------------------------------------------------------ エンジン
+const ENGINE_HELP = `CardWirth/              ← ここを選ぶ
+├─ CardWirth.exe        （NextはCardWirthNext.exe、PyはCardWirthPy.exe）
+├─ Scenario/            ← ここではありません
+├─ Yado/
+└─ …`;
+
+/** エンジンのフォルダの選び方を説明してから、選んでもらう。よくある間違いは選び直してもらう */
+async function pickEngineFolder() {
+  const go = await modal((close) => h('div', { class: 'stack' },
+    h('h2', {}, 'CardWirthのフォルダを選びます'),
+    h('p', { style: 'margin:0' }, h('b', {}, 'CardWirth.exe（または CardWirthNext.exe・CardWirthPy.exe）が入っているフォルダ'), 'を選んでください。'),
+    h('p', { class: 'note warn', style: 'margin:0' }, '「Scenario」フォルダそのものではなく、そのひとつ上のフォルダです。'),
+    h('pre', { class: 'readme', style: 'max-height:none' }, ENGINE_HELP),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'ツールは、この中の「Scenario」にシナリオを入れ、「CWCatalog_backup」に置き換える前のものを残します。宿（Yado）には触りません。'),
+    h('div', { class: 'row', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
+      h('button', { class: 'btn primary', onclick: () => close(true) }, 'フォルダを選ぶ'))));
+  if (!go) return null;
+  for (;;) {
+    const picked = await S.platform.pickFolder();
+    const chk = await checkEngineFolder(picked.dir);
+    if (chk.ok) return { picked, kind: chk.kind };
+    const msg = {
+      scenario: '「Scenario」フォルダが選ばれています。ひとつ上の、CardWirth.exe がある方のフォルダを選び直してください。',
+      inside: 'シナリオのフォルダ（Summary.wsm などがある場所）が選ばれています。CardWirth.exe がある、CardWirth本体のフォルダを選び直してください。',
+      yado: '宿（Yado）のフォルダが選ばれているようです。ひとつ上の、CardWirth.exe がある方のフォルダを選び直してください。',
+      noscenario: `「${picked.label}」には「Scenario」フォルダがありません。CardWirth.exe がある場所を選んでください。`,
+    }[chk.problem];
+    const choice = await modal((close) => h('div', { class: 'stack' },
+      h('h2', {}, '選んだフォルダが違うようです'),
+      h('p', { style: 'margin:0' }, msg),
+      h('pre', { class: 'readme', style: 'max-height:none' }, ENGINE_HELP),
+      h('div', { class: 'row', style: 'justify-content:flex-end' },
+        h('button', { class: 'btn', onclick: () => close('cancel') }, 'やめる'),
+        chk.problem === 'noscenario' && chk.kind ? h('button', { class: 'btn', onclick: () => close('use') }, 'このまま登録する') : null,
+        h('button', { class: 'btn primary', onclick: () => close('again') }, '選び直す'))));
+    if (choice === 'use') return { picked, kind: chk.kind };
+    if (choice !== 'again') return null;
+  }
+}
+
+async function addEngine() {
+  await busy('フォルダを登録', async () => {
+    const r = await pickEngineFolder();
+    if (!r) return;
+    let kind = r.kind || (await detectEngineKind(r.picked.dir));
+    if (!kind) kind = await chooseKind(r.picked.label);
+    if (!kind) return;
+    await registerEngine(r.picked, kind);
+  });
+}
+
+async function registerEngine(picked, kind) {
+  const id = 'eng-' + Math.random().toString(36).slice(2, 10);
+  const e = { id, name: `${ENGINE_KINDS[kind].name}`, kind, ref: picked.ref, label: picked.label, addedAt: new Date().toISOString() };
+  await store.putEngine(e);
+  S.engines.push(e);
+  S.dirs.set(id, picked.dir);
+  S.engineId = id;
+  await store.set('engineId', id);
+  toast(`${e.name} を登録しました。読み取りを始めます`);
+  await scanEngine(id);
+}
+
+function chooseKind(label) {
+  return modal((close) => {
+    const sel = h('select', {}, Object.entries(ENGINE_KINDS).filter(([k]) => k !== 'wcw').map(([k, v]) => h('option', { value: k }, v.name)));
+    return h('div', { class: 'stack' },
+      h('h2', {}, 'どのエンジンですか？'),
+      h('p', { class: 'small muted' }, `「${label}」からは自動で判定できませんでした。`),
+      sel,
+      h('div', { class: 'row', style: 'justify-content:flex-end' },
+        h('button', { class: 'btn', onclick: () => close(null) }, 'やめる'),
+        h('button', { class: 'btn primary', onclick: () => close(sel.value) }, '決定')));
+  });
+}
+
+async function connectEngine(id) {
+  await busy('フォルダに接続', async () => {
+    const d = await dirOf(id, true);
+    if (!d) throw new Error('フォルダを使う許可がありませんでした。もう一度押して許可してください');
+    toast('接続しました');
+  });
+}
+
+async function scanEngine(id) {
+  await busy('読み取り中', async () => {
+    const d = await dirOf(id, true);
+    if (!d) throw new Error('フォルダに接続できませんでした');
+    const res = await scanScenarioFolder(d, { onProgress: (p) => busyText(`読み取り中… ${p}`) });
+    const old = new Map(recordsOf(id).filter((r) => r.type !== 'bookmark').map((r) => [r.id, r]));
+    const now = new Date().toISOString();
+    const fresh = res.items.map((it) => {
+      const rid = recordId(id, it.path, it.inner);
+      const prev = old.get(rid) || {};
+      old.delete(rid);
+      const r = {
+        tags: [], version: '', versionSource: '', workKey: '', readmes: [],
+        ...prev,
+        id: rid, engineId: id, path: it.path, inner: it.inner || '', type: it.type,
+        name: it.name, author: it.author, format: it.format, dataVersion: it.dataVersion ?? null, wsnVersion: it.wsnVersion ?? null,
+        encrypted: it.encrypted ?? null, versionGuess: it.versionGuess || '', sha256: it.sha256 || prev.sha256 || '',
+        note: it.note || prev.note || '', seenAt: now, missing: false, texts: it.texts || [],
+      };
+      return { ...r, ...applyCatalog(r) };
+    });
+    const missing = [...old.values()].map((r) => ({ ...r, missing: true }));
+    await store.putRecords([...fresh, ...missing]);
+    S.records = await store.records();
+    S.categories[id] = res.categories;
+    await store.set('categories', S.categories);
+    const e = engine(id);
+    e.lastScan = now;
+    await store.putEngine(e);
+    toast(`${fresh.length}件を読み取りました${missing.length ? `（見つからないもの ${missing.length}件）` : ''}${res.warnings.length ? `。読めなかったもの ${res.warnings.length}件` : ''}`);
+    if (res.warnings.length) console.warn(res.warnings);
+  });
+}
+
+// ------------------------------------------------------------ ボタンの説明（？）
+const BUTTON_HELP = [
+  ['読み取る', ['接続中エンジンのScenarioフォルダ内を調べ、導入済み作品（作品名・作者・形式・バージョン等）の情報を一覧に記録・更新します。シナリオの追加や削除を行った後に実行してください。（※実際のファイルの変更・削除は一切行いません）']],
+  ['更新チェック', ['カタログデータを最新状態に更新し、一覧の作品に新しいバージョンがあるかを照合します。アプリ版では、登録済みファイル一覧・配布ページの更新状況、および配布先のリンク切れ（週1回・最大30件まで）も自動確認します。更新がある作品は「更新あり」と表示され、一括ダウンロードが可能です。（※ファイルの変更・削除は行いません）']],
+  ['整理・二重チェック', ['Scenarioフォルダと「zip・wsn保存フォルダ」を照合し、以下の作品を一覧検出します。',
+    ['同一作品の重複', '旧バージョン', '未導入の作品（積みシナ候補）', '元の入手ファイル（zip / wsn / cab / lzh / 7z）が存在しない作品'],
+    '※照合処理だけでファイルが変更されることはありません。「整理」を実行した場合のみ、選択したファイルを CWCatalog_backup フォルダへ移動（または削除）します。']],
+  ['カタログ外を登録', ['共用カタログに未掲載の作品について、作品名や配布ページURL等を直接入力して、自分のフォルダ一覧に登録します。アプリ版では「更新チェック」時に配布ページの更新状況を追跡できるようになります。']],
+];
+function showButtonHelp() {
+  return modal((close) => h('div', { class: 'stack', id: 'button-help' },
+    h('h2', {}, 'ボタンの説明'),
+    BUTTON_HELP.map(([name, body]) => h('section', {},
+      h('h3', { style: 'margin:0 0 4px' }, `【${name}】`),
+      body.map((b) => (Array.isArray(b)
+        ? h('ul', { style: 'margin:2px 0;padding-left:1.4em' }, b.map((x) => h('li', {}, x)))
+        : h('p', { style: 'margin:0' }, b))))),
+    h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { class: 'btn primary', onclick: () => close() }, '閉じる'))));
+}
+
+// ------------------------------------------------------------ カタログ外（ブックマーク）
+async function addBookmark() {
+  const v = await modal((close) => {
+    const f = { name: h('input', { type: 'text', required: true }), author: h('input', { type: 'text' }), url: h('input', { type: 'url', placeholder: 'https://' }), ver: h('input', { type: 'text' }), note: h('input', { type: 'text' }) };
+    return h('form', { class: 'stack', onsubmit: (ev) => { ev.preventDefault(); close({ name: f.name.value.trim(), author: f.author.value.trim(), url: f.url.value.trim(), version: f.ver.value.trim(), note: f.note.value.trim() }); } },
+      h('h2', {}, 'カタログ外の作品を登録'),
+      h('p', { class: 'small muted' }, '配布ページを登録しておくと、アプリ版では「更新チェック」でページの変化（配布ファイル名の変化）を確認できます。DLもしたい作品は「カタログ」タブの「＋作品を登録（個人用）」が便利です。'),
+      h('label', { class: 'field' }, h('span', {}, h('b', { class: 'req' }, '必須'), '作品名'), f.name),
+      h('label', { class: 'field' }, '作者', f.author),
+      h('label', { class: 'field' }, '配布ページのURL', f.url),
+      h('label', { class: 'field' }, '手元のバージョン', f.ver),
+      h('label', { class: 'field' }, 'メモ', f.note),
+      h('div', { class: 'row', style: 'justify-content:flex-end' },
+        h('button', { type: 'button', class: 'btn', onclick: () => close(null) }, 'やめる'),
+        h('button', { type: 'submit', class: 'btn primary' }, '登録')));
+  });
+  if (!v || !v.name) return;
+  if (v.url && !/^https?:\/\//.test(v.url)) { toast('URLは https:// から始まるものにしてください', { bad: true }); return; }
+  const r = {
+    id: recordId(S.engineId || 'none', `bookmark:${Date.now().toString(36)}`), engineId: S.engineId || 'none', type: 'bookmark',
+    path: '', name: v.name, author: v.author, pageUrl: v.url, version: v.version, versionSource: v.version ? 'user' : '',
+    note: v.note, tags: [], format: 'unknown', state: 'none', addedAt: new Date().toISOString(),
+  };
+  await store.putRecord(r);
+  S.records.push(r);
+  render();
+}
+
+// ------------------------------------------------------------ 更新チェック
+async function checkUpdates() {
+  await busy('更新チェック', async () => {
+    const remote = S.sources.filter((s) => s.enabled && s.url);
+    let online = true;
+    const failed = [];
+    for (const src of remote) {
+      try { await refreshSource(src, { useMeta: true }); } catch (e) { failed.push(`${src.name}：${e.message}`); }
+    }
+    if (remote.length && failed.length === remote.length) online = false;
+    if (failed.length) toast(`取れなかったカタログがあります（前回の内容で確認します）：${failed.join('／')}`, { bad: true, ms: 9000 });
+    if (!S.combined) toast('カタログがまだありません。「カタログ」タブで共用カタログを追加するか、個人用カタログに作品を登録してください');
+    const all = await store.records();
+    const changed = [];
+    for (const r of all) {
+      const patch = applyCatalog(r);
+      if (Object.keys(patch).length) { Object.assign(r, patch); changed.push(r); }
+    }
+
+    // ファイル一覧（アップローダーなど）を登録した作品：一覧から新しい版を探す（アプリ版だけ）
+    let lists = null;
+    if (S.platform.canCheckPages && online) {
+      lists = await checkFileLists({ onStep: (n) => busyText(`ファイル一覧を確認中… ${n}`) });
+      for (const r of all) {
+        const patch = applyCatalog(r);
+        if (Object.keys(patch).length) { Object.assign(r, patch); if (!changed.includes(r)) changed.push(r); }
+      }
+    }
+
+    // 入れている作品のDL先が、リンク切れになっていないか（アプリ版だけ。1回に30件まで、1週間に1回）
+    let links = null;
+    if (S.platform.canCheckPages && online && S.combined && S.linkCheckOnUpdate !== false) {
+      const keys = new Set(all.map((r) => r.workKey).filter(Boolean));
+      const urls = [];
+      for (const w of S.combined.works) {
+        if (!keys.has(w.key)) continue;
+        const d = chooseDownloads(w, defaultUrlOf(w))[0];
+        if (d && staleLink(d.url)) urls.push(d.url);
+      }
+      if (urls.length) links = await checkLinks(urls.slice(0, 30), { onStep: (n) => busyText(`リンク切れを確認中… ${n}`) });
+    }
+
+    // カタログ外のブックマーク：アプリ版だけ配布ページを見に行く
+    let pages = 0, pageChanged = 0, pageFailed = 0;
+    if (S.platform.canCheckPages && online) {
+      const bms = all.filter((r) => r.type === 'bookmark' && r.pageUrl);
+      for (const r of bms) {
+        try {
+          const html = await S.platform.fetchText(r.pageUrl);
+          const c = comparePage(html, r.pageSnapshot);
+          r.pageSnapshot = { mode: c.mode, snapshot: c.snapshot, at: new Date().toISOString() };
+          if (c.changed) { r.pageChanged = { added: c.added, removed: c.removed, at: r.pageSnapshot.at }; pageChanged++; }
+          pages++;
+        } catch (e) {
+          pageFailed++;
+          if (e?.status === 404 || e?.status === 410) await markLink(r.pageUrl, 'dead', e.status);
+        }
+        if (!changed.includes(r)) changed.push(r);
+        await sleep(1500); // 相手のサイトに負担をかけないよう、1件ずつ間をあける
+      }
+    }
+    await store.putRecords(changed);
+    S.records = await store.records();
+    await store.set('lastCheck', new Date().toISOString());
+    const n = S.records.filter((r) => r.state === 'update').length;
+    toast([`更新あり ${n}件`, lists?.checked ? `ファイル一覧 ${lists.checked}件（新しいファイル ${lists.found}件${lists.failed ? `・読めなかった一覧 ${lists.failed}件` : ''}）` : '', pages ? `ページ確認 ${pages}件（変化 ${pageChanged}件${pageFailed ? `・確認できず ${pageFailed}件` : ''}）` : '', links?.checked ? `リンク確認 ${links.checked}件${links.dead ? `（✖ リンク切れ ${links.dead}件）` : ''}` : ''].filter(Boolean).join('／'));
+  });
+}
+
+// ------------------------------------------------------------ 設定
+function viewSettings() {
+  const engs = S.engines.map((e) => h('div', { class: 'card' },
+    h('div', { class: 'row between' },
+      h('div', {}, h('div', { class: 'item-title' }, e.name), h('div', { class: 'meta' }, ENGINE_KINDS[e.kind]?.name || e.kind)),
+      h('div', { class: 'row' },
+        h('span', { class: `badge ${S.dirs.has(e.id) ? 'ok' : 'plain'}` }, S.dirs.has(e.id) ? '接続中' : '未接続'),
+        openBtn(e.ref, 'フォルダを開く'),
+        !S.dirs.has(e.id) ? h('button', { class: 'btn sm', onclick: () => (e.ref ? connectEngine(e.id) : reconnect(e)) }, '接続') : null,
+        e.needsReconnect || !e.ref || S.platform.kind === 'app' ? h('button', { class: 'btn sm', onclick: () => reconnect(e) }, '選び直す') : null,
+        h('button', {
+          class: 'btn sm danger', onclick: async () => {
+            if (!(await confirmBox(`「${e.name}」の登録と、その記録を消します。フォルダの中身は消えません。よろしいですか？`))) return;
+            await store.deleteEngine(e.id);
+            S.engines = S.engines.filter((x) => x.id !== e.id);
+            S.records = await store.records();
+            S.dirs.delete(e.id);
+            if (S.engineId === e.id) S.engineId = S.engines[0]?.id || null;
+            render();
+          },
+        }, '登録を外す'))),
+    h('div', { style: 'margin-top:8px' }, placeField('フォルダ', e.label || '')),
+    h('div', { class: 'row', style: 'margin-top:8px' },
+      h('label', { class: 'field grow' }, '表示名', h('input', { type: 'text', value: e.name, onchange: async (ev) => { e.name = ev.target.value.trim() || e.name; await store.putEngine(e); render(); } })),
+      h('label', { class: 'field' }, '種類', h('select', { onchange: async (ev) => { e.kind = ev.target.value; await store.putEngine(e); render(); } },
+        Object.entries(ENGINE_KINDS).filter(([k]) => k !== 'wcw').map(([k, v]) => h('option', { value: k, selected: e.kind === k ? 'selected' : null }, v.name)))))));
+
+  const importIn = h('input', {
+    type: 'file', accept: '.json', hidden: true, onchange: async (ev) => {
+      const f = ev.target.files[0];
+      if (!f) return;
+      await busy('記録を読み込み', async () => {
+        const n = await importRecords(JSON.parse(await f.text()));
+        S.engines = await store.engines();
+        S.records = await store.records();
+        toast(`${n}件の記録を読み込みました。エンジンのフォルダは「選び直す」で接続してください`);
+      });
+    },
+  });
+  const dev = location.hash.includes('dev-opfs') && S.platform.opfsFolder;
+
+  return h('div', {},
+    h('h2', {}, 'エンジン'),
+    h('p', { class: 'small muted' }, 'CardWirth.exe（CardWirthNext.exe・CardWirthPy.exe）が入っているフォルダを登録します。「Scenario」フォルダそのものではありません。'),
+    engs,
+    S.platform.canWriteFolders
+      ? h('div', { class: 'row', style: 'margin-bottom:18px' }, h('button', { class: 'btn primary', onclick: addEngine }, 'エンジンを追加'),
+        dev ? h('button', { class: 'btn', id: 'dev-opfs', onclick: async () => { const p = await S.platform.opfsFolder('test-engine'); await registerEngine(p, (await detectEngineKind(p.dir)) || 'py'); } }, 'テスト用（ブラウザ内）') : null)
+      : h('p', { class: 'note warn' }, 'このブラウザでは、フォルダの登録はできません。（パソコンのChrome・Edge、またはアプリ版で使えます）'),
+
+    h('h2', {}, 'zip・wsnの保存場所'),
+    viewArchiveSettings(dev),
+
+    h('h2', {}, '素材・スキンの置き場所'),
+    viewStashSettings(dev),
+
+    h('h2', {}, 'バックアップ先'),
+    viewBackupSettings(dev),
+
+    h('h2', {}, 'カタログ'),
+    h('div', { class: 'card stack' },
+      prefsBlock(),
+      h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => { S.manageOpen = true; goTab('catalog'); } }, 'カタログの管理を開く'),
+        h('span', { class: 'small muted' }, '共用カタログ・個人用カタログの追加、候補に含めるかどうか、DL一覧の読み込み・書き出しはここから'))),
+
+    h('h2', {}, 'シナリオラベル（R18・R15・注意のラベル）'),
+    viewRatingSettings(),
+
+    h('h2', {}, 'タグ'),
+    h('div', { class: 'card stack' },
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.autoTag !== false, 'aria-label': 'Readmeから自動でタグを付ける', onchange: async (ev) => { S.autoTag = ev.target.checked; await store.set('autoTag', S.autoTag); } }),
+        'シナリオを入れるとき、Readmeや説明文からタグを自動で付ける'),
+      h('p', { class: 'small muted', style: 'margin:0' }, '「店シナ」「読み物」「1人用」「3人以上」「6人専用」「戦闘あり」「戦闘なし」「短編」「Lv3-5」などを、書いてあるときだけ付けます。入れる前に、付けるタグを選べます。もう入っている作品は、「自分のフォルダ一覧」で選んで「Readmeからタグを付ける」を押すと付けられます。'),
+      h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: manageTags }, 'タグの整理'))),
+
+    h('h2', { id: 'records-settings' }, `自分のフォルダの記録（${RECORDS_BACKUP}）`),
+    h('div', { class: 'card stack' },
+      h('p', { class: 'small muted', style: 'margin:0' }, '自分のフォルダ一覧の記録（シナリオ、素材のバージョン・タグ・メモなど）を、ファイルに書き出したり読み込んだりできます。形式は公開されているので、他のツールからも読み込むことができます。'),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn', onclick: async () => { const j = await exportRecords(APP_VERSION); await S.platform.saveFile(`cwcatalog-records-${new Date().toISOString().slice(0, 10)}.json`, new TextEncoder().encode(JSON.stringify(j, null, 2))); } }, '書き出す'),
+        h('button', { class: 'btn', onclick: () => importIn.click() }, '読み込む'), importIn)),
+
+    viewAppSettings(),
+
+    h('h2', {}, '安全のしくみ'),
+    viewSafetySettings(),
+
+    h('h2', {}, '同意を覚えているサイト'),
+    viewConsents(),
+
+    h('h2', {}, 'DLキー（パスワード）'),
+    viewDlKeys(),
+
+    h('h2', {}, '作品ページに置く「CWカタログで入れる」ボタンを作る（作者さん向け）'),
+    viewLinkMaker(),
+
+    h('h2', {}, 'このツールについて'),
+    h('div', { class: 'card small stack' },
+      h('p', { style: 'margin:0' }, `CWカタログ ${APP_VERSION}（${S.platform.label}）`),
+      h('ul', { style: 'margin:0;padding-left:1.2em' },
+        h('li', {}, 'ツールが書き込むのは、登録したエンジンの「Scenario」と「CWCatalog_backup」フォルダ、それと指定したzip・wsnの保存場所・素材の置き場所・バックアップ先だけです。宿（Yado）には触りません。'),
+        h('li', {}, 'zipの中のファイルを実行することはありません。（くわしくは上の「安全のしくみ」）'),
+        h('li', {}, 'ネットにつなぐのは、カタログの読み込み・更新チェック・ダウンロード・紹介を見るボタンを押したときだけです。'),
+        S.platform.kind === 'web' ? h('li', {}, 'HTML版では、作者さんのサイトから直接ダウンロードできないことが多いです。（ブラウザの制限）その場合は配布ページを開いて、落としたファイルをドロップしてください。') : null)),
+
+    h('h2', {}, 'クレジット'),
+    h('div', { class: 'card stack credits', id: 'credits' },
+      h('dl', { class: 'credit-list' },
+        h('dt', {}, '制作'), h('dd', {}, CREDITS.author),
+        h('dt', {}, 'メール'), h('dd', {}, CREDITS.mail, ' ', h('button', { class: 'btn ghost sm', onclick: async () => { try { await navigator.clipboard.writeText(CREDITS.mail); toast('メールアドレスをコピーしました'); } catch { toast('コピーできませんでした', { bad: true }); } } }, 'コピー')),
+        h('dt', {}, '制作補助ツール'), h('dd', {}, CREDITS.helper),
+        h('dt', {}, '使用アイコン'), h('dd', {}, CREDITS.icons)),
+      CREDITS.lines.map((l) => h('p', { style: 'margin:0' }, l))),
+
+    h('h2', {}, `更新履歴（今の版：${APP_VERSION}）`),
+    viewChangelog(),
+  );
+}
+
+function viewArchiveSettings(dev) {
+  const pick = async (useOpfs = false) => busy('保存場所を選ぶ', async () => {
+    const p = useOpfs ? await S.platform.opfsFolder('test-archive') : await S.platform.pickFolder({ title: 'zip・wsnを保存するフォルダを選んでください', id: 'cw-archive' });
+    S.archive = { ...S.archive, ref: p.ref, label: p.label, on: true, auto: false };
+    S.archiveDir = p.dir;
+    await store.set('archive', S.archive);
+    toast(`「${p.label}」に保存するようにしました`);
+  });
+  return h('div', { class: 'card stack' },
+    h('p', { class: 'small muted', style: 'margin:0' }, 'シナリオ導入時、元のzip・wsnファイルをバックアップ用として専用フォルダに保存できます。エンジンのScenarioフォルダとは別の場所を選んでください。'),
+    // 保存場所：［ 場所（最初から用意したフォルダ） ］
+    placeField('保存場所', S.archive.ref ? S.archive.label : '', S.archive.auto, S.archive.ref && !S.archiveDir ? '（次に保存するとき許可を聞きます）' : ''),
+    h('div', { class: 'row' },
+      h('label', { class: 'check grow' }, h('input', {
+        type: 'checkbox', checked: S.archive.on, disabled: !S.archive.ref, 'aria-label': 'インストールしたときにzipも保存する',
+        onchange: async (ev) => { S.archive.on = ev.target.checked; await store.set('archive', S.archive); render(); },
+      }), 'インストールしたときに、元のzip・wsnも保存する'),
+      openBtn(S.archive.ref),
+      S.platform.canWriteFolders ? h('button', { class: 'btn sm', onclick: () => pick() }, S.archive.ref ? '保存場所を変える' : '保存場所を選ぶ') : null,
+      dev ? h('button', { class: 'btn sm', id: 'dev-opfs-archive', onclick: () => pick(true) }, 'テスト用保存場所') : null),
+    !S.platform.canWriteFolders ? h('p', { class: 'note warn small', style: 'margin:0' }, 'このブラウザでは、保存場所の登録はできません。') : null);
+}
+
+async function reconnect(e) {
+  await busy('フォルダを選び直す', async () => {
+    const r = await pickEngineFolder();
+    if (!r) return;
+    e.ref = r.picked.ref;
+    e.label = r.picked.label;
+    e.needsReconnect = false;
+    await store.putEngine(e);
+    S.dirs.set(e.id, r.picked.dir);
+    toast('接続しました');
+  });
+}
+
+/** 選んだ作品の Readme・説明文から、タグを見つけて付ける（入れたときの記録か、フォルダの中の .txt を読む） */
+async function retagFromReadme(sel) {
+  const recs = sel.filter((r) => r.type !== 'bookmark' && !r.missing);
+  if (!recs.length) return;
+  const res = await busy('Readmeからタグを探す', async () => {
+    let n = 0;
+    const found = new Map();
+    const d = await dirOf(recs[0].engineId, true);
+    for (const [i, r] of recs.entries()) {
+      busyText(`Readmeからタグを探す… ${i + 1}/${recs.length}`);
+      let tags = [];
+      try {
+        if (r.readmes?.length) tags = findTags([r.name, ...r.readmes.map((x) => x.text)].join('\n'));
+        else if (d && r.type === 'folder') {
+          const dir = await dirAt(d, r.path);
+          const texts = [r.name];
+          for (const e of (await dir?.entries()) || []) {
+            if (e.kind === 'file' && /\.txt$/i.test(e.name) && texts.length < 8) texts.push(decodeText(await dir.readFile(e.name)).text.slice(0, 50000));
+          }
+          tags = findTags(texts.join('\n'));
+        } else if (d && r.type === 'archive') {
+          const segs = r.path.split('/');
+          const name = segs.pop();
+          const dir = await dirAt(d, segs.join('/'));
+          const o = await openArchive(await dir.readFile(name), name);
+          const sc = o.scenarios.find((x) => x.name === r.name) || o.scenarios[0];
+          tags = await findTagsInOpened(o, sc);
+        }
+      } catch { /* 読めなければ飛ばす */ }
+      const add = tags.filter((t) => !(r.tags || []).includes(t));
+      if (add.length) { await applyTags([r], add, []); for (const t of add) await addTagName(t); n++; found.set(r.name, add); }
+    }
+    return { n, found };
+  });
+  if (!res) return;
+  toast(res.n ? `${res.n}件にタグを付けました（${[...res.found].slice(0, 3).map(([k, v]) => `${k}：${v.join('・')}`).join('／')}${res.found.size > 3 ? ' …' : ''}）` : 'Readmeから、付けられるタグは見つかりませんでした', { ms: 9000 });
+  render();
+}
+
+/** 自分のフォルダにあるシナリオから、個人用カタログの作品の下書きを作る */
+function entryFromRecord(r) {
+  return {
+    name: r.name, author: r.author || '', version: r.version || r.versionGuess || '',
+    format: ['classic', 'next', 'wsn'].includes(r.format) ? r.format : 'classic', wsn_version: r.wsnVersion ?? null,
+    description: '', tags: [...(r.tags || [])], intro: [], downloads: r.pageUrl ? [{ url: r.pageUrl, label: '', kind: 'page', status: 'active', note: '' }] : [],
+    file: { name: '', sha256: r.sha256 || '' },
+  };
+}
+
+/** カタログ外の作品を、個人用カタログにまとめて登録する（DL先はあとから足す） */
+async function registerOutside(list) {
+  const own = ownSources();
+  const preset = new Set(S.catPrefs.addTo === 'all' ? own.map((s) => s.id) : own.slice(0, 1).map((s) => s.id));
+  const picker = ownPicker({ preset, emptyText: '個人用カタログを選ばないときは、「マイカタログ」を作って入れます。' });
+  const ok = await modal((close) => h('div', { class: 'stack' },
+    h('h2', {}, 'カタログ外をまとめて登録'),
+    h('p', { style: 'margin:0' }, `「${engine()?.name || ''}」のカタログ外の作品 ${list.length}件 を、個人用カタログに登録します。`),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'DL先は空のまま登録するので、あとから「カタログ」タブの「編集」で足してください。作品名・作者・形式・タグ・バージョンは、フォルダの中身から入れます。'),
+    picker.el,
+    h('p', { class: 'note small', style: 'margin:0' }, 'なお、カタログに追加する際、DL先のリンクや作者の紹介サイト等は保存されません。'),
+    h('div', { class: 'row', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
+      h('button', { class: 'btn primary', onclick: () => close(true) }, '登録する'))));
+  if (!ok) return;
+  await busy('個人用カタログに登録', async () => {
+    let ids = picker.ids();
+    if (!ids.length) {
+      if (picker.count()) throw new Error('入れる個人用カタログを1つ以上選んでください');
+      const { createOwn } = await import('./catalog-data.js');
+      ids = [(await createOwn('マイカタログ')).id];
+    }
+    for (const r of list) {
+      const e = entryFromRecord(r);
+      await saveOwnEntry({ id: 'p00000', owner: '', type: 'scenario', convert: 'self', requires: [], related: [], links: [], readme: '', level: null, updated: '', ...e, compat: e.format === 'wsn' ? { cw150: 'no', next: 'no', py: 'expected' } : e.format === 'next' ? { cw150: 'no', next: 'expected', py: 'unknown' } : { cw150: 'expected', next: 'expected', py: 'expected' } }, { targetIds: ids });
+    }
+    await refreshStates();
+    toast(`${list.length}件を個人用カタログに登録しました。DL先は「カタログ」タブの「編集」で足せます`, { ms: 9000 });
+  });
+}
+
+export const _test = { S, compareVersions };

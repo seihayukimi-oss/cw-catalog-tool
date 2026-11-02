@@ -1,0 +1,44 @@
+[package]
+name = "cw-catalog"
+version = "1.0.0"
+description = "CardWirth シナリオの一括DL・インストール・更新チェックツール"
+license = "MIT"
+edition = "2021"
+rust-version = "1.77.2"
+
+# 版は「出てから2週間以上たったもの」に固定（サプライチェーン対策）。
+# JavaScript側（package.json）の @tauri-apps/* と、マイナー版をそろえること。
+[build-dependencies]
+tauri-build = { version = "=2.7.3", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.4", features = [] }
+tauri-plugin-fs = "=2.7.1"
+tauri-plugin-dialog = "=2.8.3"
+# unsafe-headers：同意ページの送信で Cookie・Referer を付けるため
+tauri-plugin-http = { version = "=2.8.3", features = ["unsafe-headers"] }
+tauri-plugin-opener = "=2.7.2"
+# 2つ目の起動（.wsn のダブルクリック・リンク）を最初の窓に渡す
+tauri-plugin-single-instance = "=2.5.4"
+# ポータブル版の更新の署名を確かめる（Tauriの自動更新と同じ仕組み・同じ鍵）
+minisign-verify = "=0.3.0"
+base64 = "=0.23.1"
+# tauri::generate_context! とアプリ内ブラウザの通知が使う
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+
+[target.'cfg(windows)'.dependencies]
+# .wsn・右クリック・cwcatalog:// の登録（自分のユーザー用の場所だけ）
+winreg = "=0.56.0"
+# アプリ内ブラウザのダウンロードの進み具合（Tauri が使っているものと同じ版）
+webview2-com = "=0.39.1"
+windows-core = "=0.62.2"
+# 「🗑️削除する」で Windows のごみ箱へ移す（Tauri が使っているものと同じ版）
+windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_UI_Shell"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
