@@ -113,7 +113,7 @@ function draw() {
     h('header', { class: 'top' }, h('div', { class: 'top-inner' },
       h('div', { class: 'top-row' },
         h('div', { class: 'brand' }, h('h1', {}, 'CWカタログ'), S.platform.kind === 'app' ? null : h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`)),
-        // アプリ版：右上に「アプリ版 1.0.0」と「アプリの更新を確認」
+        // アプリ版：右上に「アプリ版 1.0.1」と「アプリの更新を確認」
         S.platform.kind === 'app' ? h('div', { class: 'app-ver' },
           h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`),
           h('button', { class: 'btn sm app-update', id: 'app-update', title: 'このアプリ（CWカタログ）の新しい版があるか確認します', onclick: () => busy('更新を確認', () => checkSelf(true)) }, 'アプリの更新を確認')) : null,

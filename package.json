@@ -1,6 +1,6 @@
 {
   "name": "cw-catalog-tool",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "CardWirth シナリオの一括DL・インストール・更新チェックツール",
   "type": "module",
