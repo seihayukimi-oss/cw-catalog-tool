@@ -98,6 +98,16 @@ export async function startApp(platform) {
 }
 
 // ------------------------------------------------------------ 描画
+const SITE_LINKS = [
+  ['CWカタログ（ツール）のページへ', 'https://github.com/seihayukimi-oss/cw-catalog-tool'],
+  ['CardWirth 共用カタログページへ', 'https://seihayukimi-oss.github.io/cardwirth-catalog/'],
+];
+/** 右上のリンク（ツールのページ・共用カタログのページ。ブラウザで開く） */
+const siteLinks = () => h('span', { class: 'site-links small' }, SITE_LINKS.map(([label, url], i) => [
+  i ? h('span', { class: 'muted', 'aria-hidden': 'true' }, ' / ') : null,
+  h('a', { href: url, title: url, onclick: (ev) => { ev.preventDefault(); S.platform.openUrl(url); } }, label),
+]));
+
 function draw() {
   const root = document.getElementById('app');
   const view = views[S.tab]();
@@ -113,10 +123,11 @@ function draw() {
     h('header', { class: 'top' }, h('div', { class: 'top-inner' },
       h('div', { class: 'top-row' },
         h('div', { class: 'brand' }, h('h1', {}, 'CWカタログ'), S.platform.kind === 'app' ? null : h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`)),
-        // アプリ版：右上に「アプリ版 1.0.1」と「アプリの更新を確認」
+        // アプリ版：右上に、ツール・共用カタログのページへのリンクと「アプリ版 1.0.1」「アプリの更新を確認」（HTML版はリンクだけ）
         S.platform.kind === 'app' ? h('div', { class: 'app-ver' },
+          siteLinks(),
           h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`),
-          h('button', { class: 'btn sm app-update', id: 'app-update', title: 'このアプリ（CWカタログ）の新しい版があるか確認します', onclick: () => busy('更新を確認', () => checkSelf(true)) }, 'アプリの更新を確認')) : null,
+          h('button', { class: 'btn sm app-update', id: 'app-update', title: 'このアプリ（CWカタログ）の新しい版があるか確認します', onclick: () => busy('更新を確認', () => checkSelf(true)) }, 'アプリの更新を確認')) : h('div', { class: 'app-ver' }, siteLinks()),
         // 進み具合（右上）：いま何をしているか・バー・何の作業か
         S.busy ? h('div', { class: 'busy-box', id: 'busy-box', role: 'status', 'aria-live': 'polite' },
           h('div', { class: 'busy-stage', id: 'busy-text' }, `${S.busy}…`),

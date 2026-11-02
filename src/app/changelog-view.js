@@ -25,7 +25,7 @@ function detailList(details) {
 
 function entryBlock(e, { open = false } = {}) {
   return h('details', { class: 'changelog-entry', open: open || null, 'data-version': e.version },
-    h('summary', {}, h('b', {}, e.version), h('span', { class: 'muted small' }, `（${e.date}）`), e.version === APP_VERSION ? h('span', { class: 'badge ok', style: 'margin-left:6px' }, '今の版') : null),
+    h('summary', {}, h('b', {}, e.version), e.label ? h('b', {}, `　${e.label}`) : null, h('span', { class: 'muted small' }, `（${e.date}）`), e.version === APP_VERSION ? h('span', { class: 'badge ok', style: 'margin-left:6px' }, '今の版') : null),
     e.points.length ? h('ul', { class: 'small', style: 'margin:4px 0;padding-left:1.2em' }, e.points.map((p) => h('li', {}, p))) : null,
     e.details.length ? h('details', { class: 'small', style: 'margin-left:1em' }, h('summary', {}, 'もっと詳しく'),
       detailList(e.details)) : null);

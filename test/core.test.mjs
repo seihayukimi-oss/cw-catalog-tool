@@ -693,6 +693,9 @@ test('更新履歴：CHANGELOG.md を読む・更新したあとに出す版（�
   assert.deepEqual(newSince(l, '1.0.0', '1.0.2').map((e) => e.version), ['1.0.2', '1.0.1']);
   assert.deepEqual(newSince(l, '', '1.0.2'), []); // 初めて使うときは出さない
   assert.deepEqual(newSince(l, '1.0.2', '1.0.2'), []);
+  // 版のあとの見出し
+  const t = parseChangelog('## 1.0.0　正式版公開（2026-11-02）\n### 要点\n- A\n## 1.0.1（2026-11-03）\n### 要点\n- B\n');
+  assert.deepEqual(t.map((e) => [e.version, e.label, e.date]), [['1.0.1', '', '2026-11-03'], ['1.0.0', '正式版公開', '2026-11-02']]);
 });
 
 import { guessFromLink, urlLines, bulkEntry, mergeEntry } from '../src/core/bulkentry.js';

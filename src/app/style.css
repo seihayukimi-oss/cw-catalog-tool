@@ -97,6 +97,8 @@ label.check { display: inline-flex; gap: 6px; align-items: center; cursor: point
 .badge.plain { color: var(--sub); }
 .tag { display: inline-flex; gap: 4px; align-items: center; font-size: .78rem; background: var(--panel-2); border-radius: 6px; padding: 0 6px; }
 .tag button { border: 0; background: none; padding: 0; cursor: pointer; color: var(--sub); }
+.tag.tag-link { border: 1px solid transparent; color: var(--text); font-family: inherit; line-height: 1.6; cursor: pointer; }
+.tag.tag-link:hover, .tag.tag-link:focus-visible { border-color: var(--accent); color: var(--accent); }
 
 .item-title { font-family: var(--serif); font-size: 1.05rem; font-weight: 600; }
 .meta { font-size: .82rem; color: var(--sub); word-break: break-all; }
@@ -115,6 +117,7 @@ pre.readme { white-space: pre-wrap; word-break: break-word; background: var(--pa
 
 .list > .card { padding: 12px 14px; }
 .empty { text-align: center; color: var(--sub); padding: 30px 0; }
+.empty-src { border: 1px dashed var(--line); border-radius: 8px; background: var(--bg); padding: 10px 12px; text-align: center; display: grid; gap: 2px; }
 .dl { list-style: none; padding: 0; margin: 6px 0 0; }
 .dl li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .9rem; padding: 2px 0; }
 .dl li.old, .dl li.closed { color: var(--sub); }
@@ -164,6 +167,7 @@ progress { width: 100%; accent-color: var(--accent); }
 .ogp { display: flex; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--panel-2); align-items: flex-start; }
 .ogp img { width: 120px; max-height: 90px; object-fit: cover; border-radius: 6px; flex: none; }
 .ogp-text { min-width: 0; display: grid; gap: 2px; }
+.ogp-text > .btn { justify-self: start; margin-top: 4px; }
 .ogp-text .small { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 
 /* 個人用カタログの編集 */
@@ -293,6 +297,10 @@ details.folder > .folder-body { margin-left: 1.1em; padding-left: 10px; border-l
 /* いちばん上の右：アプリの更新を確認 */
 .app-ver { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .app-ver .app-update { border-color: var(--accent); color: var(--accent); }
+.app-ver { flex-wrap: wrap; justify-content: flex-end; }
+.site-links a { white-space: nowrap; }
+.site-links a { color: var(--accent); }
+@media (max-width: 700px) { .top-row { flex-wrap: wrap; } .app-ver { order: 3; flex-basis: 100%; justify-content: flex-start; } }
 .mine-tools .copy-mode.on, .batch-bar .select-mode.on, .tag-tools .select-mode.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.copy-btn { border-color: var(--accent); color: var(--accent); }
 details.folder > summary .folder-pick { margin: 0; }

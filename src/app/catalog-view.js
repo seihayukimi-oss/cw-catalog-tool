@@ -44,6 +44,8 @@ function filteredWorks() {
     if (fid === '__none' && (S.folders.map[w.key] || []).length) return false;
     if (fid === '__fav' && !inFavorites(w)) return false;
     if (fid && fid !== '__none' && fid !== '__fav' && !(S.folders.map[w.key] || []).includes(fid)) return false;
+    const tq = /^#\S/.test(q.trim()) ? q.trim().slice(1) : '';
+    if (tq) return w.tags.some((t) => t.normalize('NFKC').toLowerCase() === tq);
     return !q || `${w.name} ${w.author} ${w.tags.join(' ')} ${w.description || ''} ${foldersOf(w.key).map((f) => f.name).join(' ')}`.normalize('NFKC').toLowerCase().includes(q);
   });
   const g = S.catView.group;
@@ -279,7 +281,7 @@ function workCard(w, mine) {
     h('div', { class: 'row', style: 'margin:6px 0' },
       ['cw150', 'next', 'py'].map((k) => h('span', { class: `badge ${LV[w.compat?.[k] || 'unknown'][1]}` }, `${ENGINE_KINDS[k].short}：${LV[w.compat?.[k] || 'unknown'][0]}`)),
       w.convert === 'forbidden' ? h('span', { class: 'badge bad' }, '変換NG') : null,
-      w.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))),
+      tagsBlock(w)),
     // 共用カタログ（登録フォームから）の作品：作品IDと、変更・解除のページ・通報のページ（?id= で作品IDが入った状態で開く）
     ...w.refs.filter((r) => r.kind === 'shared' && (S.catalogs.get(r.sourceId)?.links?.manage || S.catalogs.get(r.sourceId)?.links?.report)).slice(0, 1).map((r) => {
       const links = S.catalogs.get(r.sourceId).links;
@@ -342,6 +344,25 @@ async function toggleHidden(w, hide) {
   render();
 }
 
+// ------------------------------------------------------------ タグ（押すと、そのタグで検索。多いときは、たたんでおく）
+const TAGS_SHOWN = 6;
+function searchTag(t) {
+  S.filter.cat = `#${t}`;
+  render();
+  const q = document.getElementById('cat-q');
+  if (q) { q.scrollIntoView({ block: 'center' }); q.focus({ preventScroll: true }); }
+}
+function tagsBlock(w) {
+  if (!w.tags.length) return null;
+  const all = (S.tagsOpen ||= new Set()).has(w.key);
+  const more = w.tags.length - TAGS_SHOWN;
+  const tagBtn = (t) => h('button', { type: 'button', class: 'tag tag-link', title: `タグ「${t}」で検索します`, onclick: () => searchTag(t) }, `#${t}`);
+  return [
+    (all || more <= 0 ? w.tags : w.tags.slice(0, TAGS_SHOWN)).map(tagBtn),
+    more > 0 ? h('button', { type: 'button', class: 'btn ghost sm tag-more', 'aria-expanded': all ? 'true' : 'false', onclick: () => { if (all) S.tagsOpen.delete(w.key); else S.tagsOpen.add(w.key); render(); } }, all ? '▲ タグをたたむ' : `▼ タグをすべて表示（ほか${more}個）`) : null,
+  ];
+}
+
 // ------------------------------------------------------------ 紹介ページ（HP・X・Misskeyなど）
 function introBlock(w) {
   // 作者さんのサイト（紹介ページとは別に、1つだけ）
@@ -349,13 +370,16 @@ function introBlock(w) {
     h('button', { class: 'btn ghost sm', title: w.site, onclick: () => S.platform.openUrl(w.site) }, w.site.replace(/^https?:\/\//, '').slice(0, 50))) : null;
   if (!w.intro.length) return site;
   const loaded = w.intro.some((i) => S.ogp.has(i.url));
+  const folded = loaded && (S.introFolded ||= new Set()).has(w.key);
+  const fold = (on) => { if (on) S.introFolded.add(w.key); else S.introFolded.delete(w.key); render(); };
   return h('div', { class: 'intro' },
     site,
     h('div', { class: 'row small' }, h('span', { class: 'muted' }, '紹介'),
       w.intro.map((i) => h('button', { class: 'btn ghost sm', title: i.url, onclick: () => S.platform.openUrl(i.url) },
         h('span', { class: 'badge plain' }, INTRO_LABEL[introKind(i.url)]), i.label || i.url.replace(/^https?:\/\//, '').slice(0, 40))),
-      !loaded ? h('button', { class: 'btn sm', onclick: () => loadIntros(w) }, '紹介を見る') : null),
-    loaded ? h('div', { class: 'intro-cards' }, w.intro.map((i) => ogpCard(i, w))) : null);
+      !loaded ? h('button', { class: 'btn sm', onclick: () => loadIntros(w) }, '紹介を見る') : null,
+      loaded ? h('button', { class: 'btn ghost sm', 'aria-expanded': folded ? 'false' : 'true', onclick: () => fold(!folded) }, folded ? '▼ 紹介を見る' : '▲ 紹介をたたむ') : null),
+    loaded && !folded ? h('div', { class: 'intro-cards' }, w.intro.map((i) => ogpCard(i, w))) : null);
 }
 
 /** R18 の作品の紹介は、画像と説明を、押したときだけ出す（設定で最初から出すこともできる） */
@@ -431,7 +455,9 @@ export function viewManage(open) {
   const section = (title, desc, list) => h('section', { class: 'manage-sec' },
     h('h3', {}, title),
     h('p', { class: 'small muted' }, desc),
-    list.length ? h('div', { class: 'src-list' }, list.map(sourceRow)) : h('p', { class: 'small muted empty-src' }, 'まだありません。右上の「＋ カタログを追加」から追加できます。'));
+    list.length ? h('div', { class: 'src-list' }, list.map(sourceRow)) : h('div', { class: 'empty-src' },
+      h('div', {}, `読み込んだ${title}は、まだありません。`),
+      h('div', { class: 'small muted' }, '右上の「＋ カタログを追加」から追加できます。')));
 
   return h('div', { class: 'card stack manage', id: 'manage' },
     h('div', { class: 'row between' }, h('h2', { style: 'margin:0' }, 'カタログの管理'),

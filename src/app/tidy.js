@@ -13,7 +13,7 @@ import { listFiles, removeAt } from '../core/fs.js';
 import { normalizeName, compareVersions } from '../core/catalog.js';
 import { S, render, busy, busyText, engine, dirOf } from './state.js';
 import { store } from './store.js';
-import { h, toast, modal, fmtSize, fmtDate } from './ui.js';
+import { h, toast, modal, fmtSize, fmtDate, placeField } from './ui.js';
 import { archiveDirOf } from './add.js';
 import { openLocalFiles } from './localfiles.js';
 import { applyTags } from './tags.js';
@@ -172,6 +172,9 @@ async function perform(list, backup) {
 }
 
 /** 確認の一覧を見せてから整理する */
+/** 移動先の場所（設定の保存場所と同じ枠で囲む） */
+const placesView = (places) => h('div', { class: 'small stack', style: 'gap:6px' }, places.map((p) => placeField('移動先', p)));
+
 async function confirmAndRun(title, plan, keeps = []) {
   const t = S.tidy;
   if (!plan.length) { toast('整理対象のファイルはありません（除外設定中のファイルは対象外です）'); return; }
@@ -182,7 +185,7 @@ async function confirmAndRun(title, plan, keeps = []) {
   const ok = await modal((close) => h('div', { class: 'stack' },
     h('h2', {}, title),
     h('label', { class: 'check' }, backupBox, '整理時にバックアップを作成します。（削除せず CWCatalog_backup フォルダへ移動します）'),
-    h('div', { class: 'small' }, '移動先：', h('ul', { style: 'margin:2px 0 0;padding-left:1.2em' }, places.map((p) => h('li', { style: 'word-break:break-all' }, p)))),
+    placesView(places),
     warn,
     keeps.length ? h('div', {}, h('div', { class: 'small muted' }, `残すもの（${keeps.length}件）`), h('pre', { class: 'readme log' }, keeps.join('\n'))) : null,
     h('div', {}, h('div', { class: 'small muted' }, `移動対象（${plan.length}件）`), h('pre', { class: 'readme log', id: 'tidy-plan' }, plan.map((it) => `・${labelOf(it)}${it.why ? `　（${it.why}）` : ''}`).join('\n'))),
@@ -353,7 +356,7 @@ export function viewTidy() {
     h('div', { class: 'card soft stack', style: 'margin:0' },
       h('label', { class: 'check' }, backupBox, '整理時にバックアップを作成します。（削除せず CWCatalog_backup フォルダへ移動します）'),
       t.backup
-        ? (places.length ? h('div', { class: 'small' }, '移動先：', h('ul', { style: 'margin:2px 0 0;padding-left:1.2em' }, places.map((p) => h('li', { style: 'word-break:break-all' }, p)))) : null)
+        ? (places.length ? placesView(places) : null)
         : h('p', { class: 'note bad small', style: 'margin:0' }, 'バックアップを作成しない場合、整理したファイルは復元できません。（ごみ箱にも移動されません）'),
       h('div', { class: 'row' },
         h('button', { class: 'btn primary', id: 'tidy-latest', disabled: !latest.plan.length, onclick: () => confirmAndRun('最新版のみ残してフォルダを整理する', latest.plan, latest.keeps) },

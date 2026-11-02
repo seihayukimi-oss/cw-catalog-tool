@@ -5,7 +5,7 @@
 
 import { S, render, busy, goTab, APP_VERSION, confirmBox } from './state.js';
 import { store } from './store.js';
-import { h, toast, modal, fmtDate } from './ui.js';
+import { h, toast, modal, fmtDate, placeField } from './ui.js';
 import { openArchive } from '../core/archive.js';
 import { openSource } from './add.js';
 import { openLocalFiles } from './localfiles.js';
@@ -144,7 +144,7 @@ export function viewAppSettings() {
 
     h('h2', {}, 'ポータブル版（アプリ版）について'),
     h('div', { class: 'card small stack' },
-      S.portable ? h('p', { style: 'margin:0' }, `記録の置き場所：${S.portable.dataDir}`) : null,
+      S.portable ? placeField('記録の置き場所', S.portable.dataDir) : null,
       h('ul', { style: 'margin:0;padding-left:1.2em' },
         h('li', {}, 'インストールは要りません。CWCatalog.exe と、同じファイル内にできる「CWCatalog-data」フォルダ（設定・記録・アプリ内ブラウザのログイン状態）が全ファイル構成になります。'),
         h('li', {}, 'アプリを削除するときは、上の「Windows設定との連携」を登録していたら「登録を外す」を押してから、フォルダごと消してください。'),
