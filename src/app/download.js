@@ -14,7 +14,7 @@ import { decodeHtml, extractDownloadLinks, extractDownloadForms, extractDriveFol
 import { fetchUrlFor, inAppSite, expiresAt, driveId } from '../core/urls.js';
 import { S, render, busy, busyText, busyProgress, goTab, confirmBox } from './state.js';
 import { store } from './store.js';
-import { h, toast, modal, fmtDate } from './ui.js';
+import { h, toast, modal, fmtDate, emptyBox } from './ui.js';
 import { defaultUrlOf, setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { openSource } from './add.js';
 import { pageKeyOf, rememberedKey, rememberKey, forgetKey } from './dlkeys.js';
@@ -705,5 +705,5 @@ export function viewConsents() {
           await store.set('consents', S.consents);
           render();
         },
-      }, '取り消す')))) : h('p', { class: 'small muted', style: 'margin:0' }, 'まだありません。'));
+      }, '取り消す')))) : emptyBox('同意を覚えているサイトは、まだありません。'));
 }

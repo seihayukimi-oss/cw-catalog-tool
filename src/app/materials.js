@@ -12,7 +12,7 @@ import { backupOpts, backupFull, backupPlace } from './backup.js';
 import { readSkin } from '../core/skin.js';
 import { S, render, busy, dirOf, engine, rerenderList } from './state.js';
 import { store, recordId } from './store.js';
-import { h, toast, modal, fmtDate, placeField } from './ui.js';
+import { h, toast, modal, fmtDate, placeField, emptyBox } from './ui.js';
 import { applyCatalog } from './catalog-data.js';
 import { tagEditor, tagChips, pickTags, applyTags, addTagName } from './tags.js';
 import { catPicker } from './catpick.js';
@@ -527,7 +527,7 @@ export function viewStashMine(kind, makeSel) {
     ? [...groups].map(([c, rs]) => h('details', { class: 'group', open: true },
       h('summary', {}, h('span', { class: 'group-name' }, c || '（分類なし）'), h('span', { class: 'badge plain' }, `${rs.length}件`)),
       rs.map(stashCard)))
-    : h('p', { class: 'empty' }, mine.length ? '見つかりませんでした' : st?.ref ? 'まだ記録がありません。「読み取る」を押してください' : `まだ${k.place}が決まっていません`));
+    : emptyBox(mine.length ? '見つかりませんでした' : st?.ref ? 'まだ記録がありません。「読み取る」を押してください' : `まだ${k.place}が決まっていません`));
   return h('div', {}, head, h('div', { id: 'mine-body' }, selBar, mineTools({ rootLabel: k.place, onCreate }), list));
 }
 export const viewMaterialsMine = (makeSel) => viewStashMine('material', makeSel);

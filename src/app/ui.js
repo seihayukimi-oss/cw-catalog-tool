@@ -57,6 +57,11 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * @param {string} label 見出し（保存場所・置き場所）
  * @param {string} path 場所（空なら未設定）
  */
+/** 一覧が空のときの知らせ（点線の枠で囲む。1行目に何がまだないか、2行目に小さく補足） */
+export function emptyBox(main, sub = '') {
+  return h('div', { class: 'empty-src' }, h('div', {}, main), sub ? h('div', { class: 'small muted' }, sub) : null);
+}
+
 export function placeField(label, path, auto = false, note = '') {
   return h('div', { class: 'place-field' },
     h('span', { class: 'place-label' }, `${label}：`),

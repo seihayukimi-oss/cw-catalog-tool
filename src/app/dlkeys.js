@@ -5,7 +5,7 @@
 
 import { S, render, confirmBox } from './state.js';
 import { store } from './store.js';
-import { h, toast, fmtDate } from './ui.js';
+import { h, toast, fmtDate, emptyBox } from './ui.js';
 import { ownSources } from './catalog-data.js';
 
 /** 覚えるときの、ページの見分け方（# のあとは外す） */
@@ -61,13 +61,13 @@ export function viewDlKeys() {
             render();
           },
         }, '忘れる')),
-      keyBox(rec.key)))) : h('p', { class: 'small muted', style: 'margin:0' }, 'まだありません。DLキーの画面で「このDLキーを覚える」にして取得すると、ここに入ります。'),
+      keyBox(rec.key)))) : emptyBox('覚えたDLキーは、まだありません。', 'DLキーの画面で「このDLキーを覚える」にして取得すると、ここに入ります。'),
     h('h3', {}, '個人用カタログの DL先 に入れたもの'),
     inCatalog.length ? h('ul', { class: 'dl' }, inCatalog.map(({ e, d, src }) => h('li', { class: 'stack', style: 'gap:2px' },
       h('div', { class: 'row' },
         h('b', {}, e.name),
         h('span', { class: 'small muted grow', style: 'word-break:break-all' }, `${d.label ? `${d.label}　` : ''}${d.url}`),
         h('span', { class: 'small muted' }, src.name)),
-      keyBox(d.dlkey)))) : h('p', { class: 'small muted', style: 'margin:0' }, 'まだありません。'),
+      keyBox(d.dlkey)))) : emptyBox('個人用カタログの DL先 に入れたDLキーは、まだありません。'),
     inCatalog.length ? h('p', { class: 'small muted', style: 'margin:0' }, '直す・消すときは、「カタログ」タブで作品の「編集」を開いてください。') : null);
 }
