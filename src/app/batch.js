@@ -7,7 +7,7 @@ import { openArchive } from '../core/archive.js';
 import { playability } from '../core/catalog.js';
 import { S, render, busyText, engine, goTab } from './state.js';
 import { store } from './store.js';
-import { h, toast, modal, fmtSize, formatBadge, sleep } from './ui.js';
+import { h, toast, modal, fmtSize, formatBadge, sleep, fakeCheckWarn } from './ui.js';
 import { tryDownloads, dlLabel, pagePanel, inAppDownload, deliver, tryAutoAgree } from './download.js';
 import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { execWarning, contentsBox, safetyNote } from './safety-view.js';
@@ -376,6 +376,7 @@ function itemCard(it) {
       it.blocked ? h('div', { class: 'row' },
         h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(it.blocked) }, 'ページを開く'),
         S.platform.canInAppBrowse ? h('button', { class: 'btn sm', onclick: () => inAppDownload(it.blocked, hd) }, 'アプリ内で開いてダウンロード') : null) : null,
+      !it.page && (it.inapp || it.blocked) ? fakeCheckWarn() : null,
       h('div', { class: 'row small muted' }, 'DLしたファイルを、この欄にドロップするか', h('button', { class: 'btn sm', onclick: () => fileIn.click() }, 'ファイルを選ぶ'), fileIn)));
     card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('over'); });
     card.addEventListener('dragleave', () => card.classList.remove('over'));

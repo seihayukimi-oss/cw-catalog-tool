@@ -14,7 +14,7 @@ import { decodeHtml, extractDownloadLinks, extractDownloadForms, extractDriveFol
 import { fetchUrlFor, inAppSite, expiresAt, driveId } from '../core/urls.js';
 import { S, render, busy, busyText, busyProgress, goTab, confirmBox } from './state.js';
 import { store } from './store.js';
-import { h, toast, modal, fmtDate, emptyBox } from './ui.js';
+import { h, toast, modal, fmtDate, emptyBox, fakeCheckWarn } from './ui.js';
 import { defaultUrlOf, setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { openSource } from './add.js';
 import { pageKeyOf, rememberedKey, rememberKey, forgetKey } from './dlkeys.js';
@@ -536,6 +536,7 @@ export function pagePanel(st, hd, work = null) {
     st.links.length ? h('div', {}, st.folder ? `フォルダの中に ${st.links.length}件 ありました（フォルダ ${st.links.filter((l) => l.type === 'folder').length}・ファイル ${files.length}）` : `ダウンロードらしいリンクが ${st.links.length}件 ありました`) : (!st.forms?.length ? h('div', {}, st.folder ? 'フォルダの中身を読み取れませんでした（空のフォルダか、共有の設定が「リンクを知っている全員」になっていないのかもしれません）' : 'ダウンロードのリンクは見つかりませんでした') : null),
     st.links.length ? h('ul', { class: 'dl link-list' }, st.links.map(row)) : null,
     files.length > 1 ? selBar() : null,
+    fakeCheckWarn(),
     h('div', { class: 'row' }, inApp, h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(st.url) }, 'ブラウザで開く')));
 }
 
@@ -556,6 +557,7 @@ export function viewUrlBox() {
       `このサイトは、ブラウザから直接読み込めない設定になっています（他のサイトのファイルは、相手が許可していないとブラウザが読ませない仕組みです、${S.platform.kind === 'web' ? 'アプリ版なら取れます' : ''}）。ページを開いたので、そこでダウンロードしたファイルを上にドロップしてください。`,
       st.notice ? h('div', { style: 'margin-top:6px' }, st.notice) : null,
       h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(st.url) }, 'ページをもう一度開く')));
+    detail = h('div', { class: 'stack' }, detail, fakeCheckWarn());
   } else if (st?.status === 'inapp') {
     detail = h('div', { class: 'note warn small' },
       `${st.why}。`,
@@ -563,11 +565,13 @@ export function viewUrlBox() {
       h('div', { class: 'row', style: 'margin-top:6px' },
         S.platform.canInAppBrowse ? h('button', { class: 'btn sm', onclick: () => inAppDownload(st.url, hd) }, 'アプリ内でもう一度開く') : null,
         h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(st.url) }, 'ブラウザで開く')));
+    detail = h('div', { class: 'stack' }, detail, fakeCheckWarn());
   } else if (st?.status === 'error') {
     detail = h('div', { class: 'note bad small' }, `読み込めませんでした：${st.message}`,
       h('div', { class: 'row', style: 'margin-top:6px' },
         S.platform.canInAppBrowse ? h('button', { class: 'btn sm', onclick: () => inAppDownload(st.url, hd) }, 'アプリ内で開いてダウンロード') : null,
         h('button', { class: 'btn sm', onclick: () => S.platform.openUrl(st.url) }, 'ブラウザで開く')));
+    detail = h('div', { class: 'stack' }, detail, fakeCheckWarn());
   } else if (st?.status === 'page') {
     detail = pagePanel(st, hd, st.work);
   }

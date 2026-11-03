@@ -57,6 +57,14 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * @param {string} label 見出し（保存場所・置き場所）
  * @param {string} path 場所（空なら未設定）
  */
+/** 配布ページをブラウザで開くときの注意（偽の「ロボットではありません」でキーボード操作をさせる手口） */
+export function fakeCheckWarn() {
+  return h('div', { class: 'note bad small fake-check-warn', role: 'note' },
+    h('b', {}, '⚠️ ご注意ください'),
+    h('div', {}, '「ロボットではありません」等の確認画面で、キーボード操作（Win+R / Ctrl+V / Enter など）を求められたら偽の画面です。'),
+    h('div', {}, 'CWカタログ内でキーボード操作を指示されることはありません。絶対に操作せず、ページを閉じてください。'));
+}
+
 /** 一覧が空のときの知らせ（点線の枠で囲む。1行目に何がまだないか、2行目に小さく補足） */
 export function emptyBox(main, sub = '') {
   return h('div', { class: 'empty-src' }, h('div', {}, main), sub ? h('div', { class: 'small muted' }, sub) : null);
