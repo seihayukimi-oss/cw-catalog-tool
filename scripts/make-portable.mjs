@@ -33,17 +33,19 @@ copyFileSync('dist/web/cw-catalog.html', 'out/cw-catalog.html');
 // メモ帳などで文字化けしないよう、BOM付きのUTF-8・改行はCRLF
 const guide = readFileSync('package/はじめに.txt', 'utf8').replace(/\r?\n/g, '\r\n');
 writeFileSync('out/はじめに.txt', '﻿' + guide);
+// コード署名ポリシー（リポジトリの CODE_SIGNING_POLICY.md と同じ中身を .txt で）
+writeFileSync('out/CODE_SIGNING_POLICY.txt', '\ufeff' + readFileSync('CODE_SIGNING_POLICY.md', 'utf8').replace(/\r?\n/g, '\r\n'));
 // 部品の許諾文（scripts/third-party.mjs が作る）。リリースでは必ず入れる
 const notices = 'dist/THIRD-PARTY-NOTICES.txt';
 if (existsSync(notices)) writeFileSync('out/THIRD-PARTY-NOTICES.txt', '﻿' + readFileSync(notices, 'utf8').replace(/\r?\n/g, '\r\n'));
 else if (release) throw new Error('部品の許諾文（dist/THIRD-PARTY-NOTICES.txt）がありません。先に node scripts/third-party.mjs を動かしてください');
-console.log(`out/: CWCatalog.exe（${exeName} から）・cw-catalog.html・はじめに.txt${existsSync(notices) ? '・THIRD-PARTY-NOTICES.txt' : ''}`);
+console.log(`out/: CWCatalog.exe（${exeName} から）・cw-catalog.html・はじめに.txt・CODE_SIGNING_POLICY.txt${existsSync(notices) ? '・THIRD-PARTY-NOTICES.txt' : ''}`);
 
 if (process.argv.includes('--pack')) {
   rmSync('release', { recursive: true, force: true });
   mkdirSync('release', { recursive: true });
   const folder = `CWCatalog-v${version}`;
-  const files = ['CWCatalog.exe', 'cw-catalog.html', 'はじめに.txt', 'THIRD-PARTY-NOTICES.txt'].filter((n) => existsSync(join('out', n))).map((n) => ({ path: `${folder}/${n}`, data: new Uint8Array(readFileSync(join('out', n))) }));
+  const files = ['CWCatalog.exe', 'cw-catalog.html', 'はじめに.txt', 'CODE_SIGNING_POLICY.txt', 'THIRD-PARTY-NOTICES.txt'].filter((n) => existsSync(join('out', n))).map((n) => ({ path: `${folder}/${n}`, data: new Uint8Array(readFileSync(join('out', n))) }));
   writeFileSync(`release/CWCatalog-v${version}-portable.zip`, writeZip(files));
   copyFileSync('out/CWCatalog.exe', 'release/CWCatalog.exe');
   copyFileSync('dist/web/cw-catalog.html', `release/cw-catalog-v${version}.html`);

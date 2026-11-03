@@ -89,8 +89,16 @@ CardWirth（1.50・Next・Py）のシナリオを、まとめてダウンロー�
 ■ 同梱内容
   CWCatalog.exe     … アプリ本体（ポータブル版）
   cw-catalog.html   … HTML版（Chrome / Edge 等のブラウザで開くだけで使用可能）
-  はじめに.txt       … 本ファイル
-  THIRD-PARTY-NOTICES.txt … 本アプリが使用している部品（ライブラリ）の許諾文
+  はじめに.txt       … 本ファイル（使い方の説明）
+  CODE_SIGNING_POLICY.txt … コード署名ポリシー（日本語・英語）
+  THIRD-PARTY-NOTICES.txt … 本アプリが使用している部品（ライブラリ）の許諾文（英語）
+
+  ※ CODE_SIGNING_POLICY.txt と THIRD-PARTY-NOTICES.txt は、どちらも決まりにより同梱しているファイルです。
+    アプリを使うために読む必要はありません。
+    ・CODE_SIGNING_POLICY.txt … CWCatalog.exe のデジタル署名を「誰が・どのように」行っているか、
+      また本アプリがどこと通信するか（プライバシー）の説明です。
+    ・THIRD-PARTY-NOTICES.txt … 本アプリの中で使っている、ほかの方が作ったオープンソースの部品の
+      名前とライセンスの全文です。部品の作者様の決まりにより、英語の原文のまま同梱しています。
 
   起動すると、CWCatalog.exe と同じ場所に以下のデータが生成されます。
     CWCatalog-data … 設定データ・履歴・アプリ内ブラウザのログイン状態
