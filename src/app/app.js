@@ -123,7 +123,7 @@ function draw() {
     h('header', { class: 'top' }, h('div', { class: 'top-inner' },
       h('div', { class: 'top-row' },
         h('div', { class: 'brand' }, h('h1', {}, 'CWカタログ'), S.platform.kind === 'app' ? null : h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`)),
-        // アプリ版：右上に、ツール・共用カタログのページへのリンクと「アプリ版 1.0.2」「アプリの更新を確認」（HTML版はリンクだけ）
+        // アプリ版：右上に、ツール・共用カタログのページへのリンクと「アプリ版 1.0.3」「アプリの更新を確認」（HTML版はリンクだけ）
         S.platform.kind === 'app' ? h('div', { class: 'app-ver' },
           siteLinks(),
           h('span', { class: 'plat' }, `${S.platform.label} ${APP_VERSION}`),
