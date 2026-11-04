@@ -780,3 +780,21 @@ test('対象レベル：いろいろな書き方を「Lv3以上」「Lv5以下�
   assert.deepEqual(findTags('対象Lv：1～3'), ['Lv1以上', 'Lv3以下']);
   assert.deepEqual(findTags('推奨レベル 6以上'), ['Lv6以上']);
 });
+
+import { insertTag, arrangeTags } from '../src/core/tagorder.js';
+
+test('タグの並び：対象レベルのタグは後ろのまとまりに、以上（小さい順）→ 以下（小さい順）で入れる。今ある順は動かさない', () => {
+  let l = ['後で遊ぶ', '短編'];
+  for (const t of ['Lv5以下', 'Lv3以上', 'Lv1以上', 'Lv3以下']) l = insertTag(l, t);
+  assert.deepEqual(l, ['後で遊ぶ', '短編', 'Lv1以上', 'Lv3以上', 'Lv3以下', 'Lv5以下']);
+  assert.deepEqual(insertTag(l, 'Lv3以上'), l); // もうあれば動かさない
+  assert.deepEqual(insertTag(['店シナ', 'Lv3以上', 'Lv5以下', '100KB祭り'], 'Lv1以上'), ['店シナ', 'Lv1以上', 'Lv3以上', 'Lv5以下', '100KB祭り']); // 整えたあと：真ん中のまとまりに入れる
+  assert.deepEqual(insertTag(['Lv5以下', 'Lv1以上', '読み物'], 'Lv2以上'), ['Lv5以下', 'Lv1以上', 'Lv2以上', '読み物']); // 並べ替えてあるときは、今ある順を崩さない
+  assert.deepEqual(insertTag(['a'], 'b'), ['a', 'b']);
+});
+
+test('タグを自動で整える：店シナ → 読み物 → 人数 → 人数専用 → 長さ → 戦闘・Lv → そのほか', () => {
+  const list = ['後で遊ぶ', 'お気に入り', '100KB祭り', 'Lv5以下', '長編', '6人専用', '戦闘あり', '3人以上', '読み物', 'Lv3以上', '店シナ', '短編', '1人用', 'ギャグ', 'Lv1以上'];
+  assert.deepEqual(arrangeTags(list, ['後で遊ぶ', 'プレイ中', 'クリア', 'お気に入り']),
+    ['後で遊ぶ', 'お気に入り', '店シナ', '読み物', '1人用', '3人以上', '6人専用', '短編', '長編', '戦闘あり', 'Lv1以上', 'Lv3以上', 'Lv5以下', '100KB祭り', 'ギャグ']);
+});

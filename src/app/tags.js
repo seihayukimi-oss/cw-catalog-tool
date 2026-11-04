@@ -5,6 +5,7 @@
 // カタログの「お気に入り」（作品・フォルダ）もここで扱う。
 
 import { S, render, busy, confirmBox } from './state.js';
+import { insertTag, arrangeTags } from '../core/tagorder.js';
 import { store } from './store.js';
 import { h, toast, modal } from './ui.js';
 import { icon } from './icons.js';
@@ -25,7 +26,7 @@ export async function loadTags() {
     await store.set('tagRenamedTsumi', true);
   }
   // 前から付いているタグも一覧に入れる
-  for (const r of S.records) for (const t of r.tags || []) if (!S.tagList.includes(t)) S.tagList.push(t);
+  for (const r of S.records) for (const t of r.tags || []) if (!S.tagList.includes(t)) S.tagList = insertTag(S.tagList, t);
   S.favs = { works: [], folders: [], ...((await store.get('favs')) || {}) };
   S.autoTag = (await store.get('autoTag', true)) !== false;
   // カタログのタグ：入れるときに自分のタグとして付けるか（最初はオフ）・自分のフォルダ一覧に出すか（最初はオン）
@@ -42,7 +43,8 @@ export const catTagLabel = (work) => (work?.refs?.some((r) => r.entry?.claim ===
 async function saveTags() { await store.set('tagList', S.tagList); }
 export async function addTagName(t) {
   t = t.trim().slice(0, 40);
-  if (t && !S.tagList.includes(t)) { S.tagList.push(t); await saveTags(); }
+  // 対象レベルのタグ（Lv3以上・Lv5以下）は、後ろのレベルのタグのまとまりに、決まった順で入れる
+  if (t && !S.tagList.includes(t)) { S.tagList = insertTag(S.tagList, t); await saveTags(); }
   return t;
 }
 
@@ -196,6 +198,17 @@ export async function manageTags() {
     draw();
     return h('div', { class: 'stack' }, h('h2', {}, 'タグの整理'),
       h('p', { class: 'small muted', style: 'margin:0' }, 'ここで作ったタグは、作品を選んで「タグを付ける」で、まとめて付けられます。'),
+      h('div', { class: 'row' },
+        h('button', {
+          class: 'btn sm', id: 'tag-arrange', title: '「後で遊ぶ」「プレイ中」「クリア」「お気に入り」のあとに、店シナ → 読み物 → 人数 → 人数専用 → シナリオの長さ → 戦闘・Lv → そのほか の順に並べます',
+          onclick: async () => {
+            if (!(await confirmBox('タグを、店シナ → 読み物 → 人数 → 人数専用 → シナリオの長さ → 戦闘・Lv → そのほか の順に並べ替えます。（「後で遊ぶ」「プレイ中」「クリア」「お気に入り」はいちばん上のまま、「そのほか」は今の順のままです）よろしいですか？', { yes: '並べ替える', no: 'やめる' }))) return;
+            S.tagList = arrangeTags(S.tagList, DEFAULT_TAGS);
+            await saveTags();
+            draw();
+          },
+        }, 'タグを自動で整える'),
+        h('span', { class: 'small muted' }, '店シナ・読み物・人数・人数専用・長さ・戦闘とLv・そのほか、の順に並べます')),
       tools,
       body,
       h('div', { class: 'row' }, newIn, h('button', { class: 'btn', onclick: async () => { if (await addTagName(newIn.value)) { newIn.value = ''; draw(); } } }, '＋タグを作る')),
