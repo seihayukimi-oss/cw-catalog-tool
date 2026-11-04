@@ -121,14 +121,32 @@ export async function checkFileLists({ onStep } = {}) {
 export const sourceById = (id) => S.sources.find((s) => s.id === id) || null;
 
 // ------------------------------------------------------------ 入れない作者（この作者の作品は、カタログから拾わない）
+// 覚え方：名前だけ（文字列。前からのもの）か、名前＋認証したサイト（{ name, site }。同じ名前の別の作者さんを分ける）
 const authorKey = (a) => normalizeName(a || '');
-export const isMutedAuthor = (author) => !!author && (S.mutedAuthors || []).some((m) => authorKey(m) === authorKey(author));
-export async function setMutedAuthor(author, mute) {
-  const list = (S.mutedAuthors || []).filter((m) => authorKey(m) !== authorKey(author));
-  if (mute) list.push(author);
-  S.mutedAuthors = list.sort((a, b) => a.localeCompare(b, 'ja'));
+const muteName = (m) => (typeof m === 'string' ? m : m?.name || '');
+const muteSite = (m) => (typeof m === 'string' ? '' : m?.site || '');
+/** 作品の、作者さん本人がサイト認証をしたサイト（共用カタログの verified_site） */
+export const workSites = (w) => [...new Set((w?.refs || []).map((r) => r.entry?.verified_site).filter(Boolean))];
+export const mutedLabel = (m) => (muteSite(m) ? `${muteName(m)}（${muteSite(m)}）` : muteName(m));
+/** その覚え方が、この作品に当たるか。名前＋サイトで覚えたものは、別のサイトで認証した作品には当たらない（サイトの分からない作品には当たる） */
+const muteHits = (m, w) => authorKey(muteName(m)) === authorKey(w.author) && (!muteSite(m) || !workSites(w).length || workSites(w).includes(muteSite(m)));
+export const isMutedWork = (w) => !!w?.author && (S.mutedAuthors || []).some((m) => muteHits(m, w));
+async function saveMuted(list) {
+  S.mutedAuthors = list.sort((a, b) => mutedLabel(a).localeCompare(mutedLabel(b), 'ja'));
   await store.set('mutedAuthors', S.mutedAuthors);
 }
+/** この作品の作者を除外する（サイト認証のある作品は、名前＋サイトで覚える） */
+export async function muteWorkAuthor(w) {
+  const sites = workSites(w);
+  const site = sites.length === 1 ? sites[0] : '';
+  const same = (m) => authorKey(muteName(m)) === authorKey(w.author) && muteSite(m) === site;
+  await saveMuted([...(S.mutedAuthors || []).filter((m) => !same(m)), site ? { name: w.author, site } : w.author]);
+  return site;
+}
+/** この作品に当たっている除外を外す */
+export async function unmuteWork(w) { await saveMuted((S.mutedAuthors || []).filter((m) => !muteHits(m, w))); }
+/** 設定の一覧から、1つ外す */
+export async function removeMuted(m) { await saveMuted((S.mutedAuthors || []).filter((x) => x !== m)); }
 export const ownSources = () => S.sources.filter((s) => s.kind === 'own');
 
 async function putCatalog(src, json) {

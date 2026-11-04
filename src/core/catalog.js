@@ -60,6 +60,8 @@ export function sanitizeEntry(e) {
     tags: (Array.isArray(e.tags) ? e.tags : []).filter((t) => typeof t === 'string').slice(0, 30),
     // 登録した人（author＝作者さん本人・proxy＝作者さん以外の代理登録）。共用カタログの登録フォームが付ける
     claim: e.claim === 'author' || e.claim === 'proxy' ? e.claim : '',
+    // 作者さん本人の登録のとき、サイト認証をしたサイト（ホスト名＋最初の部分）。同じ名前の別の作者さんを見分ける
+    verified_site: e.claim === 'author' ? str(e.verified_site, 200).replace(/[^\w.\-/~%:@]/g, '') : '',
     // 分類名（作者さんごと・企画ごとなどの分け方。データ上のキーは labels のまま）。受け取った人が、取り込むかどうかと範囲を選ぶ
     labels: (Array.isArray(e.labels) ? e.labels : []).filter((t) => typeof t === 'string').map((t) => t.trim().slice(0, 60)).filter(Boolean).slice(0, 20),
     description: str(e.description, 5000),

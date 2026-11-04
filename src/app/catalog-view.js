@@ -11,7 +11,7 @@ import {
   addShared, importList, createOwn, removeSource, setEnabled, setHidden, setHiddenMany, refreshSource, saveSources, exportSource,
   saveOwnEntry, ownSources, sourceById, setDefaultUrl, defaultUrlOf, setCatPrefs, refreshStates,
   foldersOf, createFolder, renameFolder, deleteFolder, moveFolder, putInFolder, takeOutOfFolder, labelsOf, importLabels,
-  isMutedAuthor, setMutedAuthor,
+  isMutedWork, muteWorkAuthor, unmuteWork, removeMuted, mutedLabel, workSites,
 } from './catalog-data.js';
 import { store } from './store.js';
 import { isFavWork, isFavFolder, inFavorites, setFavWorks, toggleFavFolder } from './tags.js';
@@ -39,7 +39,7 @@ function filteredWorks() {
     if (!catalogVisible(w)) return false;
     if (hiddenByLabel(w) && !S.filter.showLabelHidden) return false;
     if (w.held && !showHeld()) return false;
-    if (!S.filter.showMuted && isMutedAuthor(w.author)) return false;
+    if (!S.filter.showMuted && isMutedWork(w)) return false;
     if (S.filter.catEngine && !['verified', 'expected'].includes(w.compat?.[S.filter.catEngine])) return false;
     if (fid === '__none' && (S.folders.map[w.key] || []).length) return false;
     if (fid === '__fav' && !inFavorites(w)) return false;
@@ -104,7 +104,7 @@ export function viewCatalog() {
 
 const shownBase = (w) => (S.filter.showHidden || !w.hidden) && catalogVisible(w);
 const heldCount = () => S.combined.works.filter((w) => w.held && shownBase(w)).length;
-const mutedCount = () => S.combined.works.filter((w) => isMutedAuthor(w.author) && shownBase(w)).length;
+const mutedCount = () => S.combined.works.filter((w) => isMutedWork(w) && shownBase(w)).length;
 const labelHiddenCount = () => S.combined.works.filter((w) => hiddenByLabel(w) && shownBase(w)).length;
 
 /** 一時保留中の作品を取るときは、ひとこと確かめる */
@@ -259,9 +259,10 @@ function workCard(w, mine) {
       hiddenHere ? h('span', { class: 'badge plain' }, '候補から外しています') : null,
       labelBadges(w),
       w.held ? h('span', { class: 'badge warn held', title: w.heldReason || '通報等により共用カタログ側で確認中の作品です' }, '一時保留中の作品') : null,
-      isMutedAuthor(w.author) ? h('span', { class: 'badge plain' }, '除外中の作者') : null,
+      isMutedWork(w) ? h('span', { class: 'badge plain' }, '除外中の作者') : null,
       w.derivative ? h('span', { class: 'badge plain', title: [w.derivative.of ? `もとの作品：${w.derivative.of}` : '', w.derivative.basis ? `改変してよいと分かるもの：${w.derivative.basis}` : ''].filter(Boolean).join('\n') }, '改変版') : null,
       workHasDead(w) ? h('span', { class: 'badge bad link-dead', title: 'DL先のどれかで、ファイルが見つかりませんでした（くわしくはDL先の欄）' }, '✖ リンク切れ') : null,
+      workSites(w).length ? h('span', { class: 'badge plain author-site', title: '作者さんご本人が、このサイトでサイト認証をして登録した作品です（同じ名前の別の作者さんは、サイトで見分けられます）' }, `作者本人（認証：${workSites(w).join('・')}）`) : null,
       w.refs.some((r) => r.entry.claim === 'proxy') && !w.refs.some((r) => r.entry.claim === 'author') ? h('span', { class: 'badge plain', title: '作者さん以外の方が登録したものです（作者さんは、登録フォームの「サイト認証」で引き取れます）' }, '代理登録') : null,
       foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name)),
       w.listFound ? h('span', { class: 'badge update', title: `ファイル一覧（${w.listFound.list}）で見つけたファイル：${w.listFound.name}` }, `一覧の最新 ${w.listFound.version ? `ver ${w.listFound.version}` : w.listFound.name}`) : null),
@@ -269,7 +270,7 @@ function workCard(w, mine) {
       h('button', { class: 'btn primary sm', disabled: !def, title: w.rating === 'r18' ? '配布元をブラウザで開きます' : null, onclick: async () => { if (await okToTake([w])) downloadWork(w); } }, w.rating === 'r18' ? 'ダウンロード（ブラウザで開く）' : 'ダウンロード'),
       open ? h('button', { class: 'btn sm', onclick: () => editEntry({ work: w }) }, inOwn ? '編集' : '個人用カタログへ') : null,
       open ? h('button', { class: 'btn ghost sm', onclick: () => toggleHidden(w, !hiddenHere) }, hiddenHere ? '候補に戻す' : '候補から外す') : null,
-      open && w.author ? h('button', { class: 'btn ghost sm', title: 'この作者の作品をカタログに表示しないようにします（このPCの中だけの設定です）', onclick: () => muteAuthor(w.author, !isMutedAuthor(w.author)) }, isMutedAuthor(w.author) ? '作者の除外を解除' : 'この作者を除外') : null,
+      open && w.author ? h('button', { class: 'btn ghost sm', title: 'この作者の作品をカタログに表示しないようにします（このPCの中だけの設定です）', onclick: () => muteAuthor(w, !isMutedWork(w)) }, isMutedWork(w) ? '作者の除外を解除' : 'この作者を除外') : null,
       compactView() ? h('button', { class: 'btn ghost sm', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) S.expanded.delete(w.key); else S.expanded.add(w.key); render(); } }, open ? '▲ たたむ' : '▼ くわしく') : null));
   const meta = h('div', { class: 'meta' }, [w.author, `ver ${w.version}`, w.updated].filter(Boolean).join(' / '),
     h('span', { class: 'row', style: 'display:inline-flex;margin-left:8px;gap:4px' }, w.refs.map((r) => h('span', { class: `badge src ${r.kind}` }, r.sourceName))),
@@ -328,10 +329,15 @@ async function checkWorksLinks(works, only = '') {
   render();
 }
 
-async function muteAuthor(author, mute) {
-  if (mute && !(await confirmBox(`「${author}」さんの作品（${S.combined.works.filter((x) => x.author === author).length}件）をカタログに表示しないようにします。このPCの中だけの設定で、カタログそのものは変わりません。「設定」→「カタログ」でいつでも元に戻せます。`, { yes: '除外する', no: 'やめる' }))) return;
-  await setMutedAuthor(author, mute);
-  toast(mute ? `「${author}」さんの作品をカタログに表示しないようにしました` : `「${author}」さんの除外を解除しました`);
+async function muteAuthor(w, mute) {
+  const author = w.author;
+  if (!mute) { await unmuteWork(w); toast(`「${author}」さんの除外を解除しました`); render(); return; }
+  const sites = workSites(w);
+  const site = sites.length === 1 ? sites[0] : '';
+  const n = S.combined.works.filter((x) => x.author === author && (!site || !workSites(x).length || workSites(x).includes(site))).length;
+  if (!(await confirmBox(`「${author}」さん${site ? `（認証したサイト：${site}）` : ''}の作品（${n}件）をカタログに表示しないようにします。${site ? '同じ名前でも、別のサイトで認証した作者さんの作品は表示したままにします。' : ''}このPCの中だけの設定で、カタログそのものは変わりません。「設定」→「カタログ」でいつでも元に戻せます。`, { yes: '除外する', no: 'やめる' }))) return;
+  await muteWorkAuthor(w);
+  toast(`「${author}」さん${site ? `（${site}）` : ''}の作品をカタログに表示しないようにしました`);
   render();
 }
 
@@ -529,8 +535,8 @@ export function prefsBlock() {
     h('label', { class: 'check' }, h('input', { type: 'checkbox', id: 'pref-show-held', checked: !!S.catPrefs.showHeld, onchange: (ev) => setCatPrefs({ showHeld: ev.target.checked }).then(render) }),
       '一時保留中の作品も一覧に表示する（通報等により確認中の作品を表示対象に含めます）'),
     h('div', {}, h('div', { class: 'muted' }, `除外する作者（${(S.mutedAuthors || []).length}人）：指定した作者の作品はカタログに表示しません`),
-      (S.mutedAuthors || []).length ? h('div', { class: 'row', id: 'muted-list' }, S.mutedAuthors.map((a) => h('span', { class: 'tag' }, a,
-        h('button', { 'aria-label': `${a}の除外を解除`, title: '外す', onclick: () => muteAuthor(a, false) }, '×')))) : h('div', { class: 'muted' }, 'まだいません（カタログの作品の「この作者を除外」で追加できます）')));
+      (S.mutedAuthors || []).length ? h('div', { class: 'row', id: 'muted-list' }, S.mutedAuthors.map((a) => h('span', { class: 'tag' }, mutedLabel(a),
+        h('button', { 'aria-label': `${mutedLabel(a)}の除外を解除`, title: '外す', onclick: async () => { await removeMuted(a); toast(`「${mutedLabel(a)}」の除外を解除しました`); render(); } }, '×')))) : h('div', { class: 'muted' }, 'まだいません（カタログの作品の「この作者を除外」で追加できます）')));
 }
 
 function sourceRow(s) {
