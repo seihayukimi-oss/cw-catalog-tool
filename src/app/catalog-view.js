@@ -11,7 +11,7 @@ import {
   addShared, importList, createOwn, removeSource, setEnabled, setHidden, setHiddenMany, refreshSource, saveSources, exportSource,
   saveOwnEntry, ownSources, sourceById, setDefaultUrl, defaultUrlOf, setCatPrefs, refreshStates,
   foldersOf, createFolder, renameFolder, deleteFolder, moveFolder, putInFolder, takeOutOfFolder, labelsOf, importLabels,
-  isMutedWork, muteWorkAuthor, unmuteWork, removeMuted, mutedLabel, workSites,
+  isMutedWork, muteWorkAuthor, unmuteWork, removeMuted, mutedLabel, workSites, sharedTagsOf, canPullSharedTags, pullSharedTags,
 } from './catalog-data.js';
 import { store } from './store.js';
 import { isFavWork, isFavFolder, inFavorites, setFavWorks, toggleFavFolder } from './tags.js';
@@ -153,8 +153,27 @@ function batchBar(works) {
       sel.some((w) => !isFavWork(w.key)) ? h('button', { class: 'btn sm', onclick: async () => { await setFavWorks(sel.map((w) => w.key), true); toast(`${sel.length}件をお気に入りにしました`); S.selected.clear(); render(); } }, '★お気に入りにする') : null,
       sel.some((w) => isFavWork(w.key)) ? h('button', { class: 'btn sm', onclick: async () => { await setFavWorks(sel.map((w) => w.key), false); toast(`${sel.length}件をお気に入りから外しました`); S.selected.clear(); render(); } }, 'お気に入りから外す') : null,
       inFolder ? h('button', { class: 'btn sm', onclick: async () => { await takeOutOfFolder(sel.map((w) => w.key), inFolder.id); toast(`${sel.length}件を「${inFolder.name}」から外しました`); S.selected.clear(); render(); } }, `「${inFolder.name}」から外す`) : null,
+      sel.some(canPullSharedTags) ? h('button', { class: 'btn sm', title: '個人用カタログにも共用カタログにもある作品の、個人用カタログのタグに、共用カタログのタグを足します', onclick: () => pullSharedTagsDialog(sel.filter(canPullSharedTags)) }, '共用カタログのタグを個人用カタログに取り込む') : null,
       anyShown ? h('button', { class: 'btn sm', onclick: () => hideSelected(sel, true) }, '候補から外す') : null,
       anyHidden ? h('button', { class: 'btn sm', onclick: () => hideSelected(sel, false) }, '候補に戻す') : null) : null);
+}
+
+/** 選んだ作品の、共用カタログのタグを、個人用カタログのタグに取り込む（取り込むタグを選べる） */
+async function pullSharedTagsDialog(works) {
+  const all = [...new Set(works.flatMap(sharedTagsOf))];
+  const on = new Set(all);
+  const ok = await modal((close) => h('div', { class: 'stack' },
+    h('h2', {}, `${works.length}件に共用カタログのタグを取り込む`),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'それぞれの作品の個人用カタログのタグに、その作品の共用カタログのタグのうち、下で選んだものだけを足します。（今あるタグは消しません）'),
+    h('div', { class: 'row tag-pick' }, all.map((t) => h('label', { class: 'chip on' },
+      h('input', { type: 'checkbox', checked: true, onchange: (ev) => { if (ev.target.checked) on.add(t); else on.delete(t); ev.target.parentElement.classList.toggle('on', ev.target.checked); } }), t))),
+    h('div', { class: 'row', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
+      h('button', { class: 'btn primary', onclick: () => close(true) }, '取り込む'))));
+  if (!ok || !on.size) return;
+  await after(() => pullSharedTags(works, on), (n) => (n ? `${n}件の個人用カタログのタグに、共用カタログのタグを足しました` : '新しく足すタグはありませんでした'));
+  S.selected.clear();
+  render();
 }
 
 async function putSelectedInFolder(sel) {
@@ -780,7 +799,11 @@ export async function editEntry({ work = null, prefill = null } = {}) {
         h('label', { class: 'field' }, '更新日', f.updated),
         h('label', { class: 'field' }, '種類', f.type),
         h('label', { class: 'field' }, '形式（シナリオのとき）', f.format),
-        h('label', { class: 'field' }, 'タグ', f.tags)),
+        h('label', { class: 'field' }, 'タグ', f.tags,
+          work && sharedTagsOf(work).length ? h('button', {
+            type: 'button', class: 'btn ghost sm', style: 'margin-top:4px', title: `共用カタログのタグ（${sharedTagsOf(work).join('、')}）を、この欄に足します`,
+            onclick: () => { const cur = f.tags.value.split(/[、,，]/).map((t) => t.trim()).filter(Boolean); f.tags.value = [...new Set([...cur, ...sharedTagsOf(work)])].join('、'); },
+          }, '＋共用カタログのタグを足す') : null)),
       h('label', { class: 'field' }, '紹介文', f.description),
       h('label', { class: 'field' }, '作者公式サイト', f.site),
       h('div', { class: 'stack', style: 'gap:4px' }, h('div', { class: 'small muted' }, 'シナリオラベル（対象年齢と、注意のラベル）'),

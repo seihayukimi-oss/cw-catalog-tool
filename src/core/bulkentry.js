@@ -85,7 +85,7 @@ export function bulkEntry(item, common = {}) {
     compat: COMPAT[format], convert: 'self',
     downloads,
     file: { name: item.fileName || '', sha256: item.sha256 || '' }, readme: '', level: null,
-    tags: [], description: String(item.description || '').trim().slice(0, 2000), requires: [], related: [], links: [],
+    tags: (Array.isArray(item.tags) ? item.tags : []).filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim().slice(0, 40)).slice(0, 30), description: String(item.description || '').trim().slice(0, 2000), requires: [], related: [], links: [],
     intro: (common.intro || []).map((url) => ({ url, label: '' })),
     site: /^https?:\/\/\S+$/.test(common.site || '') ? common.site : '',
     rating: ['all', 'r15', 'r18'].includes(item.rating) ? item.rating : 'all', content: [],
@@ -107,6 +107,7 @@ export function mergeEntry(cur, add) {
     version: cur.version || add.version,
     file: cur.file?.sha256 ? cur.file : add.file,
     description: cur.description || add.description,
+    tags: [...new Set([...(cur.tags || []), ...(add.tags || [])])].slice(0, 30),
     site: cur.site || add.site || '',
     downloads, intro,
   };

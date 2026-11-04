@@ -42,6 +42,8 @@ async function infoFromOpened(o) {
     type: 'scenario', name: sc.name, author: sc.author || '', version: sc.versionGuess || '',
     format: sc.format === 'none' ? 'classic' : sc.format, wsnVersion: sc.wsnVersion ?? null,
     description: sc.description || '', rating: tags.includes('R18') ? 'r18' : tags.includes('R15') ? 'r15' : 'all',
+    // Readme から見つけたタグ（戦闘あり・Lv3以上など）も、個人用カタログのタグに入れる（「設定」の「タグ」の「タグも引き継ぐ」がオンのとき）
+    tags: S.tagCopy === false ? [] : tags.filter((t) => t !== 'R18' && t !== 'R15'),
     fileName, sha256: o.source?.sha256 || '',
     note: o.scenarios.length > 1 ? `中に${o.scenarios.length}作品あり（1つ目を登録します）` : '',
   };

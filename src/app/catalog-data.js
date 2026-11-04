@@ -355,6 +355,35 @@ export async function takeOutOfFolder(keys, id) {
 }
 
 /** 個人用カタログ（own）の作品を、指定したカタログに入れる／直す／抜く */
+/** 共用カタログに載っているタグ（その作品の、共用カタログの登録すべてから） */
+export const sharedTagsOf = (w) => [...new Set((w?.refs || []).filter((r) => r.kind === 'shared').flatMap((r) => r.entry?.tags || []))];
+/** 個人用カタログにも共用カタログにもある作品か（共用カタログのタグを取り込める） */
+export const canPullSharedTags = (w) => (w?.refs || []).some((r) => r.kind === 'own') && sharedTagsOf(w).length > 0;
+/**
+ * 共用カタログのタグを、個人用カタログの同じ作品のタグに足す（pick を渡せば、そのタグだけ）
+ * @returns {Promise<number>} タグが増えた作品の数（個人用カタログごとに数える）
+ */
+export async function pullSharedTags(works, pick = null) {
+  const want = new Map(works.map((w) => [w.key, sharedTagsOf(w).filter((t) => !pick || pick.has(t))]).filter(([, t]) => t.length));
+  let n = 0;
+  for (const src of ownSources()) {
+    const cat = S.catalogs.get(src.id);
+    if (!cat) continue;
+    let changed = false;
+    const entries = cat.entries.map((e) => {
+      const add = want.get(workKey(e));
+      if (!add) return e;
+      const tags = [...new Set([...(e.tags || []), ...add])].slice(0, 30);
+      if (tags.length === (e.tags || []).length) return e;
+      changed = true; n++;
+      return { ...e, tags };
+    });
+    if (changed) await putCatalog(src, { format: 1, authors: cat.authors, entries });
+  }
+  rebuild();
+  return n;
+}
+
 export async function saveOwnEntry(entry, { origKey = '', targetIds = [] }) {
   const key = workKey(entry);
   for (const src of ownSources()) {
