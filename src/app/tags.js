@@ -28,7 +28,14 @@ export async function loadTags() {
   for (const r of S.records) for (const t of r.tags || []) if (!S.tagList.includes(t)) S.tagList.push(t);
   S.favs = { works: [], folders: [], ...((await store.get('favs')) || {}) };
   S.autoTag = (await store.get('autoTag', true)) !== false;
+  // カタログのタグ：入れるときに自分のタグとして付けるか（最初はオフ）・自分のフォルダ一覧に出すか（最初はオン）
+  S.catTagAuto = (await store.get('catTagAuto', false)) === true;
+  S.catTagShow = (await store.get('catTagShow', true)) !== false;
 }
+export async function setCatTagAuto(on) { S.catTagAuto = !!on; await store.set('catTagAuto', S.catTagAuto); }
+export async function setCatTagShow(on) { S.catTagShow = !!on; await store.set('catTagShow', S.catTagShow); }
+/** カタログのタグの呼び方：作者さん本人の登録の作品は「作者様推奨タグ」、ほかは「カタログのタグ」 */
+export const catTagLabel = (work) => (work?.refs?.some((r) => r.entry?.claim === 'author') ? '作者様推奨タグ' : 'カタログのタグ');
 async function saveTags() { await store.set('tagList', S.tagList); }
 export async function addTagName(t) {
   t = t.trim().slice(0, 40);

@@ -22,7 +22,7 @@ import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
 import { startBatch } from './batch.js';
 import { setupShell, startShell, viewAppSettings, checkSelf } from './appshell.js';
 import { ownSources, saveOwnEntry } from './catalog-data.js';
-import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName, manageTags } from './tags.js';
+import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName, manageTags, setCatTagAuto, setCatTagShow, catTagLabel } from './tags.js';
 import { findTags, findTagsInOpened } from '../core/autotag.js';
 import { decodeText } from '../core/text.js';
 import { openArchive } from '../core/archive.js';
@@ -322,9 +322,28 @@ function recordCard(r) {
       h('span', {}, `新しい版 ${work.version} があります（手元：${r.version}）`),
       h('button', { class: 'btn sm', onclick: () => downloadWork(work) }, 'ダウンロード'),
       h('button', { class: 'btn ghost sm', onclick: () => startBatch([{ work, record: r }], '更新をDL') }, 'この場所に入れ直す')) : null,
+    catTagRow(r, work, save),
     r.note ? h('div', { class: 'small muted', style: 'margin-top:4px' }, r.note) : null,
     textRow(r),
   );
+}
+
+// ------------------------------------------------------------ カタログのタグ（作者様推奨タグ）を、自分のフォルダ一覧に出す
+/** 押すと自分のタグに足せる。全体は「設定」の「タグ」で、作品ごとは「隠す」でオフにできる */
+function catTagRow(r, work, save) {
+  if (!S.catTagShow || !work?.tags?.length || r.type === 'bookmark') return null;
+  const label = catTagLabel(work);
+  if (r.catTagHide) {
+    return h('div', { class: 'row cat-tag-row', style: 'margin-top:4px' },
+      h('button', { class: 'btn ghost sm', title: `この作品の${label}を表示します`, onclick: () => save({ catTagHide: false }) }, `＋${label}を表示`));
+  }
+  const mine = new Set(r.tags || []);
+  return h('div', { class: 'row cat-tag-row', style: 'margin-top:4px' },
+    h('span', { class: 'small muted' }, `${label}：`),
+    work.tags.map((t) => (mine.has(t)
+      ? h('span', { class: 'tag cat-tag added', title: '自分のタグに付いています' }, `✓ ${t}`)
+      : h('button', { type: 'button', class: 'tag cat-tag', title: `「${t}」を自分のタグに足します`, onclick: async () => { const n = await addTagName(t); if (n) await save({ tags: [...new Set([...(r.tags || []), n])] }); } }, `＋${t}`))),
+    h('button', { class: 'btn ghost sm', title: `この作品の${label}を隠します（「設定」の「タグ」で、全部の作品をまとめて隠すこともできます）`, onclick: () => save({ catTagHide: true }) }, '隠す'));
 }
 
 // ------------------------------------------------------------ シナリオの中のテキスト（Readme・はじめに・利用規約など）
@@ -708,6 +727,11 @@ function viewSettings() {
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.autoTag !== false, 'aria-label': 'Readmeから自動でタグを付ける', onchange: async (ev) => { S.autoTag = ev.target.checked; await store.set('autoTag', S.autoTag); } }),
         'シナリオを入れるとき、Readmeや説明文からタグを自動で付ける'),
       h('p', { class: 'small muted', style: 'margin:0' }, '「店シナ」「読み物」「1人用」「3人以上」「6人専用」「戦闘あり」「戦闘なし」「短編」「Lv3-5」などを、書いてあるときだけ付けます。入れる前に、付けるタグを選べます。もう入っている作品は、「自分のフォルダ一覧」で選んで「Readmeからタグを付ける」を押すと付けられます。'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!S.catTagAuto, 'aria-label': 'カタログのタグも自分のタグとして付ける', onchange: async (ev) => { await setCatTagAuto(ev.target.checked); } }),
+        'シナリオを入れるとき、カタログのタグ（作者様推奨タグ）も自分のタグとして付ける'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.catTagShow !== false, 'aria-label': 'カタログのタグを表示する', onchange: async (ev) => { await setCatTagShow(ev.target.checked); render(); } }),
+        '自分のフォルダ一覧に、カタログのタグ（作者様推奨タグ）を表示する'),
+      h('p', { class: 'small muted', style: 'margin:0' }, '作者さんご本人が共用カタログに登録した作品のタグは「作者様推奨タグ」、ほかの方が登録した作品のタグは「カタログのタグ」と表示します。表示されたタグを押すと、自分のタグに足せます。作品ごとに「隠す」こともできます。'),
       h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: manageTags }, 'タグの整理'))),
 
     h('h2', { id: 'records-settings' }, `自分のフォルダの記録（${RECORDS_BACKUP}）`),

@@ -17,7 +17,7 @@ import { openLocalFiles, pickFiles, pickDownloads } from './localfiles.js';
 import { viewMaterialInstall, openBtn, zipPlaceRow } from './materials.js';
 import { catPicker } from './catpick.js';
 import { findTagsInOpened } from '../core/autotag.js';
-import { addTagName } from './tags.js';
+import { addTagName, setCatTagAuto, catTagLabel } from './tags.js';
 import { backupOpts, backupFull } from './backup.js';
 import { existsAt } from '../core/fs.js';
 import { execWarning, contentsBox } from './safety-view.js';
@@ -228,6 +228,7 @@ export function viewAdd() {
     play && !play.ok ? h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: !!S.force, onchange: (ev) => { S.force = ev.target.checked; render(); } }), 'それでも入れる') : null,
     !S.readmeAck ? h('p', { class: 'small muted' }, '※ Readme（利用規約）を読んでからインストールできます') : null,
     autoTagBox(o),
+    catTagBox(o, work),
     archiveNote(o),
     S.progress ? h('div', { class: 'stack' },
       h('progress', { id: 'inst-prog', max: S.progress.total || 1, value: S.progress.done }),
@@ -275,6 +276,27 @@ function autoTagBox(o) {
     h('span', { class: 'muted' }, 'Readmeから見つけたタグ（入れるときに付けます）：'),
     o.autoTags.map((t) => h('label', { class: `chip${o.autoOn.has(t) ? ' on' : ''}` },
       h('input', { type: 'checkbox', checked: o.autoOn.has(t), 'aria-label': `タグ「${t}」を付ける`, onchange: (ev) => { if (ev.target.checked) o.autoOn.add(t); else o.autoOn.delete(t); ev.target.parentElement.classList.toggle('on', ev.target.checked); } }), t)));
+}
+
+/** カタログのタグを、自分のタグとしても付けるか（最初はオフ。「次回から自動で付ける」で設定をオンにする） */
+function catTagBox(o, work) {
+  if (!work?.tags?.length) return null;
+  if (o.catTagsFor !== work.key) { o.catTagsFor = work.key; o.catOn = !!S.catTagAuto; o.catPick = new Set(work.tags); }
+  const label = catTagLabel(work);
+  return h('div', { class: 'stack cat-tag-box', id: 'cat-tags', style: 'gap:4px' },
+    h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: o.catOn, onchange: (ev) => { o.catOn = ev.target.checked; render(); } }),
+      `${label}も、自分のタグとして付ける`),
+    o.catOn ? h('div', { class: 'row small' }, work.tags.map((t) => h('label', { class: `chip${o.catPick.has(t) ? ' on' : ''}` },
+      h('input', { type: 'checkbox', checked: o.catPick.has(t), 'aria-label': `タグ「${t}」を付ける`, onchange: (ev) => { if (ev.target.checked) o.catPick.add(t); else o.catPick.delete(t); ev.target.parentElement.classList.toggle('on', ev.target.checked); } }), t))) : null,
+    h('label', { class: 'check small muted' }, h('input', { type: 'checkbox', checked: !!S.catTagAuto, onchange: async (ev) => { await setCatTagAuto(ev.target.checked); if (ev.target.checked) o.catOn = true; render(); } }),
+      '次回から自動で付ける（「設定」の「タグ」で戻せます）'));
+}
+
+/** 入れるときに付けるタグ（Readmeから見つけたもの＋カタログのタグ） */
+function installTags(o, work) {
+  const auto = S.autoTag === false ? [] : [...(o.autoOn || [])];
+  const cat = work?.tags?.length && o.catTagsFor === work.key && o.catOn ? [...o.catPick] : [];
+  return [...new Set([...auto, ...cat])];
 }
 
 function archiveNote(o) {
@@ -468,7 +490,7 @@ async function doInstall() {
   S.progress = { done: 0, total: 0, phase: 'write' };
   await busy('インストール中', async () => {
     const { plan, res, archived } = await installOpened({
-      opened: o, pick: S.pick, eng, dir: d, cat, folderName, version, tags: S.autoTag === false ? [] : [...(o.autoOn || [])],
+      opened: o, pick: S.pick, eng, dir: d, cat, folderName, version, tags: installTags(o, S.openedWork),
       versionSource: version && version === dv.version ? dv.source || 'user' : 'user', work: S.openedWork, onProgress: setProgress,
     });
     S.records = await store.records();

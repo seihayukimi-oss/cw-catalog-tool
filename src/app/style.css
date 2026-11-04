@@ -99,6 +99,9 @@ label.check { display: inline-flex; gap: 6px; align-items: center; cursor: point
 .tag button { border: 0; background: none; padding: 0; cursor: pointer; color: var(--sub); }
 .tag.tag-link { border: 1px solid transparent; color: var(--text); font-family: inherit; line-height: 1.6; cursor: pointer; }
 .tag.tag-link:hover, .tag.tag-link:focus-visible { border-color: var(--accent); color: var(--accent); }
+.tag.cat-tag { border: 1px dashed var(--line); background: transparent; color: var(--sub); font-family: inherit; line-height: 1.6; cursor: pointer; }
+.tag.cat-tag:hover, .tag.cat-tag:focus-visible { border-color: var(--accent); color: var(--accent); }
+.tag.cat-tag.added { cursor: default; border-style: solid; }
 
 .item-title { font-family: var(--serif); font-size: 1.05rem; font-weight: 600; }
 .meta { font-size: .82rem; color: var(--sub); word-break: break-all; }

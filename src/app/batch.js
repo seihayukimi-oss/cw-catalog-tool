@@ -8,6 +8,7 @@ import { playability } from '../core/catalog.js';
 import { S, render, busyText, engine, goTab } from './state.js';
 import { store } from './store.js';
 import { h, toast, modal, fmtSize, formatBadge, sleep, fakeCheckWarn } from './ui.js';
+import { setCatTagAuto } from './tags.js';
 import { tryDownloads, dlLabel, pagePanel, inAppDownload, deliver, tryAutoAgree } from './download.js';
 import { setDefaultUrl, setCatPrefs } from './catalog-data.js';
 import { execWarning, contentsBox, safetyNote } from './safety-view.js';
@@ -276,6 +277,11 @@ export function viewBatch() {
           ...[...new Set(mats.map((i) => i.matKind))].filter((k) => S.stash?.[k]?.keepZip).map((k) => `${KINDS[k].label}の元のzipは、その中の「${KINDS[k].zipSub}」に残します`),
         ].filter(Boolean).join('。') + '。'),
         openBtn(S.archive.ref, '保存場所を開く')) : null,
+      b.items.some((i) => !i.material && i.work?.tags?.length) ? h('div', { class: 'stack cat-tag-box', style: 'gap:4px' },
+        h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: b.catTags ?? !!S.catTagAuto, disabled: b.installing, onchange: (ev) => { b.catTags = ev.target.checked; render(); } }),
+          'カタログのタグ（作者様推奨タグ）も、自分のタグとして付ける'),
+        h('label', { class: 'check small muted' }, h('input', { type: 'checkbox', checked: !!S.catTagAuto, disabled: b.installing, onchange: async (ev) => { await setCatTagAuto(ev.target.checked); if (ev.target.checked) b.catTags = true; render(); } }),
+          '次回から自動で付ける（「設定」の「タグ」で戻せます）')) : null,
       b.installing ? h('div', { class: 'stack' },
         h('progress', { id: 'batch-prog', max: 1, value: 0 }),
         h('div', { id: 'batch-prog-text', class: 'small muted' }, '準備中…')) : null,
@@ -477,7 +483,7 @@ async function installAll() {
         opened: it.opened, pick: it.pick, eng, dir: dirs.get(it.engineId || b.engineId),
         cat: it.target ? it.target.cat : cat, folderName: it.folderName.trim() || it.opened.scenarios[it.pick].folderName,
         version: it.work ? it.work.version : it.opened.scenarios[it.pick].versionGuess || '', versionSource: it.work ? (it.exact ? 'catalog' : 'dl') : 'guess', work: it.work, onProgress: prog,
-        tags: it.autoTags || [],
+        tags: [...new Set([...(it.autoTags || []), ...((b.catTags ?? !!S.catTagAuto) && it.work?.tags ? it.work.tags : [])])],
       });
       it.status = 'done';
       it.donePath = eng?.ref && S.platform.kind === 'app' ? [eng.ref.replace(/[\\/]+$/, ''), ...plan.dest.split('/')].join('\\') : '';
