@@ -49,7 +49,7 @@ export async function fetchOnce(url, opts, ctx = {}) {
     try { r = await S.platform.fetchResource(next, { headers: { Referer: r.finalUrl || url }, ...(ctx.onProgress ? { onProgress: ctx.onProgress } : {}) }); } catch (e) { return { kind: 'error', url, message: `ワンタイムURLのページをたどれませんでした：${e.message}` }; }
     res = classify(r, url);
   }
-  // Google ドライブの「大きいのでウイルススキャンできません。それでもダウンロードしますか？」は、作者さんの規約ではないので、そのまま進む
+  // Google ドライブの「大きいのでウイルススキャンできません。それでもダウンロードしますか？」は、作者様の規約ではないので、そのまま進む
   if (res.kind === 'page' && /(^|\.)drive\.usercontent\.google\.com$/.test(hostOf(r.finalUrl)) && res.st.forms.length) {
     const r2 = await submitForm(res.st.forms[0], {}, r.finalUrl).catch(() => null);
     const c2 = r2 && classify(r2, url);
@@ -584,7 +584,7 @@ export function viewUrlBox() {
 
 // ------------------------------------------------------------ サイトからの「CWカタログで入れる」リンク
 /**
- * 作者さんのサイトに置いたリンク（…/cw-catalog.html#install=<zipのURL>&name=<作品名>）から開かれたとき。
+ * 作者様のサイトに置いたリンク（…/cw-catalog.html#install=<zipのURL>&name=<作品名>）から開かれたとき。
  * アプリ版では cwcatalog://install?url=…&name=… から。取得する前に必ず確認する。勝手にダウンロード・インストールはしない。
  * 作品IDで頼むこともできる：#entry=e00012（そのIDの作品が載ったカタログを読み込んでいるとき）
  */
@@ -637,7 +637,7 @@ export async function askInstallLink({ url, entryId, name }) {
   return fetchFromUrl(target);
 }
 
-/** 作者さん向け：作品ページに置く「CWカタログで入れる」リンク（ボタン）を作る */
+/** 作者様向け：作品ページに置く「CWカタログで入れる」リンク（ボタン）を作る */
 export function viewLinkMaker() {
   const base = /^https:/.test(location.protocol) && /github\.io$/.test(location.hostname) ? location.origin + location.pathname : PAGES_URL;
   const urlIn = h('input', { type: 'url', class: 'grow', placeholder: '作品のzipのURL（または配布ページのURL）', 'aria-label': '作品のURL' });
@@ -680,7 +680,7 @@ export function viewLinkMaker() {
   }, h('option', { value: '' }, 'カタログの作品から選ぶ（任意）'), works.map((w, i) => h('option', { value: i }, `${w.name}（${w.author}）`))) : null;
 
   return h('div', { class: 'card stack link-maker' },
-    h('p', { style: 'margin:0' }, '作者さんのサイトの作品ページに、「CWカタログで入れる」ボタンを置けます。遊ぶ人がそれを押すと、ダウンロード・展開・フォルダ探しをしなくても、CWカタログがその情報から作品を探し取得します。'),
+    h('p', { style: 'margin:0' }, '作者様のサイトの作品ページに、「CWカタログで入れる」ボタンを置けます。遊ぶ人がそれを押すと、ダウンロード・展開・フォルダ探しをしなくても、CWカタログがその情報から作品を探し取得します。'),
     h('pre', { class: 'readme', style: 'max-height:none' }, '作品ページ\n  サンプルの光 ver1.02\n  [ダウンロード]  [CWカタログで入れる] ← これを作ります\n\n押すと → CWカタログが開く →「このシナリオを取得しますか？」→ Readmeを見て → インストール'),
     h('div', { class: 'small muted' }, '① 作品のURLと作品名を入れる'),
     pick,

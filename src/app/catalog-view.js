@@ -72,7 +72,7 @@ export function viewCatalog() {
       h('div', { class: 'card soft small' },
         h('p', { style: 'margin:0' }, 'まだ作品がありません。'),
         h('ul', { style: 'margin:6px 0 0;padding-left:1.2em' },
-          h('li', {}, '共用カタログ：作者さんが登録したカタログのURL（index.json）を追加します'),
+          h('li', {}, '共用カタログ：作者様が登録したカタログのURL（index.json）を追加します'),
           h('li', {}, '個人用カタログ：有志作成のDLリストを読み込むか、「＋作品を登録」で自分で作品を足します')),
         h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn', onclick: () => editEntry({}) }, '＋作品を登録（個人用）'))));
   }
@@ -129,7 +129,7 @@ function folderChips() {
     chip('__fav', '★お気に入り', count('__fav')),
     folders.map((f) => chip(f.id, `${isFavFolder(f.id) ? '★' : ''}${f.name}`, count(f.id))),
     S.folders.list.length ? chip('__none', '未分類', count('__none')) : null,
-    h('button', { class: 'btn ghost sm', onclick: async () => { const name = await askName('新しいフォルダ', '', 'フォルダの名前（例：作者さんの名前、企画の名前）'); if (name) { const f = await createFolder(name); S.filter.catFolder = f.id; toast(`フォルダ「${name}」を作りました。作品を選んで「フォルダに入れる」で入れられます`, { ms: 7000 }); render(); } } }, '＋新しいフォルダ'),
+    h('button', { class: 'btn ghost sm', onclick: async () => { const name = await askName('新しいフォルダ', '', 'フォルダの名前（例：作者様の名前、企画の名前）'); if (name) { const f = await createFolder(name); S.filter.catFolder = f.id; toast(`フォルダ「${name}」を作りました。作品を選んで「フォルダに入れる」で入れられます`, { ms: 7000 }); render(); } } }, '＋新しいフォルダ'),
     S.folders.list.length ? h('button', { class: 'btn ghost sm', onclick: manageFolders }, 'フォルダの整理') : null);
 }
 
@@ -262,8 +262,8 @@ function workCard(w, mine) {
       isMutedWork(w) ? h('span', { class: 'badge plain' }, '除外中の作者') : null,
       w.derivative ? h('span', { class: 'badge plain', title: [w.derivative.of ? `もとの作品：${w.derivative.of}` : '', w.derivative.basis ? `改変してよいと分かるもの：${w.derivative.basis}` : ''].filter(Boolean).join('\n') }, '改変版') : null,
       workHasDead(w) ? h('span', { class: 'badge bad link-dead', title: 'DL先のどれかで、ファイルが見つかりませんでした（くわしくはDL先の欄）' }, '✖ リンク切れ') : null,
-      workSites(w).length ? h('span', { class: 'badge plain author-site', title: '作者さんご本人が、このサイトでサイト認証をして登録した作品です。（同じ名前の別の作者さんは、認証サイト名で見分けられます）' }, `作者本人（認証サイト名：${workSites(w).join('・')}）`) : null,
-      w.refs.some((r) => r.entry.claim === 'proxy') && !w.refs.some((r) => r.entry.claim === 'author') ? h('span', { class: 'badge plain', title: '作者さん以外の方が登録したものです（作者さんは、登録フォームの「サイト認証」で引き取れます）' }, '代理登録') : null,
+      workSites(w).length ? h('span', { class: 'badge plain author-site', title: '作者様ご本人が、このサイトでサイト認証をして登録した作品です。（同じ名前の別の作者様は、認証サイト名で見分けられます）' }, `作者本人（認証サイト名：${workSites(w).join('・')}）`) : null,
+      w.refs.some((r) => r.entry.claim === 'proxy') && !w.refs.some((r) => r.entry.claim === 'author') ? h('span', { class: 'badge plain', title: '作者様以外の方が登録したものです（作者様は、登録フォームの「サイト認証」で引き取れます）' }, '代理登録') : null,
       foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name)),
       w.listFound ? h('span', { class: 'badge update', title: `ファイル一覧（${w.listFound.list}）で見つけたファイル：${w.listFound.name}` }, `一覧の最新 ${w.listFound.version ? `ver ${w.listFound.version}` : w.listFound.name}`) : null),
     h('div', { class: 'row' },
@@ -335,7 +335,7 @@ async function muteAuthor(w, mute) {
   const sites = workSites(w);
   const site = sites.length === 1 ? sites[0] : '';
   const n = S.combined.works.filter((x) => x.author === author && (!site || !workSites(x).length || workSites(x).includes(site))).length;
-  if (!(await confirmBox(`「${author}」さん${site ? `（認証サイト名：${site}）` : ''}の作品（${n}件）をカタログに表示しないようにします。${site ? '同じ名前でも、別のサイトで認証した作者さんの作品は表示したままにします。' : ''}このPCの中だけの設定で、カタログそのものは変わりません。「設定」→「カタログ」でいつでも元に戻せます。`, { yes: '除外する', no: 'やめる' }))) return;
+  if (!(await confirmBox(`「${author}」さん${site ? `（認証サイト名：${site}）` : ''}の作品（${n}件）をカタログに表示しないようにします。${site ? '同じ名前でも、別のサイトで認証した作者様の作品は表示したままにします。' : ''}このPCの中だけの設定で、カタログそのものは変わりません。「設定」→「カタログ」でいつでも元に戻せます。`, { yes: '除外する', no: 'やめる' }))) return;
   await muteWorkAuthor(w);
   toast(`「${author}」さん${site ? `（${site}）` : ''}の作品をカタログに表示しないようにしました`);
   render();
@@ -371,7 +371,7 @@ function tagsBlock(w) {
 
 // ------------------------------------------------------------ 紹介ページ（HP・X・Misskeyなど）
 function introBlock(w) {
-  // 作者さんのサイト（紹介ページとは別に、1つだけ）
+  // 作者様のサイト（紹介ページとは別に、1つだけ）
   const site = w.site ? h('div', { class: 'row small' }, h('span', { class: 'muted' }, '作者公式サイト'),
     h('button', { class: 'btn ghost sm', title: w.site, onclick: () => S.platform.openUrl(w.site) }, w.site.replace(/^https?:\/\//, '').slice(0, 50))) : null;
   if (!w.intro.length) return site;
@@ -471,7 +471,7 @@ export function viewManage(open) {
         h('button', { class: 'btn primary', onclick: addCatalogDialog }, '＋ カタログを追加'),
         S.combined ? h('button', { class: 'btn ghost sm', onclick: () => { S.manageOpen = false; render(); } }, '▲ たたむ') : null)),
     h('p', { class: 'small muted', style: 'margin:0' }, 'チェックを外したカタログの作品は、一覧・更新チェック・一括ダウンロードに出なくなります。'),
-    section('共用カタログ', '作者さんが登録フォームから登録した作品のカタログです。', shared),
+    section('共用カタログ', '作者様が登録フォームから登録した作品のカタログです。', shared),
     section('個人用カタログ', '自分で作るカタログと、有志作成のDLリストです。いくつでも持てます。', personal),
     h('p', { class: 'small muted', style: 'margin:0' }, '作品を登録するときの入れ先や、デフォルトのDL先の確認は ',
       h('button', { class: 'btn ghost sm bare link-dash', onclick: () => goTab('settings') }, '「設定」タブ'), ' で変えられます。'));
@@ -496,7 +496,7 @@ async function addCatalogDialog() {
     const go = (fn, msg) => { close(true); after(fn, msg); };
     return h('div', { class: 'stack' },
       h('h2', {}, 'カタログを追加'),
-      choice('共用カタログをURLで追加', '作者さんが登録したカタログの index.json のURL（登録フォームのウェブアプリなら …/exec?file=index）を入れます。',
+      choice('共用カタログをURLで追加', '作者様が登録したカタログの index.json のURL（登録フォームのウェブアプリなら …/exec?file=index）を入れます。',
         sharedUrl, h('button', { class: 'btn primary', onclick: () => {
           const u = sharedUrl.value.trim();
           if (!/^https:\/\//.test(u)) { toast('https:// から始まるURLを入れてください', { bad: true }); return; }
@@ -547,7 +547,7 @@ function sourceRow(s) {
     h('div', { class: 'grow' },
       h('div', { class: 'row' }, h('b', {}, s.name), h('span', { class: 'badge plain' }, kindLabel), !s.enabled ? h('span', { class: 'badge plain' }, '候補に含めない') : null),
       h('div', { class: 'meta' }, [`${s.count || 0}件`, hidden ? `外した作品 ${hidden}件` : '', s.loadedAt ? `読み込み ${fmtDate(s.loadedAt)}` : ''].filter(Boolean).join('・'))),
-    S.catalogs.get(s.id)?.links?.register ? h('button', { class: 'btn sm', title: '作者さん以外の方も登録できます（代理登録）', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.register) }, '作品を登録する') : null,
+    S.catalogs.get(s.id)?.links?.register ? h('button', { class: 'btn sm', title: '作者様以外の方も登録できます（代理登録）', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.register) }, '作品を登録する') : null,
     S.catalogs.get(s.id)?.links?.manage ? h('button', { class: 'btn ghost sm', onclick: () => S.platform.openUrl(S.catalogs.get(s.id).links.manage) }, '登録内容の変更・解除') : null,
     s.url ? h('button', { class: 'btn sm', onclick: () => after(() => refreshSource(s), (changed) => (changed ? `「${s.name}」を取り直しました（${s.count}件）` : '変わっていませんでした')) }, '取り直す') : null,
     s.kind !== 'shared' ? h('button', { class: 'btn ghost sm', title: 'このカタログの名前を変えます', onclick: () => renameSource(s) }, '名前を変える') : null,
@@ -600,12 +600,12 @@ async function exportList(s) {
     const go = await modal((close) => h('div', { class: 'stack' },
       h('h2', {}, 'DL一覧として書き出す'),
       folders.length ? h('div', { class: 'stack' },
-        h('label', { class: 'check' }, labelOn, 'フォルダ（作者さんごと・企画ごとなどの分け方）を、分類名として一緒に書き出す'),
+        h('label', { class: 'check' }, labelOn, 'フォルダ（作者様ごと・企画ごとなどの分け方）を、分類名として一緒に書き出す'),
         pickBox,
         h('p', { class: 'small muted', style: 'margin:0' }, '受け取った人は、分類名を取り込むかどうか、どの分類名を取り込むかを選べます。')) : null,
       hasKeys ? h('div', { class: 'stack' },
         h('p', { style: 'margin:0' }, `「${s.name}」には、DLキーを入れた作品がありますが、DLキーは書き出しません。`),
-        h('p', { class: 'small muted', style: 'margin:0' }, '作者さんによっては、サイトに来てDLキーと注意書きを見てほしいと考えています。人に伝えたいときは、「設定」の「DLキー」から1つずつコピーしてください。')) : null,
+        h('p', { class: 'small muted', style: 'margin:0' }, '作者様によっては、サイトに来てDLキーと注意書きを見てほしいと考えています。人に伝えたいときは、「設定」の「DLキー」から1つずつコピーしてください。')) : null,
       r18n ? h('div', { class: 'stack' },
         h('label', { class: 'check' }, r18Box, `R18の作品（${r18n}件）も含める`),
         h('p', { class: 'small muted', style: 'margin:0' }, 'チェックしなければ、R18の作品は書き出しません。受け取った側でも、R18は初期状態では非表示になっています。')) : null,
@@ -632,7 +632,7 @@ async function labelDialog(s) {
   const auto = h('input', { type: 'checkbox', checked: !!sync, 'aria-label': 'カタログを取り直したときも取り込む' });
   const res = await modal((close) => h('div', { class: 'stack' },
     h('h2', {}, `「${s.name}」の分類名を取り込む`),
-    h('p', { class: 'small muted', style: 'margin:0' }, 'カタログを作った人が付けた分け方（作者さんごと・企画ごとなど）を、自分の「フォルダ」として取り込みます。取り込む分類名を選んでください。'),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'カタログを作った人が付けた分け方（作者様ごと・企画ごとなど）を、自分の「フォルダ」として取り込みます。取り込む分類名を選んでください。'),
     h('div', { class: 'row', style: 'gap:6px' },
       h('button', { class: 'btn sm', onclick: () => picks.forEach((p) => { p.box.checked = true; }) }, 'すべて選ぶ'),
       h('button', { class: 'btn ghost sm', onclick: () => picks.forEach((p) => { p.box.checked = false; }) }, 'すべて外す')),
@@ -737,7 +737,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
           sel({ new: '新（今の配布先）', old: '旧（移転済み）', closed: '終了' }, d.age, (x) => { d.age = x; }, '新旧'),
           sel({ normal: '通常', mirror: '予備' }, d.role, (x) => { d.role = x; }, '通常・予備'),
           h('input', { type: 'text', value: d.dlkey, placeholder: 'DLキー（任意）', style: 'width:9em', 'aria-label': 'DLキー', autocomplete: 'off', oninput: (ev) => { d.dlkey = ev.target.value.trim(); } }),
-          h('input', { type: 'text', value: d.note, placeholder: 'メモ（例：作者さんのXで告知）', class: 'grow', oninput: (ev) => { d.note = ev.target.value; } })))),
+          h('input', { type: 'text', value: d.note, placeholder: 'メモ（例：作者様のXで告知）', class: 'grow', oninput: (ev) => { d.note = ev.target.value; } })))),
       h('button', { type: 'button', class: 'btn sm', onclick: () => { dls.push({ url: '', label: '', kind: 'page', age: 'new', role: 'normal', note: '', until: '', dlkey: '' }); drawDls(); } }, '＋DL先'));
     drawDls();
 

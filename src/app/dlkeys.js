@@ -48,7 +48,7 @@ export function viewDlKeys() {
     }
   }
   return h('div', { class: 'card stack' },
-    h('p', { class: 'small muted', style: 'margin:0' }, 'DLキー（パスワード）は、このパソコンの中だけに保存します。DL一覧の書き出しや共用カタログには入りません。人に伝えたいときは、ここから1つずつ「コピー」して伝えてください。（作者さんによっては、サイトに来てDLキーと注意書きを見てほしいと考えています）'),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'DLキー（パスワード）は、このパソコンの中だけに保存します。DL一覧の書き出しや共用カタログには入りません。人に伝えたいときは、ここから1つずつ「コピー」して伝えてください。（作者様によっては、サイトに来てDLキーと注意書きを見てほしいと考えています）'),
     h('h3', {}, 'DLキーの画面で覚えたもの（そのページだけで使います）'),
     pages.length ? h('ul', { class: 'dl' }, pages.map(([url, rec]) => h('li', { class: 'stack', style: 'gap:2px' },
       h('div', { class: 'row' },

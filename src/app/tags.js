@@ -37,7 +37,7 @@ export async function loadTags() {
 export async function setTagCopy(on) { S.tagCopy = !!on; await store.set('tagCopy', S.tagCopy); }
 export async function setCatTagAuto(on) { S.catTagAuto = !!on; await store.set('catTagAuto', S.catTagAuto); }
 export async function setCatTagShow(on) { S.catTagShow = !!on; await store.set('catTagShow', S.catTagShow); }
-/** カタログのタグの呼び方：作者さん本人の登録の作品は「作者様推奨タグ」、ほかは「カタログのタグ」 */
+/** カタログのタグの呼び方：作者様本人の登録の作品は「作者様推奨タグ」、ほかは「カタログのタグ」 */
 export const catTagLabel = (work) => (work?.refs?.some((r) => r.entry?.claim === 'author') ? '作者様推奨タグ' : 'カタログのタグ');
 async function saveTags() { await store.set('tagList', S.tagList); }
 export async function addTagName(t) {

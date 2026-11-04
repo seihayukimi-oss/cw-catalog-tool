@@ -317,7 +317,7 @@ async function connectEngineQuiet(id) {
 function authorReadme(work) {
   const a = work && S.combined?.authors?.[work.owner];
   if (!a?.readme_url) return null;
-  const box = h('details', { class: 'small' }, h('summary', {}, `作者さん共通のReadme（${a.names[0] || work.author}）`));
+  const box = h('details', { class: 'small' }, h('summary', {}, `作者様共通のReadme（${a.names[0] || work.author}）`));
   box.addEventListener('toggle', async () => {
     if (!box.open || box.dataset.loaded) return;
     box.dataset.loaded = '1';

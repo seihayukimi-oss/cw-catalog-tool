@@ -18,7 +18,7 @@ export const S = {
   combined: null, // 候補に含めるカタログを、作品ごとにまとめたもの
   catPrefs: { addTo: 'all', askDefault: true },
   workPrefs: {}, // 作品ごとの設定（デフォルトのDL先など）
-  folders: { list: [], map: {} }, // 自分で作るフォルダ（作者さんごと・企画ごとなど）
+  folders: { list: [], map: {} }, // 自分で作るフォルダ（作者様ごと・企画ごとなど）
   expanded: new Set(), // くわしく表示している作品
   catView: { group: '', compact: null },
   manageOpen: false,

@@ -168,7 +168,7 @@ function viewAssoc() {
       h('ul', { class: 'small', style: 'margin:0;padding-left:1.2em' },
         h('li', {}, '.wsn を「プログラムから開く」でCWカタログを選べる（いつもこれで開くかは、初めて開くときにWindowsが聞きます）'),
         h('li', {}, 'zip・wsn・cab・lzh・7z の右クリックに「CWカタログで開く」が出る（Windows 11では「その他のオプションを確認」の中）'),
-        h('li', {}, '作者さんのサイトの「CWカタログで入れる」から、このアプリが直接開く（取得する前に必ず確認します）')),
+        h('li', {}, '作者様のサイトの「CWカタログで入れる」から、このアプリが直接開く（取得する前に必ず確認します）')),
       h('p', { class: 'small muted', style: 'margin:0' }, '書き込むのは、Windowsの「自分のユーザー用」の場所だけです。管理者の許可は要りません。exe を別のフォルダに動かしたら、次に起動したとき自動で直します。'),
       h('div', { class: 'row' },
         h('span', { class: `badge ${st.registered ? 'ok' : 'plain'}` }, st.registered ? '登録済み' : '未登録'),

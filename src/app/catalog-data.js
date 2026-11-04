@@ -1,5 +1,5 @@
 // カタログの保存・読み込み・まとめ直し（画面から使う）。
-//  共用カタログ（shared）：作者さんが登録したサイト側のカタログ。URLで読む。書き換えない
+//  共用カタログ（shared）：作者様が登録したサイト側のカタログ。URLで読む。書き換えない
 //  個人用カタログ（own）：このツールの中で作って、作品を足したり直したりできる
 //  個人用カタログ（sub）：有志の方などが作ったDL一覧を読み込んだもの。書き換えない（コピーすれば自分用にできる）
 
@@ -121,11 +121,11 @@ export async function checkFileLists({ onStep } = {}) {
 export const sourceById = (id) => S.sources.find((s) => s.id === id) || null;
 
 // ------------------------------------------------------------ 入れない作者（この作者の作品は、カタログから拾わない）
-// 覚え方：名前だけ（文字列。前からのもの）か、名前＋認証したサイト（{ name, site }。同じ名前の別の作者さんを分ける）
+// 覚え方：名前だけ（文字列。前からのもの）か、名前＋認証したサイト（{ name, site }。同じ名前の別の作者様を分ける）
 const authorKey = (a) => normalizeName(a || '');
 const muteName = (m) => (typeof m === 'string' ? m : m?.name || '');
 const muteSite = (m) => (typeof m === 'string' ? '' : m?.site || '');
-/** 作品の、作者さん本人がサイト認証をしたサイト（共用カタログの verified_site） */
+/** 作品の、作者様本人がサイト認証をしたサイト（共用カタログの verified_site） */
 export const workSites = (w) => [...new Set((w?.refs || []).map((r) => r.entry?.verified_site).filter(Boolean))];
 export const mutedLabel = (m) => (muteSite(m) ? `${muteName(m)}（${muteSite(m)}）` : muteName(m));
 /** その覚え方が、この作品に当たるか。名前＋サイトで覚えたものは、別のサイトで認証した作品には当たらない（サイトの分からない作品には当たる） */
@@ -305,7 +305,7 @@ export async function setHiddenMany(works, hide, sourceIds = null) {
   rebuild();
 }
 
-// ------------------------------------------------------------ フォルダ（作者さんごと・企画ごとなど、自由に名前を付けて分ける）
+// ------------------------------------------------------------ フォルダ（作者様ごと・企画ごとなど、自由に名前を付けて分ける）
 // 作品は、いくつのフォルダに入れてもよい。共用カタログの作品も入れられる（カタログそのものは変えない）。
 export async function loadFolders() {
   const f = (await store.get('folders')) || {};

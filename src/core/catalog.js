@@ -58,11 +58,11 @@ export function sanitizeEntry(e) {
     readme: str(e.readme, 300),
     level: e.level && Number.isInteger(e.level.min) ? { min: e.level.min, max: e.level.max } : null,
     tags: (Array.isArray(e.tags) ? e.tags : []).filter((t) => typeof t === 'string').slice(0, 30),
-    // 登録した人（author＝作者さん本人・proxy＝作者さん以外の代理登録）。共用カタログの登録フォームが付ける
+    // 登録した人（author＝作者様本人・proxy＝作者様以外の代理登録）。共用カタログの登録フォームが付ける
     claim: e.claim === 'author' || e.claim === 'proxy' ? e.claim : '',
-    // 作者さん本人の登録のとき、サイト認証をしたサイト（ホスト名＋最初の部分）。同じ名前の別の作者さんを見分ける
+    // 作者様本人の登録のとき、サイト認証をしたサイト（ホスト名＋最初の部分）。同じ名前の別の作者様を見分ける
     verified_site: e.claim === 'author' ? str(e.verified_site, 200).replace(/[^\w.\-/~%:@]/g, '') : '',
-    // 分類名（作者さんごと・企画ごとなどの分け方。データ上のキーは labels のまま）。受け取った人が、取り込むかどうかと範囲を選ぶ
+    // 分類名（作者様ごと・企画ごとなどの分け方。データ上のキーは labels のまま）。受け取った人が、取り込むかどうかと範囲を選ぶ
     labels: (Array.isArray(e.labels) ? e.labels : []).filter((t) => typeof t === 'string').map((t) => t.trim().slice(0, 60)).filter(Boolean).slice(0, 20),
     description: str(e.description, 5000),
     // シナリオラベル：対象年齢（all・r15・r18）と、注意のラベル（gore・horror・sexual など。種類は content_labels）
@@ -71,9 +71,9 @@ export function sanitizeEntry(e) {
     // 共用カタログの状態：public＝公開中、held＝一時保留中（通報が多かったものなど。受け取る側で、いつもは出さない）
     state: e.state === 'held' ? 'held' : 'public',
     held_reason: e.state === 'held' ? str(e.held_reason, 300) : '',
-    // 作者さんのサイト（作品ごと）
+    // 作者様のサイト（作品ごと）
     site: isHttp(e.site) ? e.site : '',
-    // 載せた人が、どこで確かめたか（readme・site＝作者さんのサイト／配布ページ・author＝作者さん本人から・other）
+    // 載せた人が、どこで確かめたか（readme・site＝作者様のサイト／配布ページ・author＝作者様本人から・other）
     checked: ['readme', 'site', 'author', 'other'].includes(e.checked) ? e.checked : '',
     checked_note: str(e.checked_note, 300),
     // 改変版のとき：もとの作品と、改変してよいと分かるもの（規約のURLなど）
@@ -83,7 +83,7 @@ export function sanitizeEntry(e) {
     requires: (Array.isArray(e.requires) ? e.requires : []).filter((x) => /^[ep]\d{5,}$/.test(x)),
     related: (Array.isArray(e.related) ? e.related : []).filter((x) => /^[ep]\d{5,}$/.test(x)),
     links: (Array.isArray(e.links) ? e.links : []).filter(isHttp),
-    // 紹介ページ（作者さんのサイト・X・Misskeyなど）。DLの前に、どんな作品かを見てもらうため
+    // 紹介ページ（作者様のサイト・X・Misskeyなど）。DLの前に、どんな作品かを見てもらうため
     intro: (Array.isArray(e.intro) ? e.intro : [])
       .map((i) => (typeof i === 'string' ? { url: i, label: '' } : i))
       .filter((i) => i && isHttp(i.url))

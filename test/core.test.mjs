@@ -1,5 +1,5 @@
 // 中核処理のテスト。
-// 実物の作品ファイルを使う試験は、作者さんの作品を公開リポジトリに入れないため、
+// 実物の作品ファイルを使う試験は、作者様の作品を公開リポジトリに入れないため、
 // 環境変数 CW_FIXTURES のフォルダにある場合だけ実行する。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
