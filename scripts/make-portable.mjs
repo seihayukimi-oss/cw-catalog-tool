@@ -49,6 +49,8 @@ if (process.argv.includes('--pack')) {
   writeFileSync(`release/CWCatalog-v${version}-portable.zip`, writeZip(files));
   copyFileSync('out/CWCatalog.exe', 'release/CWCatalog.exe');
   copyFileSync('dist/web/cw-catalog.html', `release/cw-catalog-v${version}.html`);
+  // 部品の許諾文は、リリースのファイルとしても置く（自動更新では zip の中のファイルは変わらないので、アプリの「設定」から最新を開けるように）
+  if (existsSync('out/THIRD-PARTY-NOTICES.txt')) copyFileSync('out/THIRD-PARTY-NOTICES.txt', 'release/THIRD-PARTY-NOTICES.txt');
   if (release) {
     if (!sig) throw new Error('署名（out/CWCatalog.exe.sig）がありません。TAURI_SIGNING_PRIVATE_KEY を設定してください');
     const notesFile = process.env.RELEASE_NOTES_FILE;

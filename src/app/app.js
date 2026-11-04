@@ -770,7 +770,9 @@ function viewSettings() {
         h('dt', {}, '制作'), h('dd', {}, CREDITS.author),
         h('dt', {}, 'メール'), h('dd', {}, CREDITS.mail, ' ', h('button', { class: 'btn ghost sm', onclick: async () => { try { await navigator.clipboard.writeText(CREDITS.mail); toast('メールアドレスをコピーしました'); } catch { toast('コピーできませんでした', { bad: true }); } } }, 'コピー')),
         h('dt', {}, '制作補助ツール'), h('dd', {}, CREDITS.helper),
-        h('dt', {}, '使用アイコン'), h('dd', {}, CREDITS.icons)),
+        h('dt', {}, '使用アイコン'), h('dd', {}, CREDITS.icons),
+        h('dt', {}, '説明・ポリシー（最新）'), h('dd', { class: 'row', style: 'gap:6px' }, CREDITS.docs.map(([label, url]) => h('button', { class: 'btn ghost sm', title: url, onclick: () => S.platform.openUrl(url) }, label)))),
+      S.platform.kind === 'app' ? h('p', { class: 'small muted', style: 'margin:0' }, 'アプリの自動更新で入れ替わるのは CWCatalog.exe だけです。同じフォルダの はじめに.txt・CODE_SIGNING_POLICY.txt・THIRD-PARTY-NOTICES.txt は、最初にダウンロードしたときのままなので、最新の内容は上のボタンから開いてください。（ブラウザで開きます）') : null,
       CREDITS.lines.map((l) => h('p', { style: 'margin:0' }, l))),
 
     h('h2', {}, `更新履歴（今の版：${APP_VERSION}）`),
