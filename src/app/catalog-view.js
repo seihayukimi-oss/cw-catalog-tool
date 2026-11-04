@@ -262,7 +262,7 @@ function workCard(w, mine) {
       isMutedWork(w) ? h('span', { class: 'badge plain' }, '除外中の作者') : null,
       w.derivative ? h('span', { class: 'badge plain', title: [w.derivative.of ? `もとの作品：${w.derivative.of}` : '', w.derivative.basis ? `改変してよいと分かるもの：${w.derivative.basis}` : ''].filter(Boolean).join('\n') }, '改変版') : null,
       workHasDead(w) ? h('span', { class: 'badge bad link-dead', title: 'DL先のどれかで、ファイルが見つかりませんでした（くわしくはDL先の欄）' }, '✖ リンク切れ') : null,
-      workSites(w).length ? h('span', { class: 'badge plain author-site', title: '作者さんご本人が、このサイトでサイト認証をして登録した作品です（同じ名前の別の作者さんは、サイトで見分けられます）' }, `作者本人（認証：${workSites(w).join('・')}）`) : null,
+      workSites(w).length ? h('span', { class: 'badge plain author-site', title: '作者さんご本人が、このサイトでサイト認証をして登録した作品です。（同じ名前の別の作者さんは、認証サイト名で見分けられます）' }, `作者本人（認証サイト名：${workSites(w).join('・')}）`) : null,
       w.refs.some((r) => r.entry.claim === 'proxy') && !w.refs.some((r) => r.entry.claim === 'author') ? h('span', { class: 'badge plain', title: '作者さん以外の方が登録したものです（作者さんは、登録フォームの「サイト認証」で引き取れます）' }, '代理登録') : null,
       foldersOf(w.key).map((f) => h('span', { class: 'badge folder' }, f.name)),
       w.listFound ? h('span', { class: 'badge update', title: `ファイル一覧（${w.listFound.list}）で見つけたファイル：${w.listFound.name}` }, `一覧の最新 ${w.listFound.version ? `ver ${w.listFound.version}` : w.listFound.name}`) : null),
@@ -335,7 +335,7 @@ async function muteAuthor(w, mute) {
   const sites = workSites(w);
   const site = sites.length === 1 ? sites[0] : '';
   const n = S.combined.works.filter((x) => x.author === author && (!site || !workSites(x).length || workSites(x).includes(site))).length;
-  if (!(await confirmBox(`「${author}」さん${site ? `（認証したサイト：${site}）` : ''}の作品（${n}件）をカタログに表示しないようにします。${site ? '同じ名前でも、別のサイトで認証した作者さんの作品は表示したままにします。' : ''}このPCの中だけの設定で、カタログそのものは変わりません。「設定」→「カタログ」でいつでも元に戻せます。`, { yes: '除外する', no: 'やめる' }))) return;
+  if (!(await confirmBox(`「${author}」さん${site ? `（認証サイト名：${site}）` : ''}の作品（${n}件）をカタログに表示しないようにします。${site ? '同じ名前でも、別のサイトで認証した作者さんの作品は表示したままにします。' : ''}このPCの中だけの設定で、カタログそのものは変わりません。「設定」→「カタログ」でいつでも元に戻せます。`, { yes: '除外する', no: 'やめる' }))) return;
   await muteWorkAuthor(w);
   toast(`「${author}」さん${site ? `（${site}）` : ''}の作品をカタログに表示しないようにしました`);
   render();
@@ -682,7 +682,7 @@ export async function editEntry({ work = null, prefill = null } = {}) {
   work = work || prefill?.work || null;
   if (!ownSources().length) await createOwn('マイカタログ');
   const ownRef = work?.refs.find((r) => r.kind === 'own');
-  const base = ownRef?.entry || (work ? { ...work.refs[0].entry, downloads: work.downloads, intro: work.intro, tags: work.tags, rating: work.rating, content: work.content, site: work.site } : prefill?.entry) || {};
+  const base = ownRef?.entry || (work ? { ...work.refs[0].entry, downloads: work.downloads, intro: work.intro, tags: S.tagCopy === false ? [] : work.tags, rating: work.rating, content: work.content, site: work.site } : prefill?.entry) || {};
   // ほかのカタログから写すときは、元のカタログを「出典」として残す
   const origin = base.origin || (work && !ownRef ? (work.refs[0].entry.origin || work.refs[0].attribution || { name: work.refs[0].sourceName }) : null);
   const origKey = ownRef ? work.key : '';

@@ -22,7 +22,7 @@ import { viewCatalog, prefsBlock, editEntry } from './catalog-view.js';
 import { startBatch } from './batch.js';
 import { setupShell, startShell, viewAppSettings, checkSelf } from './appshell.js';
 import { ownSources, saveOwnEntry } from './catalog-data.js';
-import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName, manageTags, setCatTagAuto, setCatTagShow, catTagLabel } from './tags.js';
+import { loadTags, tagEditor, tagChips, pickTags, applyTags, addTagName, manageTags, setCatTagAuto, setCatTagShow, setTagCopy, catTagLabel } from './tags.js';
 import { findTags, findTagsInOpened } from '../core/autotag.js';
 import { decodeText } from '../core/text.js';
 import { openArchive } from '../core/archive.js';
@@ -187,6 +187,9 @@ function viewMine() {
         onclick: () => { const out = sel.filter((r) => !r.missing && r.type !== 'bookmark' && !workOf(r) && r.name); if (!out.length) { toast('個人用カタログに登録できる作品がありません（カタログにある作品・ブックマークは登録しません）', { bad: true }); return; } registerOutside(out); },
       }, '＋個人用カタログに登録'),
       h('button', { class: 'btn sm', disabled: !sel.length, onclick: () => retagFromReadme(sel) }, 'Readmeからタグを付ける'),
+      h('button', { class: 'btn sm', disabled: !sel.length, title: 'カタログにある作品に、カタログのタグ（作者様推奨タグ）を自分のタグとして付けます', onclick: () => tagFromCatalog(sel) }, 'カタログのタグを付ける'),
+      S.catTagShow !== false ? h('button', { class: 'btn sm', disabled: !sel.length, title: '選んだ作品の、カタログのタグ（作者様推奨タグ）の表示を隠します', onclick: () => hideCatTags(sel, true) }, '推奨タグを隠す') : null,
+      S.catTagShow !== false && sel.some((r) => r.catTagHide) ? h('button', { class: 'btn sm', disabled: !sel.length, onclick: () => hideCatTags(sel, false) }, '推奨タグを表示') : null,
       h('button', {
         class: 'btn sm', title: 'Scenario の中の分類フォルダ（例：Scenario/_店）へ、実際のフォルダを動かします',
         onclick: async () => {
@@ -726,12 +729,15 @@ function viewSettings() {
     h('div', { class: 'card stack' },
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.autoTag !== false, 'aria-label': 'Readmeから自動でタグを付ける', onchange: async (ev) => { S.autoTag = ev.target.checked; await store.set('autoTag', S.autoTag); } }),
         'シナリオを入れるとき、Readmeや説明文からタグを自動で付ける'),
-      h('p', { class: 'small muted', style: 'margin:0' }, '「店シナ」「読み物」「1人用」「3人以上」「6人専用」「戦闘あり」「戦闘なし」「短編」「Lv3-5」などを、書いてあるときだけ付けます。入れる前に、付けるタグを選べます。もう入っている作品は、「自分のフォルダ一覧」で選んで「Readmeからタグを付ける」を押すと付けられます。'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!S.catTagAuto, 'aria-label': 'カタログのタグも自分のタグとして付ける', onchange: async (ev) => { await setCatTagAuto(ev.target.checked); } }),
-        'シナリオを入れるとき、カタログのタグ（作者様推奨タグ）も自分のタグとして付ける'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.catTagShow !== false, 'aria-label': 'カタログのタグを表示する', onchange: async (ev) => { await setCatTagShow(ev.target.checked); render(); } }),
-        '自分のフォルダ一覧に、カタログのタグ（作者様推奨タグ）を表示する'),
-      h('p', { class: 'small muted', style: 'margin:0' }, '作者さんご本人が共用カタログに登録した作品のタグは「作者様推奨タグ」、ほかの方が登録した作品のタグは「カタログのタグ」と表示します。表示されたタグを押すと、自分のタグに足せます。作品ごとに「隠す」こともできます。'),
+      h('p', { class: 'small muted', style: 'margin:0' }, '「店シナ」「読み物」「1人用」「3人以上」「6人専用」「戦闘あり」「戦闘なし」「短編」「Lv3以上」「Lv5以下」などを、書いてあるときだけ付けます。入れる前に、付けるタグを選べます。もう入っている作品は、「自分のフォルダ一覧」で選んで「Readmeからタグを付ける」を押すと付けられます。'),
+      h('div', {}, h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!S.catTagAuto, 'aria-label': 'カタログのタグも自分のタグとして付ける', onchange: async (ev) => { await setCatTagAuto(ev.target.checked); } }),
+        'シナリオを入れるとき、カタログのタグ（作者様推奨タグ）も自分のタグとして付ける')),
+      h('div', {}, h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.catTagShow !== false, 'aria-label': 'カタログのタグを表示する', onchange: async (ev) => { await setCatTagShow(ev.target.checked); render(); } }),
+        '自分のフォルダ一覧に、カタログのタグ（作者様推奨タグ）を表示する')),
+      h('p', { class: 'small muted', style: 'margin:0' }, '作者さんご本人が共用カタログに登録した作品のタグは「作者様推奨タグ」、ほかの方が登録した作品のタグは「カタログのタグ」と表示します。表示されたタグを押すと、自分のタグに足せます。作品ごとに「隠す」こともできます。（選択モードで、まとめて付けたり隠したりもできます）'),
+      h('div', {}, h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.tagCopy !== false, 'aria-label': '個人用カタログに登録するとき、タグも引き継ぐ', onchange: async (ev) => { await setTagCopy(ev.target.checked); } }),
+        '個人用カタログに登録するとき、タグも引き継ぐ')),
+      h('p', { class: 'small muted', style: 'margin:0' }, '共用カタログの作品を「個人用カタログへ」写すときはカタログのタグを、自分のフォルダ一覧から「＋個人用カタログに登録」するときは自分のタグを、個人用カタログのタグの欄に入れておきます。（登録する前に直せます）'),
       h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: manageTags }, 'タグの整理'))),
 
     h('h2', { id: 'records-settings' }, `自分のフォルダの記録（${RECORDS_BACKUP}）`),
@@ -817,6 +823,43 @@ async function reconnect(e) {
 }
 
 /** 選んだ作品の Readme・説明文から、タグを見つけて付ける（入れたときの記録か、フォルダの中の .txt を読む） */
+/** 選んだ作品に、カタログのタグ（作者様推奨タグ）を自分のタグとして付ける（付けるタグを選べる） */
+async function tagFromCatalog(sel) {
+  const pairs = sel.map((r) => ({ r, work: workOf(r) })).filter((x) => x.work?.tags?.length && x.r.type !== 'bookmark');
+  if (!pairs.length) { toast('カタログのタグがある作品がありません（カタログにある作品だけに付けられます）', { bad: true }); return; }
+  const all = [...new Set(pairs.flatMap((x) => x.work.tags))];
+  const on = new Set(all);
+  const ok = await modal((close) => h('div', { class: 'stack' },
+    h('h2', {}, `${pairs.length}件にカタログのタグを付ける`),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'それぞれの作品に、その作品のカタログのタグのうち、下で選んだものだけを付けます。'),
+    h('div', { class: 'row tag-pick' }, all.map((t) => h('label', { class: 'chip on' },
+      h('input', { type: 'checkbox', checked: true, onchange: (ev) => { if (ev.target.checked) on.add(t); else on.delete(t); ev.target.parentElement.classList.toggle('on', ev.target.checked); } }), t))),
+    h('div', { class: 'row', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: () => close(false) }, 'やめる'),
+      h('button', { class: 'btn primary', onclick: () => close(true) }, '付ける'))));
+  if (!ok || !on.size) return;
+  let n = 0;
+  for (const { r, work } of pairs) {
+    const add = work.tags.filter((t) => on.has(t) && !(r.tags || []).includes(t));
+    if (!add.length) continue;
+    for (const t of add) await addTagName(t);
+    await applyTags([r], add, []);
+    n++;
+  }
+  toast(n ? `${n}件にカタログのタグを付けました` : '新しく付けるタグはありませんでした');
+  render();
+}
+
+/** 選んだ作品の、カタログのタグ（作者様推奨タグ）の表示を隠す・出す */
+async function hideCatTags(sel, hide) {
+  const recs = sel.filter((r) => r.type !== 'bookmark');
+  for (const r of recs) r.catTagHide = hide;
+  await store.putRecords(recs);
+  S.records = await store.records();
+  toast(hide ? `${recs.length}件の推奨タグを隠しました` : `${recs.length}件の推奨タグを表示しました`);
+  render();
+}
+
 async function retagFromReadme(sel) {
   const recs = sel.filter((r) => r.type !== 'bookmark' && !r.missing);
   if (!recs.length) return;
@@ -860,7 +903,7 @@ function entryFromRecord(r) {
   return {
     name: r.name, author: r.author || '', version: r.version || r.versionGuess || '',
     format: ['classic', 'next', 'wsn'].includes(r.format) ? r.format : 'classic', wsn_version: r.wsnVersion ?? null,
-    description: '', tags: [...(r.tags || [])], intro: [], downloads: r.pageUrl ? [{ url: r.pageUrl, label: '', kind: 'page', status: 'active', note: '' }] : [],
+    description: '', tags: S.tagCopy === false ? [] : [...(r.tags || [])], intro: [], downloads: r.pageUrl ? [{ url: r.pageUrl, label: '', kind: 'page', status: 'active', note: '' }] : [],
     file: { name: '', sha256: r.sha256 || '' },
   };
 }

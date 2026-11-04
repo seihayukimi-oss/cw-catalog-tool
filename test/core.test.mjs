@@ -532,7 +532,7 @@ test('Readmeからタグを見つける', async () => {
   const { findTags } = await import('../src/core/autotag.js');
   assert.deepEqual(findTags('これは男性１人専用の読み物です。戦闘はありません。'), ['読み物', '1人専用', '戦闘なし']);
   assert.deepEqual(findTags('【店シナ】冒険者向けのアイテムを売っています。'), ['店シナ']);
-  assert.deepEqual(findTags('推奨：3人以上／ボス戦あり／短編／対象レベル：3～5'), ['3人以上', '戦闘あり', '短編', 'Lv3-5']);
+  assert.deepEqual(findTags('推奨：3人以上／ボス戦あり／短編／対象レベル：3～5'), ['3人以上', '戦闘あり', '短編', 'Lv3以上', 'Lv5以下']);
   assert.deepEqual(findTags('二人用シナリオ'), ['2人用']);
   assert.deepEqual(findTags('普通の説明です'), []);
 });
@@ -651,7 +651,7 @@ test('共用カタログ：一時保留中・出典・改変版・確かめた�
 });
 
 import { findRating, mergeLabelDefs, sanitizeLabelDefs, stricter } from '../src/core/ratings.js';
-import { findTags } from '../src/core/autotag.js';
+import { findTags, parseLevel, levelTags } from '../src/core/autotag.js';
 
 test('シナリオラベル：対象年齢・注意のラベル・管理人が増やしたラベル・Readmeから見つける', () => {
   assert.equal(findRating('このシナリオはR-18です'), 'r18');
@@ -765,4 +765,18 @@ test('DLキー：自分の個人用カタログのものだけ使う（受け取
   ]);
   assert.equal(both.works[0].downloads.length, 1);
   assert.equal(both.works[0].downloads[0].dlkey, 'MY-KEY');
+});
+
+test('対象レベル：いろいろな書き方を「Lv3以上」「Lv5以下」に分ける', () => {
+  const T = (s) => levelTags(parseLevel(s));
+  assert.deepEqual(T('3～5'), ['Lv3以上', 'Lv5以下']);
+  assert.deepEqual(T('1-3'), ['Lv1以上', 'Lv3以下']);
+  assert.deepEqual(T('２ー４'), ['Lv2以上', 'Lv4以下']);
+  assert.deepEqual(T('Lv5～Lv3'), ['Lv3以上', 'Lv5以下']);
+  assert.deepEqual(T('3以上'), ['Lv3以上']);
+  assert.deepEqual(T('5以下'), ['Lv5以下']);
+  assert.deepEqual(T('4'), ['Lv4以上', 'Lv4以下']);
+  assert.equal(parseLevel('なし'), null);
+  assert.deepEqual(findTags('対象Lv：1～3'), ['Lv1以上', 'Lv3以下']);
+  assert.deepEqual(findTags('推奨レベル 6以上'), ['Lv6以上']);
 });

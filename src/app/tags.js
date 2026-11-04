@@ -31,7 +31,10 @@ export async function loadTags() {
   // カタログのタグ：入れるときに自分のタグとして付けるか（最初はオフ）・自分のフォルダ一覧に出すか（最初はオン）
   S.catTagAuto = (await store.get('catTagAuto', false)) === true;
   S.catTagShow = (await store.get('catTagShow', true)) !== false;
+  // 個人用カタログに登録するとき（共用カタログから写す・自分のフォルダから登録する）、タグも引き継ぐか（最初はオン）
+  S.tagCopy = (await store.get('tagCopy', true)) !== false;
 }
+export async function setTagCopy(on) { S.tagCopy = !!on; await store.set('tagCopy', S.tagCopy); }
 export async function setCatTagAuto(on) { S.catTagAuto = !!on; await store.set('catTagAuto', S.catTagAuto); }
 export async function setCatTagShow(on) { S.catTagShow = !!on; await store.set('catTagShow', S.catTagShow); }
 /** カタログのタグの呼び方：作者さん本人の登録の作品は「作者様推奨タグ」、ほかは「カタログのタグ」 */

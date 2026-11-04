@@ -42,14 +42,34 @@ export function findTags(text) {
   if (/短編/.test(t)) tags.add('短編');
   else if (/中編/.test(t)) tags.add('中編');
   else if (/長編/.test(t)) tags.add('長編');
-  // 対象レベル
-  const lv = t.match(/(?:対象|推奨|適正)レベル\s*[:：]?\s*(\d{1,2})\s*(?:[~～〜\-ー]|から)\s*(\d{1,2})/);
-  if (lv) tags.add(`Lv${lv[1]}-${lv[2]}`);
+  // 対象レベル（「Lv3以上」「Lv5以下」の2つに分けて付ける。3～5 なら Lv3以上・Lv5以下）
+  const lvm = t.match(/(?:対象|推奨|適正)\s*(?:レベル|Lv\.?|LV\.?)\s*[:：]?\s*([^\n。、,，/／]{1,20})/i);
+  const lv = lvm ? parseLevel(lvm[1]) : null;
+  if (lv) for (const x of levelTags(lv)) tags.add(x);
   // 対象年齢（R18・R15）。書いてあるときだけ
   const rating = findRating(t);
   if (rating) tags.add(rating === 'r18' ? 'R18' : 'R15');
   return [...tags];
 }
+
+/**
+ * 対象レベルの書き方を読む：「3～5」「3-5」「３ー５」「3から5」「Lv3～Lv5」「3以上」「5以下」「3」など
+ * @returns {{min: number|null, max: number|null}|null}
+ */
+export function parseLevel(s) {
+  const t = String(s || '').normalize('NFKC').replace(/(?:Lv\.?|LV\.?|lv\.?|レベル)/g, '');
+  const two = t.match(/(\d{1,2})\s*(?:[~～〜\-ー―−]|から|to)\s*(\d{1,2})/);
+  if (two) { const a = +two[1], b = +two[2]; return { min: Math.min(a, b), max: Math.max(a, b) }; }
+  const up = t.match(/(\d{1,2})\s*(?:以上|～$|~$|〜$|-$|から$)/);
+  if (up) return { min: +up[1], max: null };
+  const down = t.match(/(\d{1,2})\s*以下|(?:[~～〜\-ー]|まで)\s*(\d{1,2})/);
+  if (down) return { min: null, max: +(down[1] || down[2]) };
+  const one = t.match(/^\s*(\d{1,2})\s*(?:$|[^\d])/);
+  if (one) return { min: +one[1], max: +one[1] };
+  return null;
+}
+/** 対象レベルのタグ：下限は「Lv3以上」、上限は「Lv5以下」 */
+export const levelTags = (lv) => [lv?.min != null ? `Lv${lv.min}以上` : '', lv?.max != null ? `Lv${lv.max}以下` : ''].filter(Boolean);
 
 /** zipなどを開いた結果（シナリオ1本）から、タグを探す */
 export async function findTagsInOpened(opened, scenario) {
