@@ -1,9 +1,11 @@
 # コード署名ポリシー（Code signing policy）
 
-Free code signing provided by SignPath.io, certificate by SignPath Foundation
-（SignPath.io による無料のコード署名。証明書は SignPath Foundation が発行しています）
+## いまの状態
 
-- SignPath Foundation の審査を申し込み中です。承認されるまで、CWCatalog.exe は署名されていません。
+- いまの CWCatalog.exe には、コード署名をしていません。
+- SignPath Foundation（オープンソース向けの無料のコード署名）に申し込みましたが、プロジェクトがもっと広く知られてから申し込み直してほしい、とのことでした（2026年11月）。広く使っていただけるようになったら、申し込み直す予定です。
+- 署名がないため、起動するときに Windows の警告が出ることがあります。そのときの対処は、README と配布物の「はじめに.txt」をご覧ください。
+- 下の節は、コード署名を始めるときの決まりです。
 
 ## 署名するもの
 
@@ -15,13 +17,13 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
 - CWCatalog.exe は、公開しているリポジトリ（<https://github.com/seihayukimi-oss/cw-catalog-tool>）のソースから、GitHub Actions（GitHub が用意する作業用のパソコン）で自動で作ります。
 - 手元のパソコンで作ったファイルに署名することはありません。
-- 署名は、版を出すたびに、運営者が SignPath の画面で中身を確かめてから、手で承認します。
+- 署名は、版を出すたびに、運営者が中身を確かめてから、手で承認します。
 
 ## 役割
 
 - 作る人・確かめる人・承認する人：清葉雪見（ひとりで運営しています）
 - コードの変更の一部は、制作補助ツール（Claude Code）で作っています。リポジトリに入るのは、運営者が指示し、確かめたものだけです。
-- GitHub と SignPath のアカウントは、どちらも2段階認証を使っています。
+- GitHub のアカウントは、2段階認証を使っています。コード署名を始めるときは、署名に使うサービスのアカウントも2段階認証にします。
 
 ## プライバシー
 
@@ -40,9 +42,12 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
 # Code signing policy (English)
 
-Free code signing provided by SignPath.io, certificate by SignPath Foundation
+## Current status
 
-- Our application to SignPath Foundation is pending. Until it is approved, CWCatalog.exe is not signed.
+- CWCatalog.exe is currently not code-signed.
+- We applied to SignPath Foundation (free code signing for open source projects). They asked us to reapply once the project has gained broader recognition (November 2026). We plan to reapply when the project is more widely used.
+- Because the app is not signed, Windows may show a warning when you start it. See the README and the "はじめに.txt" file in the download for what to do.
+- The sections below describe the rules we will follow once code signing starts.
 
 ## What we sign
 
@@ -54,13 +59,13 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
 - CWCatalog.exe is built automatically by GitHub Actions (GitHub-hosted runners) from the source code in the public repository (<https://github.com/seihayukimi-oss/cw-catalog-tool>).
 - We never sign files built on a local computer.
-- For every release, the maintainer checks the request on SignPath and approves each signing manually.
+- For every release, the maintainer checks the build and approves each signing manually.
 
 ## Team roles
 
 - Author, reviewer and approver: 清葉雪見 (Seiha Yukimi). This is a single-maintainer project.
 - Some code changes are written with an AI coding assistant (Claude Code). Only changes that the maintainer requested and reviewed are added to the repository.
-- Both the GitHub and SignPath accounts use multi-factor authentication.
+- The GitHub account uses multi-factor authentication. When code signing starts, the account of the signing service will use multi-factor authentication as well.
 
 ## Privacy
 

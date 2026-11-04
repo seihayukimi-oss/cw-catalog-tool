@@ -20,7 +20,7 @@ CardWirth（1.50 / Next 1.60 / Py）のシナリオ・素材・スキンを一�
 - 旧バージョンをお使いの方は、アプリ内の「設定 ＞ アプリの更新 ＞ 更新を確認」から最新版へ更新いただけます。
 - 同じ「Assets」一覧にある `CWCatalog.exe` および `latest-portable.json` は自動更新用の処理ファイルです。初回導入時は必ず `.zip` ファイルをご選択ください。
 - 起動時に Windows の保護画面（警告）が表示された場合は、後述の「起動時に警告・ブロック画面が表示された場合」をご確認ください。
-- コード署名ポリシー（Code signing policy）：[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)（SignPath Foundation のコード署名を申し込み中）
+- コード署名ポリシー（Code signing policy）：[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)
 
 ### HTML版（Google Chrome / Microsoft Edge）
 - [公開ページ](https://seihayukimi-oss.github.io/cw-catalog-tool/cw-catalog.html) をブラウザで開くだけですぐにご利用いただけます（※常に最新状態が反映されます）。
