@@ -32,7 +32,7 @@ serde_json = "=1.0.154"
 winreg = "=0.56.0"
 # アプリ内ブラウザのダウンロードの進み具合（Tauri が使っているものと同じ版）
 webview2-com = "=0.39.1"
-windows-core = "=0.62.2"
+windows-core = "=0.100.0"
 # 「🗑️削除する」で Windows のごみ箱へ移す（Tauri が使っているものと同じ版）
 windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_UI_Shell"] }
 
