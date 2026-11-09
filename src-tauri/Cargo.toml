@@ -9,7 +9,7 @@ rust-version = "1.77.2"
 # 版は「出てから2週間以上たったもの」に固定（サプライチェーン対策）。
 # JavaScript側（package.json）の @tauri-apps/* と、マイナー版をそろえること。
 [build-dependencies]
-tauri-build = { version = "=2.7.3", features = [] }
+tauri-build = { version = "=2.7.4", features = [] }
 
 [dependencies]
 tauri = { version = "=2.12.4", features = [] }
