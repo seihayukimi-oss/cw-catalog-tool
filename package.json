@@ -19,7 +19,7 @@
     "fflate": "0.8.3"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.3",
+    "@tauri-apps/cli": "2.12.4",
     "esbuild": "0.28.2",
     "playwright": "1.64.1"
   }
