@@ -12,14 +12,14 @@
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4",
-    "@tauri-apps/plugin-dialog": "2.8.3",
+    "@tauri-apps/plugin-dialog": "2.8.4",
     "@tauri-apps/plugin-fs": "2.7.1",
     "@tauri-apps/plugin-http": "2.8.3",
     "@tauri-apps/plugin-opener": "2.7.2",
     "fflate": "0.8.3"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.3",
+    "@tauri-apps/cli": "2.12.4",
     "esbuild": "0.28.2",
     "playwright": "1.64.1"
   }
